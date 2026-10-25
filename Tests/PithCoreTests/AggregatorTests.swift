@@ -239,11 +239,17 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   #expect(s.apps[0].diskBytesPerSecond == .unavailable("first sample"))
 }
 
-@Test func cpuDiffsAcrossAnExec() {  // the same task runs a new executable, and its counters go on
-  let s = snap(
-    previous: table([process(300)], at: 0),
-    current: table([process(300, executable: 1, cpu: 2_000_000_000)], at: 1_000_000_000))
-  #expect(s.apps[0].cpu == .value(0.2))
+@Test func anExecThatLowersTheCPUTimeStartsAFreshBaseline() {  // R132
+  // Seen on macOS 26.6.2 (MTLAssetUpgraderD): an exec keeps the PID and start time, and the new
+  // executable's CPU time was lower. It counts as a new process: no rate this tick, and no trap.
+  let before = table(
+    [process(300, executable: 1, cpu: 2_000_000), process(301, app: "Maps")], at: 1_000_000_000)
+  let after = table(
+    [process(300, executable: 2, cpu: 1_000_000), process(301, app: "Maps", cpu: 100_000_000)],
+    at: 2_000_000_000)
+  let s = snap(previous: before, current: after)
+  #expect(s.apps.first { $0.name == "Notes" }?.cpu == .unavailable("first sample"))
+  #expect(s.apps.first { $0.name == "Maps" }?.cpu == .value(0.01))  // 0.1 s of 1 s on 10 cores
 }
 
 @Test func zeroMemoryResidualIsAValue() {
