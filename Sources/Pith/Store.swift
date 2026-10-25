@@ -149,12 +149,8 @@ enum SystemDetailsState: Equatable {
     sendQuit(quitFlow.state == .confirming ? .confirm : .confirmForce)
   }
 
-  /// A confirm's Cancel button, which waits 0.4 s too (R93).
-  func cancelQuitButton() {
-    if confirmArmed { sendQuit(.cancel) }
-  }
-
-  /// Escape, ↑ or ↓ cancel a confirm at once, drawn or not (R94).
+  /// Cancel, Escape, ↑ or ↓ cancel a confirm at once, drawn or not (R94). A cancel is never
+  /// harmful, so it does not wait (R99).
   func cancelQuit() { sendQuit(.cancel) }
 
   /// Quit Pith, in Settings or with ⌘Q: Pith's own quit, at once (R91).

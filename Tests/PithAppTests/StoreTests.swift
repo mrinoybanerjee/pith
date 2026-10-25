@@ -184,16 +184,34 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   #expect(apps.checks.waits == waits + 1)
 }
 
-/// R93: a confirm's buttons do nothing for 0.4 s after it shows, so a double-click cannot pass it.
-@MainActor @Test func aConfirmIgnoresItsButtonsForItsFirst0Point4Seconds() throws {
+/// R93 and R99: the default button of each confirm, Quit and Force Quit, does nothing for 0.4 s
+/// after the confirm shows, so a double-click cannot pass it. Cancel works at once.
+@MainActor @Test func aConfirmWaits0Point4SecondsButCancelDoesNot() async throws {
   let chrome = fakeChrome()
   let apps = FakeRunningApps([chrome])
-  let store = try askToQuitChrome(apps)
+  var store = try askToQuitChrome(apps)
+  store.cancelQuit()
+  #expect(store.quitFlow.state == .idle)
+  store = try askToQuitChrome(apps)
   apps.nowNs += 399_000_000
   store.confirmQuit()
-  store.cancelQuitButton()
   #expect(store.quitFlow.state == .confirming && chrome.terminations == 0)
   apps.nowNs += 1_000_000
   store.confirmQuit()
   #expect(chrome.terminations == 1)
+  await settle()
+  apps.nowNs += 5_000_000_000
+  await apps.checks.fire()
+  store.offerForceQuit()
+  store.cancelQuit()
+  #expect(store.quitFlow.state == .offerForce)
+  store.offerForceQuit()
+  apps.nowNs += 399_000_000
+  store.confirmQuit()
+  #expect(store.quitFlow.state == .confirmingForce && chrome.forcedTerminations == 0)
+  apps.nowNs += 1_000_000
+  store.confirmQuit()
+  #expect(chrome.forcedTerminations == 1)
+  store.panelClosed()
+  await apps.checks.fire()
 }

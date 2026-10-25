@@ -48,8 +48,8 @@ extension NativeInteractionTests {
         try writePNG(
           hostPanel(snap, appearance: scheme), to: "\(dir)/\(name)-\(scheme.rawValue).png")
       }
-      // The tight panel's Google Chrome is taller than the list with its confirm, so its top stays
-      // at the list's top (R92); the calm panel's fits whole.
+      // The tight panel's Google Chrome is taller than the list with its confirm, so the list shows
+      // the whole confirm and the row's name scrolls away (R98); the calm panel's fits whole.
       for (name, snapshot) in [
         ("quit-confirm", DemoSnapshots.tight), ("quit-confirm-calm", DemoSnapshots.calm),
       ] {
@@ -581,7 +581,7 @@ extension NativeInteractionTests {
   }
 
   /// R80 and R94: the first Escape cancels the confirm, and only the next one closes the panel.
-  /// Cancel does the same as the first Escape.
+  /// Cancel does the same as the first Escape, at once (R99).
   @Test func escapeCancelsTheConfirmBeforeItClosesThePanel() async throws {
     defer { clearDefaults() }
     let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
@@ -593,7 +593,6 @@ extension NativeInteractionTests {
     #expect(w.isVisible && store.quitFlow.state == .idle)
     try press("Quit", in: w)
     #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
-    apps.passTheConfirmGuard()
     try press("Cancel", in: w)
     #expect(try await eventually(w) { store.quitFlow.state == .idle })
     sendKey("⎋", to: w)
@@ -642,13 +641,11 @@ extension NativeInteractionTests {
   }
 
   /// R92: a reading that only changes what is inside the opened row does not scroll the list, so
-  /// a confirm that the user scrolled to stays in view.
+  /// a confirm in view stays in view.
   @Test func aReadingDoesNotScrollAwayAConfirm() async throws {
     defer { clearDefaults() }
     let (w, store, _) = try await hostOpened("Google Chrome", in: DemoSnapshots.tight)
     try press("Quit", in: w)
-    #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
-    store.moveSelection(-1)  // the last row, "macOS system", which brings the confirm into view
     #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
     let c = DemoSnapshots.tight.apps[0]
     let grown = AppUsage(
@@ -739,27 +736,45 @@ extension NativeInteractionTests {
     }
   }
 
-  /// R92: when a confirm appears, the opened row's name stays in view. Slack with its confirm fits
-  /// in the list, so all of it shows. Google Chrome with its confirm is taller than the tight
-  /// panel's list, so its top stays at the list's top, and Return waits until its confirm shows
-  /// whole.
-  @Test func anOpenedRowsNameStaysInViewWhenItsConfirmAppears() async throws {
+  /// R92 and R98: a row opens name first. Google Chrome, here with more helper groups than fit in
+  /// the tight panel's list, opens with its name at the list's top. When a confirm appears, the
+  /// list scrolls the least that shows the whole confirm, so Return works at once; the row's name
+  /// may scroll away, as the confirm names the app. Slack fits with its confirm, so both show.
+  @Test func aRowOpensNameFirstAndAConfirmShowsWhole() async throws {
     defer { clearDefaults() }
+    let c = DemoSnapshots.tight.apps[0]
+    let tallChrome = AppUsage(
+      id: c.id, name: c.name, bundlePath: c.bundlePath, bundleID: c.bundleID, pids: c.pids,
+      processCount: c.processCount, memory: c.memory, cpu: c.cpu,
+      diskBytesPerSecond: c.diskBytesPerSecond,
+      inside: c.inside
+        + ["Audio", "Network", "Storage", "Printing", "Speech", "Utilities"].map {
+          HelperGroup(label: $0, count: 1, memory: 20 << 20)
+        })
+    let tall = remake(
+      DemoSnapshots.tight, apps: [tallChrome] + DemoSnapshots.tight.apps.dropFirst())
     for (name, snapshot, header) in [
+      ("Google Chrome", tall, "Google Chrome, 6.4 GB memory, 41 processes"),
       ("Slack", DemoSnapshots.calm, "Slack, 710 MB memory, 7 processes"),
-      ("Google Chrome", DemoSnapshots.tight, "Google Chrome, 6.4 GB memory, 41 processes"),
     ] {
-      let (w, store, _) = try await hostOpened(name, in: snapshot)
+      let (w, store, apps) = try await hostOpened(name, in: snapshot)
+      let app = try target(apps, store)
+      let list = try listFrame(in: w).insetBy(dx: 0, dy: -0.5)
+      func headerShows() throws -> Bool {
+        list.contains(w.convertFromScreen(try axNode(header, in: w).frame))
+      }
+      #expect(try headerShows(), "\(name) opens name first")
+      #expect(name == "Slack" || !showsInTheList("Quit", in: w), "Chrome is taller than the list")
       try press("Quit", in: w)
       #expect(
-        try await eventually(w) { axLabels(in: w).contains { $0.hasPrefix("Quit \(name)?") } })
-      try await Task.sleep(for: .milliseconds(100))
-      let list = try listFrame(in: w).insetBy(dx: 0, dy: -0.5)
-      let row = w.convertFromScreen(try axNode(header, in: w).frame)
-      #expect(list.contains(row), "\(name): \(row) in \(list)")
-      #expect(
-        showsInTheList("Quit", in: w) == (name == "Slack")
-          && store.confirmButtonInView == (name == "Slack"))
+        try await eventually(w) {
+          showsInTheList("Quit", in: w) && showsInTheList("Cancel", in: w)
+            && store.confirmButtonInView
+        }, "\(name)")
+      #expect(try headerShows() == (name == "Slack"), "\(name)")
+      apps.passTheConfirmGuard()
+      sendKey("↩", to: w)
+      #expect(app.terminations == 1, "\(name)")
     }
   }
 

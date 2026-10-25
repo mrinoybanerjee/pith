@@ -10,7 +10,8 @@ struct AppListView: View {
   /// The height of the list's visible part, and the opened row with its height (R92).
   @State private var listHeight: CGFloat = 0
   @State private var opened = OpenedRow(id: "", height: 0)
-  /// A row opened, or its details or quit flow changed, and the row is not yet shown for it.
+  /// What to show once the opened row is laid out again, and whether that is still to do.
+  @State private var reveal = Reveal.row
   @State private var revealPending = false
 
   var body: some View {
@@ -61,16 +62,18 @@ struct AppListView: View {
         .scrollBounceBehavior(.basedOnSize)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) { listHeight = $0 }
         .onChange(of: store.selectedRowID) { _, id in if let id { proxy.scrollTo(id) } }
-        .onChange(of: store.expandedAppID) { revealPending = true }
-        .onChange(of: store.systemDetails) { revealPending = true }
-        .onChange(of: store.quitFlow.state) { revealPending = true }
+        .onChange(of: store.expandedAppID) { request(.row) }
+        .onChange(of: store.systemDetails) { request(.row) }
+        .onChange(of: store.quitFlow.state) { _, state in
+          request([.confirming, .confirmingForce].contains(state) ? .confirm : .row)
+        }
         .onChange(of: opened) {
           if revealPending {
             revealPending = false
-            reveal(proxy)
+            show(proxy)
           }
         }
-        .onChange(of: listHeight) { reveal(proxy) }
+        .onChange(of: listHeight) { show(proxy) }
         .onChange(of: order) { AppIcons.keep(Set(store.rows.compactMap(\.bundlePath))) }
       }
     }
@@ -84,15 +87,26 @@ struct AppListView: View {
 
   /// The row opens in place (spec 4.3). When a row opens, or its details or quit flow change, the
   /// list scrolls once they are laid out, and again when the panel's height then changes around
-  /// it. It scrolls the least that shows the whole row, its details and any confirm included.
-  /// When the row is taller than the list, its top goes to the list's top instead, so a change
-  /// never scrolls the row's name out of view (R92). A reading that only changes what is inside
-  /// the row does not scroll.
-  private func reveal(_ proxy: ScrollViewProxy) {
+  /// it. A reading that only changes what is inside the row does not scroll.
+  private func request(_ next: Reveal) {
+    reveal = next
+    revealPending = true
+  }
+
+  /// For the row, the list scrolls the least that shows all of it; when it is taller than the
+  /// list, its top goes to the list's top instead, so its name stays in view (R92). A confirm that
+  /// has just appeared is shown whole, scrolling the least that does it, even if the row's name
+  /// goes; the confirm names the app (R98).
+  private func show(_ proxy: ScrollViewProxy) {
     guard opened.id == store.expandedAppID else { return }
-    proxy.scrollTo(opened.id, anchor: opened.height <= listHeight ? nil : .top)
+    switch reveal {
+    case .row: proxy.scrollTo(opened.id, anchor: opened.height <= listHeight ? nil : .top)
+    case .confirm: proxy.scrollTo(AppDetailView.confirmID)
+    }
   }
 }
+
+private enum Reveal { case row, confirm }
 
 private struct OpenedRow: Equatable {
   let id: String

@@ -5,6 +5,9 @@ import SwiftUI
 /// it, its processes grouped by role, each with its count and memory. Last, Quit, when Pith may
 /// quit the app (spec 4.5).
 struct AppDetailView: View {
+  /// The scroll id of the confirm that shows.
+  static let confirmID = "pith.confirm"
+
   let store: Store
   /// The row's name.
   let name: String
@@ -80,7 +83,7 @@ private struct Confirm: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       HStack(spacing: 8) {
         Button {
-          store.cancelQuitButton()
+          store.cancelQuit()
         } label: {
           Text("Cancel")
             .foregroundStyle(.secondary)
@@ -107,5 +110,6 @@ private struct Confirm: View {
     )
     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator, lineWidth: 0.5))
     .accessibilityElement(children: .contain)
+    .id(AppDetailView.confirmID)
   }
 }
