@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pith Design Mockup</title>
+<style>
+:root{
+  --page:#f4f3f0;--page-ink:#1d1d1f;--page-dim:#6e6e73;--page-line:rgba(0,0,0,.09);
+  --serif:ui-serif,"New York","Iowan Old Style",Georgia,serif;
+  --sf:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--page:#141415;--page-ink:#f5f5f7;--page-dim:#a1a1a6;--page-line:rgba(255,255,255,.10)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--page-ink);font:16px/1.55 var(--sf);-webkit-font-smoothing:antialiased}
+main{max-width:1120px;margin:0 auto;padding:56px 24px 80px}
+.eyebrow{font:12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--page-dim)}
+h1{font:500 clamp(36px,5vw,54px)/1.08 var(--serif);letter-spacing:-.015em;margin:14px 0 12px}
+h2{font:500 30px/1.15 var(--serif);letter-spacing:-.01em;margin:0 0 6px}
+.lead{font-size:19px;color:var(--page-dim);max-width:720px;margin:0}
+section{margin-top:76px}
+.cap{color:var(--page-dim);max-width:700px;margin:0 0 26px}
+.num{font:12px var(--mono);color:var(--page-dim);letter-spacing:.06em;margin-bottom:8px;display:block}
+
+/* ---------- desktop stage ---------- */
+.stage{border-radius:18px;padding:34px 28px;position:relative;overflow:hidden;border:1px solid var(--page-line)}
+.stage.l{background:radial-gradient(120% 90% at 20% 0%,#dfe7ef 0%,#eef0f3 45%,#f2ece4 100%)}
+.stage.d{background:radial-gradient(120% 90% at 80% 0%,#2a3340 0%,#1b1e24 50%,#15161a 100%)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.pair>div{min-width:0}
+.label{font:12px var(--mono);letter-spacing:.05em;color:var(--page-dim);margin:0 0 10px 4px}
+
+/* ---------- menu bar ---------- */
+.menubar{height:28px;border-radius:9px;display:flex;align-items:center;justify-content:flex-end;gap:18px;padding:0 14px;font:500 13px var(--sf)}
+.l .menubar{background:rgba(255,255,255,.55);color:#1d1d1f;backdrop-filter:blur(20px)}
+.d .menubar{background:rgba(30,30,32,.55);color:#f5f5f7;backdrop-filter:blur(20px)}
+.mb-other{opacity:.55}
+.pith-glyph{width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;position:relative}
+.pith-glyph::before{content:"";width:9px;height:9px;border-radius:50%;border:1.6px solid currentColor;opacity:.85}
+.pith-glyph.warn::before{border-color:#ff9f0a;background:#ff9f0a;opacity:1}
+.pith-glyph.crit::before{border-color:#ff453a;background:#ff453a;opacity:1}
+.pith-glyph.open{background:rgba(127,127,127,.22)}
+.states{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:18px}
+.state{background:var(--page);border:1px solid var(--page-line);border-radius:12px;padding:14px 16px;min-width:0}
+.state b{display:block;font:500 15px var(--sf);margin-bottom:2px}
+.state small{color:var(--page-dim);font-size:13.5px}
+.state .mb{display:flex;align-items:center;gap:10px;margin-bottom:10px;font:500 13px var(--sf)}
+
+/* ---------- the panel ---------- */
+.panel{width:360px;max-width:100%;margin:12px 0 0 auto;border-radius:14px;overflow:hidden;font-family:var(--sf);
+  box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 18px 50px rgba(0,0,0,.18),0 4px 14px rgba(0,0,0,.08)}
+.panel.light{--bg:rgba(246,246,248,.86);--ink:#1d1d1f;--dim:#6e6e73;--faint:#aeaeb2;--hair:rgba(0,0,0,.08);--well:rgba(0,0,0,.045);--hover:rgba(0,0,0,.05);--bar:#1d1d1f;--sel:#fff}
+.panel.dark{--bg:rgba(38,38,41,.82);--ink:#f5f5f7;--dim:#a1a1a6;--faint:#6e6e73;--hair:rgba(255,255,255,.09);--well:rgba(255,255,255,.06);--hover:rgba(255,255,255,.06);--bar:#f5f5f7;--sel:rgba(255,255,255,.16)}
+.panel{background:var(--bg);color:var(--ink);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6)}
+.p-head{padding:16px 16px 12px;display:flex;gap:12px;align-items:flex-start}
+.p-head .dot{width:10px;height:10px;border-radius:50%;margin-top:7px;flex:none}
+.dot.ok{background:#34c759}.dot.warn{background:#ff9f0a}.dot.crit{background:#ff453a}
+.p-title{font:600 17px/1.25 var(--sf);letter-spacing:-.01em}
+.p-sub{font-size:13px;color:var(--dim);margin-top:2px;line-height:1.35}
+.p-icons{margin-left:auto;display:flex;gap:2px}
+.ib{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--dim)}
+.ib svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.ib.on{background:var(--well);color:var(--ink)}
+
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 12px 12px}
+.tile{background:var(--well);border-radius:10px;padding:10px 10px 9px;min-width:0}
+.tile .k{font-size:11.5px;color:var(--dim);font-weight:500}
+.tile .v{font:600 19px/1.2 var(--sf);letter-spacing:-.01em;margin-top:3px;font-variant-numeric:tabular-nums}
+.tile .v small{font-size:12px;font-weight:500;color:var(--dim)}
+.tile .s{font-size:11.5px;color:var(--dim);margin-top:1px}
+.tile .s.warn{color:#e08600}.dark .tile .s.warn{color:#ffb340}
+.meter{height:4px;border-radius:2px;background:var(--hair);margin-top:7px;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:2px;background:var(--bar);opacity:.7}
+.meter i.warn{background:#ff9f0a;opacity:1}
+
+.seg{display:flex;align-items:center;justify-content:space-between;padding:6px 16px 6px}
+.seg .t{font:600 13px var(--sf)}
+.seg .ctl{display:flex;background:var(--well);border-radius:7px;padding:2px}
+.seg .ctl span{font:500 12px var(--sf);padding:3px 10px;border-radius:5px;color:var(--dim)}
+.seg .ctl span.on{background:var(--sel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.rows{padding:2px 8px 8px}
+.row{display:grid;grid-template-columns:24px 1fr auto;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;min-width:0}
+.row.hl{background:var(--hover)}
+.ico{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font:700 12px var(--sf);color:#fff}
+.row .n{min-width:0}
+.row .n b{display:block;font:500 13px/1.25 var(--sf);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .n .bar{height:3px;border-radius:2px;background:var(--hair);margin-top:4px;overflow:hidden}
+.row .n .bar i{display:block;height:100%;background:var(--bar);opacity:.55;border-radius:2px}
+.row .val{font:500 13px var(--sf);font-variant-numeric:tabular-nums;color:var(--ink);text-align:right}
+.row .val small{display:block;font-size:11px;color:var(--dim);font-weight:400}
+.row.sys .ico{background:var(--well);color:var(--dim)}
+.row.sys b{color:var(--dim)}
+.chev{display:inline-block;margin-left:4px;color:var(--faint);font-weight:400}
+
+.detail{margin:2px 8px 6px 42px;padding:10px 12px;border-radius:9px;background:var(--well);font-size:12.5px;line-height:1.45}
+.detail .what{color:var(--ink)}
+.detail .meta{color:var(--dim);margin-top:4px}
+.detail .helpers{margin-top:8px;display:grid;grid-template-columns:1fr auto;gap:3px 10px;color:var(--dim);font-variant-numeric:tabular-nums}
+.detail .actions{display:flex;gap:8px;margin-top:10px;align-items:center}
+.btn{font:500 12px var(--sf);padding:4px 11px;border-radius:6px;background:var(--sel);color:var(--ink);box-shadow:0 0 0 .5px var(--hair),0 1px 1.5px rgba(0,0,0,.06)}
+.btn.primary{background:#0a84ff;color:#fff;box-shadow:none}
+.btn.quiet{background:transparent;box-shadow:none;color:var(--dim)}
+.confirm{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--bg);box-shadow:0 0 0 .5px var(--hair)}
+.confirm b{font-weight:600}
+.confirm .actions{justify-content:flex-end}
+
+.foot{display:flex;justify-content:space-between;align-items:center;border-top:.5px solid var(--hair);padding:8px 16px;font-size:11.5px;color:var(--faint)}
+
+.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
+.note{border-top:1.5px solid var(--page-ink);padding-top:10px;font-size:14.5px;min-width:0}
+.note b{display:block;font:500 16px var(--sf);margin-bottom:3px}
+.note span{color:var(--page-dim)}
+
+/* side panel desktop */
+.desk{height:470px;position:relative}
+.desk .win{position:absolute;left:22px;top:48px;right:400px;bottom:22px;border-radius:12px;background:rgba(255,255,255,.55);box-shadow:0 10px 40px rgba(0,0,0,.12)}
+.desk .win::before{content:"";position:absolute;left:14px;top:12px;width:44px;height:10px;border-radius:5px;background:repeating-linear-gradient(90deg,#ff5f57 0 10px,transparent 10px 17px,#febc2e 17px 27px,transparent 27px 34px,#28c840 34px 44px)}
+.desk .win i{position:absolute;left:24px;right:24px;height:9px;border-radius:5px;background:rgba(0,0,0,.07)}
+.desk .panel{position:absolute;right:22px;top:48px;margin:0}
+.pinnote{position:absolute;right:395px;top:60px;font:12px var(--mono);color:#6e6e73}
+
+.rules{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.rule{background:color-mix(in srgb,var(--page) 85%,var(--page-ink) 3%);border:1px solid var(--page-line);border-radius:12px;padding:16px;min-width:0}
+.rule .big{font:500 26px/1.1 var(--serif)}
+.rule small{display:block;color:var(--page-dim);font-size:13.5px;margin-top:6px}
+.ask{margin-top:70px;border:1.5px solid var(--page-ink);border-radius:16px;padding:24px 26px}
+.ask h2{font-size:26px}
+.ask ul{margin:8px 0 0;padding-left:20px}.ask li{margin:5px 0}
+footer{margin-top:36px;font-size:13px;color:var(--page-dim)}
+
+@media (max-width:900px){.pair,.states,.notes,.rules{grid-template-columns:1fr}.desk .win{right:22px;bottom:auto;height:120px}.desk{height:auto;padding-bottom:20px}.desk .panel{position:relative;right:auto;top:auto;margin:150px auto 0}.pinnote{display:none}}
+</style>
+</head>
+<body><main>
+
+<div class="eyebrow">Pith · design section 1 of 4 · what you see</div>
+<h1>Quiet until it matters.<br>Clear the moment you look.</h1>
+<p class="lead">One calm dot in the menu bar. One panel that answers "what is using my Mac?" in a single glance. Plain words, native macOS materials, no jargon, no clutter.</p>
+
+<section>
+  <span class="num">01 · THE MENU BAR</span>
+  <h2>A dot that only speaks up when needed</h2>
+  <p class="cap">No numbers fighting for space. The dot is a quiet outline while everything is fine and fills with color only when memory or CPU gets tight.</p>
+  <div class="stage l">
+    <div class="menubar"><span class="mb-other">Wi‑Fi</span><span class="pith-glyph"></span><span class="mb-other">100%</span><span>Sat 9:41</span></div>
+  </div>
+  <div class="states">
+    <div class="state"><div class="mb"><span class="pith-glyph"></span> Calm</div><b>Outline, matches the menu bar</b><small>Memory and CPU have room. Most of the day looks like this.</small></div>
+    <div class="state"><div class="mb"><span class="pith-glyph warn"></span> Tight</div><b>Fills amber</b><small>Memory pressure is "warning", or CPU has stayed above 80% for a minute.</small></div>
+    <div class="state"><div class="mb"><span class="pith-glyph crit"></span> Critical</div><b>Fills red</b><small>Memory pressure is "critical", or the disk is almost full.</small></div>
+  </div>
+</section>
+
+<section>
+  <span class="num">02 · THE PANEL</span>
+  <h2>One glance: status, three numbers, the apps behind them</h2>
+  <p class="cap">Click the dot. The top line says how the Mac is doing in a sentence. Three tiles give memory, CPU and storage. Below, the apps using the most, with their helpers already added in.</p>
+  <div class="pair">
+    <div>
+      <div class="label">CALM · LIGHT</div>
+      <div class="stage l">
+        <div class="menubar"><span class="mb-other">Wi‑Fi</span><span class="pith-glyph open"></span><span>9:41</span></div>
+        <div class="panel light">
+          <div class="p-head"><span class="dot ok"></span><div><div class="p-title">All calm</div><div class="p-sub">Plenty of memory and CPU to spare.</div></div>
+            <div class="p-icons"><span class="ib"><svg viewBox="0 0 16 16"><path d="M9.5 2.5l4 4-2 1-2.5 2.5.5 3-1 1-3-3-3.5 3.5M5.5 7.5l3-3 1-2"/></svg></span><span class="ib"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7L3.6 3.6"/></svg></span></div></div>
+          <div class="tiles">
+            <div class="tile"><div class="k">Memory</div><div class="v">9.8 <small>of 16 GB</small></div><div class="meter"><i style="width:61%"></i></div><div class="s">Plenty</div></div>
+            <div class="tile"><div class="k">CPU</div><div class="v">14<small>%</small></div><div class="meter"><i style="width:14%"></i></div><div class="s">Light</div></div>
+            <div class="tile"><div class="k">Storage</div><div class="v">112 <small>GB free</small></div><div class="meter"><i style="width:51%"></i></div><div class="s">of 228 GB</div></div>
+          </div>
+          <div class="seg"><span class="t">Using the most</span><span class="ctl"><span class="on">Memory</span><span>CPU</span><span>Disk</span></span></div>
+          <div class="rows">
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#4285f4,#34a853)">G</span><div class="n"><b>Google Chrome</b><div class="bar"><i style="width:100%"></i></div></div><div class="val">3.2 GB</div></div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#d97757,#c1572f)">C</span><div class="n"><b>Claude</b><div class="bar"><i style="width:48%"></i></div></div><div class="val">1.5 GB</div></div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#1c1c1e,#48484a)">›_</span><div class="n"><b>Codex</b><div class="bar"><i style="width:33%"></i></div></div><div class="val">1.1 GB</div></div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#4a154b,#e01e5a)">S</span><div class="n"><b>Slack</b><div class="bar"><i style="width:22%"></i></div></div><div class="val">710 MB</div></div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#0a84ff,#64d2ff)">F</span><div class="n"><b>Finder</b><div class="bar"><i style="width:6%"></i></div></div><div class="val">180 MB</div></div>
+            <div class="row sys"><span class="ico"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5"><rect x="3.5" y="3.5" width="9" height="9" rx="2"/><path d="M6 1.5v2M10 1.5v2M6 12.5v2M10 12.5v2M1.5 6h2M1.5 10h2M12.5 6h2M12.5 10h2"/></svg></span><div class="n"><b>macOS system <span class="chev">›</span></b><div class="bar"><i style="width:30%"></i></div></div><div class="val">1.0 GB</div></div>
+          </div>
+          <div class="foot"><span>Updated just now</span><span>Pith</span></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="label">MEMORY TIGHT · DARK</div>
+      <div class="stage d">
+        <div class="menubar"><span class="mb-other">Wi‑Fi</span><span class="pith-glyph warn open"></span><span>9:41</span></div>
+        <div class="panel dark">
+          <div class="p-head"><span class="dot warn"></span><div><div class="p-title">Memory is tight</div><div class="p-sub">Google Chrome uses the most: 6.4 GB across 41 tabs and helpers.</div></div>
+            <div class="p-icons"><span class="ib"><svg viewBox="0 0 16 16"><path d="M9.5 2.5l4 4-2 1-2.5 2.5.5 3-1 1-3-3-3.5 3.5M5.5 7.5l3-3 1-2"/></svg></span><span class="ib"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M14.2 8h-1.6M3.4 8H1.8M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7L3.6 3.6"/></svg></span></div></div>
+          <div class="tiles">
+            <div class="tile"><div class="k">Memory</div><div class="v">15.1 <small>of 16 GB</small></div><div class="meter"><i class="warn" style="width:94%"></i></div><div class="s warn">Tight · 2.1 GB swap</div></div>
+            <div class="tile"><div class="k">CPU</div><div class="v">38<small>%</small></div><div class="meter"><i style="width:38%"></i></div><div class="s">Moderate</div></div>
+            <div class="tile"><div class="k">Storage</div><div class="v">112 <small>GB free</small></div><div class="meter"><i style="width:51%"></i></div><div class="s">of 228 GB</div></div>
+          </div>
+          <div class="seg"><span class="t">Using the most</span><span class="ctl"><span class="on">Memory</span><span>CPU</span><span>Disk</span></span></div>
+          <div class="rows">
+            <div class="row hl"><span class="ico" style="background:linear-gradient(135deg,#4285f4,#34a853)">G</span><div class="n"><b>Google Chrome</b><div class="bar"><i style="width:100%"></i></div></div><div class="val">6.4 GB</div></div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#147efb,#53a0fd)">X</span><div class="n"><b>Xcode</b><div class="bar"><i style="width:44%"></i></div></div><div class="val">2.8 GB</div></div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#d97757,#c1572f)">C</span><div class="n"><b>Claude</b><div class="bar"><i style="width:25%"></i></div></div><div class="val">1.6 GB</div></div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#1c1c1e,#48484a)">›_</span><div class="n"><b>Codex</b><div class="bar"><i style="width:17%"></i></div></div><div class="val">1.1 GB</div></div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#4a154b,#e01e5a)">S</span><div class="n"><b>Slack</b><div class="bar"><i style="width:12%"></i></div></div><div class="val">790 MB</div></div>
+            <div class="row sys"><span class="ico"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5"><rect x="3.5" y="3.5" width="9" height="9" rx="2"/><path d="M6 1.5v2M10 1.5v2M6 12.5v2M10 12.5v2M1.5 6h2M1.5 10h2M12.5 6h2M12.5 10h2"/></svg></span><div class="n"><b>macOS system <span class="chev">›</span></b><div class="bar"><i style="width:19%"></i></div></div><div class="val">1.2 GB</div></div>
+          </div>
+          <div class="foot"><span>Updated just now</span><span>Pith</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="notes">
+    <div class="note"><b>Wider and calmer than Stats</b><span>360 pt wide (Stats: 264), 13 pt text (Stats: 11), generous rows. Numbers line up in columns.</span></div>
+    <div class="note"><b>Color means state, nothing else</b><span>Everything is grey and white until something is tight. Then one amber or red accent, never a rainbow.</span></div>
+    <div class="note"><b>Words, not jargon</b><span>"Plenty / Tight / Critical" instead of "pressure level 2". Swap appears only when it matters.</span></div>
+  </div>
+</section>
+
+<section>
+  <span class="num">03 · TAP AN APP</span>
+  <h2>What it is, what's inside, and a safe way out</h2>
+  <p class="cap">Click a row to open it in place. Known apps and macOS processes get a plain explanation from the built-in guide. Quit always asks first and lets the app save your work.</p>
+  <div class="pair">
+    <div>
+      <div class="label">APP ROW OPENED · QUIT ASKS FIRST</div>
+      <div class="stage l">
+        <div class="panel light" style="margin:0 auto">
+          <div class="rows" style="padding-top:8px">
+            <div class="row hl"><span class="ico" style="background:linear-gradient(135deg,#4285f4,#34a853)">G</span><div class="n"><b>Google Chrome</b><div class="bar"><i style="width:100%"></i></div></div><div class="val">6.4 GB<small>41 processes</small></div></div>
+            <div class="detail">
+              <div class="what">Web browser. Each tab and extension runs as its own helper, so the total grows with open tabs.</div>
+              <div class="helpers"><span>Tabs and sites (34)</span><span>5.1 GB</span><span>Graphics</span><span>620 MB</span><span>Extensions (5)</span><span>480 MB</span><span>Browser</span><span>210 MB</span></div>
+              <div class="confirm"><b>Quit Google Chrome?</b> It can ask you to save first.
+                <div class="actions"><span class="btn quiet">Cancel</span><span class="btn primary">Quit</span></div></div>
+            </div>
+            <div class="row"><span class="ico" style="background:linear-gradient(135deg,#147efb,#53a0fd)">X</span><div class="n"><b>Xcode</b><div class="bar"><i style="width:44%"></i></div></div><div class="val">2.8 GB</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="label">"MACOS SYSTEM" OPENED · LOADED ON DEMAND</div>
+      <div class="stage d">
+        <div class="panel dark" style="margin:0 auto">
+          <div class="rows" style="padding-top:8px">
+            <div class="row hl sys"><span class="ico"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5"><rect x="3.5" y="3.5" width="9" height="9" rx="2"/><path d="M6 1.5v2M10 1.5v2M6 12.5v2M10 12.5v2M1.5 6h2M1.5 10h2M12.5 6h2M12.5 10h2"/></svg></span><div class="n"><b>macOS system <span class="chev">⌄</span></b><div class="bar"><i style="width:19%"></i></div></div><div class="val">1.2 GB</div></div>
+            <div class="detail">
+              <div class="meta" style="margin-top:0">Measured once, just now. Pith asks macOS only when you open this.</div>
+              <div class="helpers" style="color:var(--ink)"><span>Spotlight indexing</span><span>420 MB</span><span>Window server</span><span>310 MB</span><span>Photos analysis</span><span>180 MB</span><span>Other system work</span><span>290 MB</span></div>
+              <div class="what" style="margin-top:10px"><b>Spotlight indexing</b> (mds_stores) builds the search index after files change. Normal for a few minutes after big copies or updates.</div>
+              <div class="meta">Part of macOS. Pith never offers to quit it.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <span class="num">04 · PIN IT</span>
+  <h2>Pin turns the panel into a side panel</h2>
+  <p class="cap">Click the pin. The panel detaches, floats beside your work, and stays while you click other apps. Drag it anywhere; it remembers its place. Unpin, and it goes back to the menu bar.</p>
+  <div class="stage l desk">
+    <div class="menubar" style="position:absolute;left:22px;right:22px;top:12px"><span class="mb-other">Wi‑Fi</span><span class="pith-glyph"></span><span>9:41</span></div>
+    <div class="win"><i style="top:48px;width:60%"></i><i style="top:70px;width:82%"></i><i style="top:92px;width:70%"></i><i style="top:136px;width:76%"></i><i style="top:158px;width:54%"></i></div>
+    <div class="pinnote">pinned →</div>
+    <div class="panel light">
+      <div class="p-head"><span class="dot ok"></span><div><div class="p-title">All calm</div><div class="p-sub">Plenty of memory and CPU to spare.</div></div>
+        <div class="p-icons"><span class="ib on"><svg viewBox="0 0 16 16"><path d="M9.5 2.5l4 4-2 1-2.5 2.5.5 3-1 1-3-3-3.5 3.5M5.5 7.5l3-3 1-2"/></svg></span></div></div>
+      <div class="tiles">
+        <div class="tile"><div class="k">Memory</div><div class="v">9.8 <small>of 16 GB</small></div><div class="meter"><i style="width:61%"></i></div><div class="s">Plenty</div></div>
+        <div class="tile"><div class="k">CPU</div><div class="v">14<small>%</small></div><div class="meter"><i style="width:14%"></i></div><div class="s">Light</div></div>
+        <div class="tile"><div class="k">Storage</div><div class="v">112 <small>GB free</small></div><div class="meter"><i style="width:51%"></i></div><div class="s">of 228 GB</div></div>
+      </div>
+      <div class="seg"><span class="t">Using the most</span><span class="ctl"><span>Memory</span><span class="on">CPU</span><span>Disk</span></span></div>
+      <div class="rows">
+        <div class="row"><span class="ico" style="background:linear-gradient(135deg,#147efb,#53a0fd)">X</span><div class="n"><b>Xcode</b><div class="bar"><i style="width:100%"></i></div></div><div class="val">6.2%</div></div>
+        <div class="row"><span class="ico" style="background:linear-gradient(135deg,#4285f4,#34a853)">G</span><div class="n"><b>Google Chrome</b><div class="bar"><i style="width:52%"></i></div></div><div class="val">3.2%</div></div>
+        <div class="row"><span class="ico" style="background:linear-gradient(135deg,#d97757,#c1572f)">C</span><div class="n"><b>Claude</b><div class="bar"><i style="width:21%"></i></div></div><div class="val">1.3%</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <span class="num">05 · THE RULES THAT KEEP IT PRISTINE</span>
+  <h2>Design rules for every screen</h2>
+  <div class="rules">
+    <div class="rule"><div class="big">13 pt</div><small>Smallest text for anything you need to read. Apple's default size; Stats uses 11.</small></div>
+    <div class="rule"><div class="big">1 accent</div><small>Amber or red only for "tight" or "critical". Everything else is native greys and materials.</small></div>
+    <div class="rule"><div class="big">CPU = whole Mac</div><small>An app's CPU is a share of the entire chip, so it never reads "340%" the way Activity Monitor can.</small></div>
+    <div class="rule"><div class="big">No jumpy lists</div><small>Rows move only when the order really changes, and ease into place. Respects Reduce Motion.</small></div>
+    <div class="rule"><div class="big">Native</div><small>macOS materials, SF fonts, real app icons, light and dark, keyboard and VoiceOver support.</small></div>
+    <div class="rule"><div class="big">Unknown ≠ 0</div><small>If macOS won't give a number, Pith says "not available", never a fake zero.</small></div>
+    <div class="rule"><div class="big">3 settings</div><small>Launch at login, refresh speed, when the dot turns amber. Nothing else to configure.</small></div>
+    <div class="rule"><div class="big">Never quits macOS</div><small>System processes can't be quit from Pith. Apps quit normally, after you confirm.</small></div>
+  </div>
+</section>
+
+<div class="ask">
+  <h2>Does this look right?</h2>
+  <ul>
+    <li>A calm dot, a status sentence, three tiles, and the top apps with Memory / CPU / Disk tabs.</li>
+    <li>Click a row to explain it and quit safely; "macOS system" loads its details only when opened.</li>
+    <li>Pin to keep it beside your work.</li>
+  </ul>
+</div>
+
+<footer>Mockup with made-up numbers and placeholder app icons. The real app uses each app's own icon and Apple's native materials. Sections 2–4 (architecture, speed budget, testing and release) come next.</footer>
+</main></body>
+</html>

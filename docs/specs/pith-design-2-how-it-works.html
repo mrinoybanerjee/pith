@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pith Design Engine</title>
+<style>
+:root{
+  --page:#f4f3f0;--ink:#1d1d1f;--dim:#6e6e73;--line:rgba(0,0,0,.10);--card:#fbfaf8;--well:rgba(0,0,0,.04);
+  --blue:#0a66c2;--blue-d:rgba(10,102,194,.09);--green:#1f7a3a;--green-d:rgba(31,122,58,.09);
+  --amber:#b26a00;--amber-d:rgba(178,106,0,.10);--grey:#8e8e93;--grey-d:rgba(142,142,147,.12);
+  --serif:ui-serif,"New York","Iowan Old Style",Georgia,serif;
+  --sf:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --page:#141415;--ink:#f5f5f7;--dim:#a1a1a6;--line:rgba(255,255,255,.11);--card:#1c1c1e;--well:rgba(255,255,255,.05);
+  --blue:#64a8ff;--blue-d:rgba(100,168,255,.12);--green:#5fd07f;--green-d:rgba(95,208,127,.11);
+  --amber:#ffb340;--amber-d:rgba(255,179,64,.12);--grey:#98989d;--grey-d:rgba(152,152,157,.14)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:16px/1.55 var(--sf);-webkit-font-smoothing:antialiased}
+main{max-width:1100px;margin:0 auto;padding:56px 24px 80px}
+.eyebrow{font:12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+h1{font:500 clamp(34px,5vw,52px)/1.08 var(--serif);letter-spacing:-.015em;margin:14px 0 12px}
+h2{font:500 30px/1.15 var(--serif);letter-spacing:-.01em;margin:0 0 6px}
+h3{font:600 15px var(--sf);margin:0 0 4px}
+.lead{font-size:19px;color:var(--dim);max-width:760px;margin:0}
+section{margin-top:76px}
+.cap{color:var(--dim);max-width:740px;margin:0 0 24px}
+.num{font:12px var(--mono);color:var(--dim);letter-spacing:.06em;margin-bottom:8px;display:block}
+code{font:13px var(--mono);background:var(--well);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+
+/* flow */
+.diagram{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 22px}
+.flow{display:flex;flex-direction:column;align-items:center}
+.fnode{border:1.5px solid;border-radius:11px;padding:11px 18px;text-align:center;width:100%;max-width:520px;background:var(--card)}
+.fnode b{display:block;font:600 15px var(--sf)}
+.fnode small{display:block;font:12px var(--mono);color:var(--dim);margin-top:2px}
+.fnode.b{border-color:var(--blue);background:var(--blue-d)}
+.fnode.g{border-color:var(--green);background:var(--green-d)}
+.fnode.a{border-color:var(--amber);background:var(--amber-d)}
+.fnode.k{border-color:var(--grey);background:var(--grey-d)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%;max-width:720px}
+.row2 .fnode{max-width:none}
+.farrow{display:flex;flex-direction:column;align-items:center;padding:4px 0}
+.farrow span{font:11px var(--mono);color:var(--dim);background:var(--page);border:1px solid var(--line);border-radius:5px;padding:1px 8px}
+.farrow svg{width:18px;height:20px;fill:none;stroke:var(--grey);stroke-width:2;stroke-linecap:round}
+.side{margin-top:22px;border-top:1px dashed var(--line);padding-top:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.side .fnode{max-width:none;border-style:dashed}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:16px;font-size:13px;color:var(--dim)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;border:1.5px solid}
+
+/* cards */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 16px 14px;min-width:0}
+.card .k{font:12px var(--mono);color:var(--dim);letter-spacing:.04em}
+.card p{margin:6px 0 0;font-size:14.5px;color:var(--dim)}
+.card.lb{border-left:4px solid var(--blue)}.card.lg{border-left:4px solid var(--green)}.card.la{border-left:4px solid var(--amber)}
+
+/* two speeds */
+.speeds{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.speed{border-radius:14px;padding:20px;border:1px solid var(--line);background:var(--card);min-width:0}
+.speed .when{font:12px var(--mono);color:var(--dim)}
+.speed .big{font:500 34px/1.1 var(--serif);margin:6px 0 10px}
+.speed ul{margin:0;padding-left:18px;font-size:14.5px}.speed li{margin:5px 0}
+.speed.closed{border-top:5px solid var(--grey)}.speed.open{border-top:5px solid var(--blue)}
+.timeline{margin-top:16px;display:flex;gap:4px;align-items:flex-end;height:34px}
+.timeline i{flex:1;border-radius:2px;background:var(--grey-d)}
+.timeline i.t{background:var(--grey);height:60%}
+.timeline.o i.t{background:var(--blue);height:100%}
+
+/* budget table */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14.5px}
+th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{font:600 13px var(--sf);background:var(--well)}
+tbody tr:last-child td{border-bottom:0}
+td.g{color:var(--green);font-weight:600}td.dim{color:var(--dim)}
+td small{display:block;color:var(--dim);font-size:12.5px}
+
+/* bars chart */
+.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:18px}
+.chart h3{margin-bottom:14px}
+.cb{display:grid;grid-template-columns:150px 1fr 90px;gap:12px;align-items:center;margin:9px 0;font-size:14px}
+.cb .track{height:14px;border-radius:7px;background:var(--well);overflow:hidden}
+.cb .fill{height:100%;border-radius:7px;background:var(--grey)}
+.cb .fill.p{background:var(--blue)}
+.cb span:last-child{font:13px var(--mono);color:var(--dim);text-align:right}
+.chart small{color:var(--dim);font-size:12.5px}
+
+/* test ladder */
+.ladder{display:flex;flex-direction:column;gap:10px}
+.step{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.step .n{font:500 24px var(--serif);color:var(--dim);text-align:center}
+.step b{display:block;font:600 15px var(--sf)}
+.step small{color:var(--dim);font-size:13.5px}
+.step .when{font:12px var(--mono);color:var(--dim);white-space:nowrap;text-align:right}
+
+/* tree */
+.tree{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;font:13.5px/1.7 var(--mono);overflow-x:auto;white-space:pre;color:var(--ink)}
+.tree em{font-style:normal;color:var(--dim)}
+
+.decide{margin-top:18px;border:1.5px solid var(--amber);background:var(--amber-d);border-radius:14px;padding:18px 20px}
+.decide b{display:block;font:600 16px var(--sf);margin-bottom:6px}
+.decide ol{margin:6px 0 0;padding-left:20px}.decide li{margin:4px 0}
+.ask{margin-top:70px;border:1.5px solid var(--ink);border-radius:16px;padding:24px 26px}
+.ask h2{font-size:26px}
+.ask ul{margin:8px 0 0;padding-left:20px}.ask li{margin:5px 0}
+footer{margin-top:36px;font-size:13px;color:var(--dim)}
+@media (max-width:860px){.cards,.speeds,.side,.row2{grid-template-columns:1fr}.cb{grid-template-columns:110px 1fr 70px}.step{grid-template-columns:34px 1fr}.step .when{grid-column:2;text-align:left}}
+</style>
+</head>
+<body><main>
+
+<div class="eyebrow">Pith · design sections 2–4 · how it works</div>
+<h1>Do almost nothing while closed.<br>Be exact the moment you look.</h1>
+<p class="lead">Pith reads your Mac from inside its own process, with no helper tools running every second. It works at two speeds and keeps every number honest. Nothing ships unless it passes a speed budget and an accuracy check.</p>
+
+<section>
+  <span class="num">02 · ARCHITECTURE</span>
+  <h2>One small app, one clear path</h2>
+  <p class="cap">A clock wakes the readers. Their raw numbers become one frozen snapshot. Simple rules turn the snapshot into a status sentence and a dot, and the UI only draws snapshots. No background helper, no extension, no database, no third-party packages.</p>
+  <div class="diagram">
+    <div class="flow">
+      <div class="fnode k"><b>Clock</b><small>closed: every 5 s · open: every 1 s · stops on sleep and lock</small></div>
+      <div class="farrow"><span>① tick</span><svg viewBox="0 0 20 20"><path d="M10 2 L10 17 M6 13 L10 17 L14 13"/></svg></div>
+      <div class="row2">
+        <div class="fnode b"><b>System reader</b><small>memory · pressure events · swap · CPU total · free space</small></div>
+        <div class="fnode b"><b>Process sampler</b><small>your processes: memory, CPU time, disk I/O · open only</small></div>
+      </div>
+      <div class="farrow"><span>② raw readings</span><svg viewBox="0 0 20 20"><path d="M10 2 L10 17 M6 13 L10 17 L14 13"/></svg></div>
+      <div class="fnode b"><b>App grouper</b><small>helper → its app · responsible app, then .app path, then parent</small></div>
+      <div class="farrow"><span>③ per-app totals</span><svg viewBox="0 0 20 20"><path d="M10 2 L10 17 M6 13 L10 17 L14 13"/></svg></div>
+      <div class="fnode g"><b>Snapshot</b><small>frozen value · CPU % and disk rates from deltas · "macOS system" = total − apps</small></div>
+      <div class="farrow"><span>④ one snapshot per tick</span><svg viewBox="0 0 20 20"><path d="M10 2 L10 17 M6 13 L10 17 L14 13"/></svg></div>
+      <div class="row2">
+        <div class="fnode g"><b>Status rules</b><small>sentence + dot state · with hysteresis, so no flicker</small></div>
+        <div class="fnode a"><b>UI (main thread)</b><small>menu bar dot · panel · pin · SwiftUI inside AppKit</small></div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="fnode k"><b>Built-in guide</b><small>guide.json · ~150–300 plain explanations</small></div>
+      <div class="fnode k"><b>System details</b><small>one <code>top</code> run only when you open "macOS system" · cached 10 s</small></div>
+      <div class="fnode k"><b>Quit flow</b><small>normal quit after confirm · never system processes</small></div>
+    </div>
+    <div class="legend"><span><i style="border-color:var(--blue);background:var(--blue-d)"></i>reads macOS</span><span><i style="border-color:var(--green);background:var(--green-d)"></i>pure logic, fully unit-tested</span><span><i style="border-color:var(--amber);background:var(--amber-d)"></i>draws only</span><span><i style="border-color:var(--grey);background:var(--grey-d)"></i>support, on demand</span></div>
+  </div>
+
+  <div class="cards" style="margin-top:18px">
+    <div class="card lb"><div class="k">NO POLLING TOOLS</div><h3>Read in-process</h3><p>Apple's <code>proc_pid_rusage</code> costs about 0.5 µs per process. Stats launches <code>ps</code>, <code>top</code> or <code>nettop</code> every second while a popup is open, and asks the network daemon dozens of times a second even when closed.</p></div>
+    <div class="card lb"><div class="k">EVENTS, NOT TIMERS</div><h3>Pressure is pushed</h3><p>macOS tells Pith when memory pressure changes, so there is nothing to poll. Free space is checked once a minute.</p></div>
+    <div class="card lg"><div class="k">EXACT UNITS</div><h3>Matches Activity Monitor</h3><p>Memory uses the "physical footprint", the same number as Activity Monitor's Memory column. CPU time is converted from Apple Silicon ticks correctly.</p></div>
+    <div class="card lg"><div class="k">NO GHOST ROWS</div><h3>Safe against reused IDs</h3><p>Each process is keyed by its ID plus its start time, so a new process never inherits an old one's name.</p></div>
+    <div class="card la"><div class="k">FAIL VISIBLY</div><h3>"Not available", never 0</h3><p>Every reading is either a value or a reason it's missing. Debug builds assert on impossible numbers, such as apps adding up to more than the total.</p></div>
+    <div class="card la"><div class="k">SWIFT 6</div><h3>One thread for work, one for UI</h3><p>Readers run off the main thread. The UI gets one immutable snapshot per tick, so it can't race and never redraws while hidden.</p></div>
+  </div>
+</section>
+
+<section>
+  <span class="num">02b · CODE LAYOUT</span>
+  <h2>Small enough to hold in your head</h2>
+  <p class="cap">The repo follows the same pattern as Vani, which already builds on your Macs: a Swift package with a core library, an app target and shell scripts. It needs only the Command Line Tools, not Xcode. The target is under 5,000 lines of Swift.</p>
+<div class="tree">pith/
+├── Package.swift              <em>Swift 6 · macOS 26+ · zero dependencies</em>
+├── Sources/
+│   ├── PithCore/              <em>no UI · every file unit-tested</em>
+│   │   ├── Clock.swift         <em>two speeds, sleep/lock aware</em>
+│   │   ├── SystemReader.swift  <em>memory, pressure, swap, CPU, free space</em>
+│   │   ├── ProcessSampler.swift
+│   │   ├── AppGrouper.swift
+│   │   ├── Snapshot.swift
+│   │   ├── StatusRules.swift
+│   │   ├── Guide.swift
+│   │   └── SystemDetails.swift <em>the on-demand top run</em>
+│   └── Pith/                  <em>app: AppKit status item + NSPanel, SwiftUI views</em>
+├── Resources/  Info.plist · guide.json · AppIcon
+├── Tests/  PithCoreTests (fixtures) · PithAppTests (accessibility)
+├── scripts/  build-app.sh · install.sh · perf.sh · accuracy.sh · ci-local.sh
+├── LICENSE (MIT) · THIRD_PARTY_NOTICES.md <em>(credits Stats for ported readers)</em>
+└── docs/  design spec · DESIGN.md</div>
+</section>
+
+<section>
+  <span class="num">03 · SPEED BUDGET</span>
+  <h2>Two speeds</h2>
+  <p class="cap">Most of the day, the panel is closed. Pith then reads only what the dot needs. The full per-app sweep runs only while you are looking.</p>
+  <div class="speeds">
+    <div class="speed closed"><div class="when">PANEL CLOSED (OR PINNED BUT COVERED)</div><div class="big">Every 5 s</div>
+      <ul><li>System totals only: memory, pressure, CPU, free space</li><li>No per-process work, no tools launched</li><li>Timer slack lets macOS batch Pith's wakeups with others</li><li>Stops completely while the Mac sleeps or is locked</li></ul>
+      <div class="timeline"><i></i><i></i><i></i><i></i><i class="t"></i><i></i><i></i><i></i><i></i><i class="t"></i><i></i><i></i><i></i><i></i><i class="t"></i><i></i><i></i><i></i><i></i><i class="t"></i></div></div>
+    <div class="speed open"><div class="when">PANEL OPEN OR PINNED AND VISIBLE</div><div class="big">Every 1 s</div>
+      <ul><li>Full sweep: every one of your processes, grouped into apps</li><li>Opens instantly with the last snapshot, then refreshes</li><li>Rows ease into place; nothing animates while hidden</li><li>Slower on Low Power Mode or when the Mac runs hot</li></ul>
+      <div class="timeline o"><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i><i class="t"></i></div></div>
+  </div>
+
+  <h3 style="margin-top:30px">The budget is a release gate</h3>
+  <p class="cap" style="margin-bottom:12px">A build that misses any line below doesn't ship. "Stats" figures are user and vendor reports, not our measurements.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Measure</th><th>Panel closed</th><th>Panel open</th><th>Stats today</th></tr></thead>
+    <tbody>
+      <tr><td>CPU (average, % of one core)</td><td class="g">≤ 0.1%</td><td class="g">≤ 1.5%</td><td class="dim">0.3–1.9% reported</td></tr>
+      <tr><td>Memory (footprint)</td><td class="g">≤ 30 MB</td><td class="g">≤ 45 MB</td><td class="dim">50–145 MB reported</td></tr>
+      <tr><td>Wakeups per second</td><td class="g">≤ 0.5</td><td class="g">≤ 2</td><td class="dim">not published</td></tr>
+      <tr><td>Tools launched</td><td class="g">0</td><td class="g">0<small>one <code>top</code> only when you open "macOS system"</small></td><td class="dim">closed: <code>uptime</code> every 15 s · open: <code>ps</code>/<code>top</code>/<code>nettop</code> every second</td></tr>
+      <tr><td>Cost of one full sweep</td><td class="dim">—</td><td class="g">≤ 3 ms<small>~500 processes, M4</small></td><td class="dim">—</td></tr>
+      <tr><td>Click to panel on screen</td><td colspan="2" class="g">≤ 100 ms</td><td class="dim">—</td></tr>
+      <tr><td>Launch to first reading</td><td colspan="2" class="g">≤ 300 ms</td><td class="dim">—</td></tr>
+      <tr><td>Memory growth over 24 hours</td><td colspan="2" class="g">≤ 2 MB</td><td class="dim">a 2025 bug reached 400–500 MB</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="chart"><h3>Memory: Pith's budget vs. reported numbers</h3>
+    <div class="cb"><span>Pith, closed</span><div class="track"><div class="fill p" style="width:20.7%"></div></div><span>≤ 30 MB</span></div>
+    <div class="cb"><span>Pith, open</span><div class="track"><div class="fill p" style="width:31%"></div></div><span>≤ 45 MB</span></div>
+    <div class="cb"><span>ftop (author)</span><div class="track"><div class="fill" style="width:20.7%"></div></div><span>&lt; 30 MB</span></div>
+    <div class="cb"><span>Stats (users)</span><div class="track"><div class="fill" style="width:69%"></div></div><span>50–100 MB</span></div>
+    <div class="cb"><span>Stats (rival test)</span><div class="track"><div class="fill" style="width:100%"></div></div><span>145 MB</span></div>
+    <small>Pith's bars are targets, not measurements. They become measurements in testing step 3.</small>
+  </div>
+
+  <div class="cards" style="margin-top:18px">
+    <div class="card"><div class="k">NO METAL FOR CHARTS</div><p>SwiftUI's <code>Canvas</code> can pull in a ~93 MB renderer (a vendor claim). Pith draws its bars with plain shapes.</p></div>
+    <div class="card"><div class="k">NO WIDGETS</div><p>Stats' widget extension once pushed Notification Center to 30–50% CPU. Pith ships none.</p></div>
+    <div class="card"><div class="k">REUSE, DON'T ALLOCATE</div><p>Buffers are reused each tick; strings are formatted only for visible rows.</p></div>
+  </div>
+</section>
+
+<section>
+  <span class="num">04 · TESTING AND RELEASE</span>
+  <h2>Six checks before anything ships</h2>
+  <div class="ladder">
+    <div class="step"><div class="n">1</div><div><b>Unit tests on recorded process tables</b><small>Units and CPU math; grouping of Chrome and Electron helpers, XPC services, tools under Terminal, shared <code>node</code>/<code>python</code>; status rules; every guide entry valid.</small></div><div class="when">every commit</div></div>
+    <div class="step"><div class="n">2</div><div><b>Accuracy against macOS itself</b><small><code>scripts/accuracy.sh</code> compares Pith's per-app memory and CPU with Apple's <code>top</code> at the same moment. Memory within ±3%, CPU within ±2 points.</small></div><div class="when">each Mac, each release</div></div>
+    <div class="step"><div class="n">3</div><div><b>Speed budget gate</b><small><code>scripts/perf.sh</code> runs 10 min closed and 10 min open, logs CPU, footprint and wakeups, and fails if any budget line is missed.</small></div><div class="when">each Mac, each release</div></div>
+    <div class="step"><div class="n">4</div><div><b>24-hour soak</b><small>Memory growth ≤ 2 MB; two sleep/wake cycles; one restart; zero crash reports.</small></div><div class="when">each release</div></div>
+    <div class="step"><div class="n">5</div><div><b>Look and feel</b><small>Light and dark screenshots checked against section 1; VoiceOver labels test (as in Vani); Reduce Motion; full keyboard control.</small></div><div class="when">each UI change</div></div>
+    <div class="step"><div class="n">6</div><div><b>Review</b><small><code>/cr</code> (GPT-6.1 Sol) on every pull request, and the council as the final gate before each merge.</small></div><div class="when">every PR</div></div>
+  </div>
+
+  <h3 style="margin-top:30px">Release and install: $0</h3>
+  <div class="cards" style="margin-top:10px">
+    <div class="card lg"><div class="k">REPO</div><h3>Public, MIT</h3><p><code>github.com/mrinoybanerjee/pith</code>. Ported Stats readers keep their MIT notice in THIRD_PARTY_NOTICES.md.</p></div>
+    <div class="card lg"><div class="k">WHERE IT LIVES</div><h3>Mac mini</h3><p>The canonical checkout is <code>~/Codex/Projects/Pith</code> on the mini, like Vani. The mini builds; <code>install.sh</code> copies the app to all three Macs over SSH.</p></div>
+    <div class="card lg"><div class="k">SIGNING</div><h3>Stable, free identity</h3><p>A local "Pith Local Development" certificate, like Vani's, so macOS keeps trusting each new build. No $99 Apple account. Pith needs no special permissions.</p></div>
+  </div>
+  <div class="decide"><b>One decision for you: where CI runs</b>
+    Blacksmith works only for GitHub organizations, not personal repos (<a href="https://docs.blacksmith.sh/introduction/quickstart.md">Blacksmith docs</a>). Pith will live on your personal account.
+    <ol>
+      <li><b>Recommended:</b> a local gate (<code>scripts/ci-local.sh</code> on the mini before every push), plus GitHub's own macOS runner. GitHub's runner is free for public repos, and Vani already uses it.</li>
+      <li>Local gate only, with no GitHub CI.</li>
+    </ol>
+  </div>
+</section>
+
+<div class="ask">
+  <h2>Does this look right?</h2>
+  <ul>
+    <li>Architecture: in-process readers, one snapshot per tick, rules, then UI. No helpers, extensions or dependencies.</li>
+    <li>Speed: 5 s when closed with system totals only, 1 s when open with the full sweep. The budget table is the release gate.</li>
+    <li>Testing: six checks, from unit tests to council review; $0 release from the mini to all three Macs.</li>
+  </ul>
+</div>
+
+<footer>The numbers are targets and published reports, not measurements of Pith. Sources: the build-feasibility research notes (Oct 25, 2026), Vani's build scripts on the Mac mini, and Blacksmith docs. Section 1: pith-design-1-what-you-see.html.</footer>
+</main></body>
+</html>
