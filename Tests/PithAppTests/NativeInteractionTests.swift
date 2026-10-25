@@ -481,9 +481,15 @@ extension NativeInteractionTests {
     let ab = remake(DemoSnapshots.calm, apps: Array(apps[0...1]))
     let cd = remake(DemoSnapshots.calm, apps: Array(apps[2...3]))
     let reading = NextReading(ab)
+    // As the lifecycle does, it reads when the panel opens, not again at each later report, such
+    // as an occlusion change that lands after the test's own readings.
+    var open = false
     let controller = PanelController(
       store: store, defaults: testDefaults(),
-      onChange: { visible, _, _ in if visible { Task { store.apply(reading.snapshot) } } })
+      onChange: { visible, _, _ in
+        if visible, !open { Task { store.apply(reading.snapshot) } }
+        open = visible
+      })
     controller.uptimeNs = { 0 }  // the clicks come before the readings (R121)
     let w = controller.panel
     controller.toggle(under: try anchor())
@@ -495,9 +501,7 @@ extension NativeInteractionTests {
     #expect(try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[2...3]) }, "reopened")
 
     store.apply(ab)
-    let kept = try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[0...1]) }
-    if !kept { r139Dump(w, store, "F2 icons") }
-    #expect(kept)
+    #expect(try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[0...1]) })
     store.showingSettings = true
     try await Task.sleep(for: .milliseconds(100))
     store.apply(cd)
@@ -1359,4 +1363,59 @@ private final class KeyRecorder: NSView {
     for c in n.children { walk(c, depth + 1) }
   }
   walk(AXNode(w), 0)
+}
+
+extension NativeInteractionTests {
+  /// R139: temporary probe of row accessibility variants; it fails so that test.sh prints it.
+  @Test func r139AccessibilityVariants() async throws {
+    func row(_ name: String) -> some View {
+      HStack {
+        Text(name)
+        Spacer()
+        Text("6.4 GB").help("tip").accessibilityIdentifier("pith.value")
+      }
+      .frame(width: 300)
+      .contentShape(.rect)
+      .onTapGesture {}
+    }
+    let w = hostView(
+      VStack {
+        row("v1").accessibilityElement(children: .contain).accessibilityLabel("V1 contain")
+          .accessibilityValue("collapsed").accessibilityAddTraits(.isButton)
+          .accessibilityAction(.default) {}
+        row("v2").accessibilityElement(children: .combine).accessibilityLabel("V2 combine")
+          .accessibilityValue("collapsed").accessibilityAddTraits(.isButton)
+          .accessibilityAction(.default) {}
+        row("v3")
+          .overlay {
+            Color.clear.contentShape(.rect).accessibilityElement().accessibilityLabel("V3 overlay")
+              .accessibilityValue("collapsed").accessibilityAddTraits(.isButton)
+              .accessibilityAction(.default) {}
+          }
+          .accessibilityElement(children: .contain)
+        Button {
+        } label: {
+          row("v4")
+        }
+        .buttonStyle(.plain).accessibilityElement(children: .contain)
+        .accessibilityLabel("V4 button contain").accessibilityValue("collapsed")
+        row("v5").accessibilityElement(children: .ignore).accessibilityLabel("V5 ignore children")
+          .accessibilityValue("collapsed").accessibilityAddTraits(.isButton)
+          .accessibilityAction(.default) {}
+          .accessibilityChildren {
+            Text("v5")
+            Text("6.4 GB")
+          }
+        Button {
+        } label: {
+          row("v6")
+        }
+        .buttonStyle(.plain).accessibilityLabel("V6 button").accessibilityValue("collapsed")
+        row("v7").accessibilityElement(children: .contain).accessibilityAddTraits(.isButton)
+          .accessibilityLabel("V7 traits first").accessibilityValue("collapsed")
+          .accessibilityAddTraits(.isSelected)
+      })
+    r139Dump(w, testStore(), "F3 variants")
+    Issue.record("R139 probe output above")
+  }
 }
