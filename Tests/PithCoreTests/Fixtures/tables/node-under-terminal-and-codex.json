@@ -2,10 +2,10 @@
   "takenAtNs": 1000000000,
   "vanished": 0,
   "samples": [
-    {"key": {"pid": 200, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Terminal", "path": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 202, "startTime": 1000}, "parent": 250, "uid": 501, "name": "zsh", "path": "/bin/zsh", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 201, "startTime": 1000}, "parent": 202, "uid": 501, "name": "node", "path": "/opt/homebrew/bin/node", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 300, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Codex", "path": "/Applications/Codex.app/Contents/MacOS/Codex", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 301, "startTime": 1000}, "parent": 300, "uid": 501, "name": "node", "path": "/opt/homebrew/bin/node", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+    {"key": {"pid": 200, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Terminal", "path": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 202, "startTime": 1000}, "parent": 250, "uid": 501, "name": "zsh", "path": "/bin/zsh", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 201, "startTime": 1000}, "parent": 202, "uid": 501, "name": "node", "path": "/opt/homebrew/bin/node", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 300, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Codex", "path": "/Applications/Codex.app/Contents/MacOS/Codex", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 301, "startTime": 1000}, "parent": 300, "uid": 501, "name": "node", "path": "/opt/homebrew/bin/node", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
   ]
 }

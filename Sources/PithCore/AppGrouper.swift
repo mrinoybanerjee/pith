@@ -77,7 +77,7 @@ public struct AppGrouper: Sendable {
 
   /// The app of each process in `t`. Each `ExecutableKey` is grouped once, and keys not in `t`
   /// leave the cache, so it holds only live processes. A reused PID has a new start time and an
-  /// `exec` a new executable ID, so either is a new key. A PID that appears twice in `t` traps.
+  /// `exec` a new ID version, so either is a new key. A PID that appears twice in `t` traps.
   ///
   /// Then a Chromium clone (the only identity with a bundle ID and no path) takes the identity of
   /// the one installation in `t` with its bundle ID; with none or several, it stays apart. That

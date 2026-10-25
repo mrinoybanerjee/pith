@@ -61,7 +61,7 @@ func liveReading(_ seconds: Double) async -> LiveReading {
     processes: Dictionary(
       uniqueKeysWithValues: second.samples.map { s in
         let p = before[s.key.pid].flatMap {
-          $0.key == s.key && $0.executableID == s.executableID ? $0 : nil
+          $0.key == s.key && $0.idVersion == s.idVersion ? $0 : nil
         }
         let cpu = p.map { Double(s.cpuTimeNs - $0.cpuTimeNs) / (wallNs * cores) }
         return ("\(s.key.pid)", LiveReading.Process(footprint: s.footprint, cpu: cpu))

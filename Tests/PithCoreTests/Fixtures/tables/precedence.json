@@ -2,12 +2,12 @@
   "takenAtNs": 1000000000,
   "vanished": 0,
   "samples": [
-    {"key": {"pid": 300, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Codex", "path": "/Applications/Codex.app/Contents/MacOS/Codex", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 302, "startTime": 1000}, "parent": 300, "uid": 501, "name": "Preview", "path": "/System/Applications/Preview.app/Contents/MacOS/Preview", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 303, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Slack", "path": "/Applications/Slack.app/Contents/MacOS/Slack", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 304, "startTime": 1000}, "parent": 300, "uid": 501, "name": "node", "path": "/opt/homebrew/bin/node", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 305, "startTime": 1000}, "parent": 1, "uid": 501, "name": "tmux", "path": "/opt/homebrew/bin/tmux", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 306, "startTime": 1000}, "parent": 1, "uid": 501, "name": "node", "path": "/opt/homebrew/bin/node", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 307, "startTime": 5000}, "parent": 1, "uid": 501, "name": "Claude", "path": "/Applications/Claude.app/Contents/MacOS/Claude", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+    {"key": {"pid": 300, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Codex", "path": "/Applications/Codex.app/Contents/MacOS/Codex", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 302, "startTime": 1000}, "parent": 300, "uid": 501, "name": "Preview", "path": "/System/Applications/Preview.app/Contents/MacOS/Preview", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 303, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Slack", "path": "/Applications/Slack.app/Contents/MacOS/Slack", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 304, "startTime": 1000}, "parent": 300, "uid": 501, "name": "node", "path": "/opt/homebrew/bin/node", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 305, "startTime": 1000}, "parent": 1, "uid": 501, "name": "tmux", "path": "/opt/homebrew/bin/tmux", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 306, "startTime": 1000}, "parent": 1, "uid": 501, "name": "node", "path": "/opt/homebrew/bin/node", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 307, "startTime": 5000}, "parent": 1, "uid": 501, "name": "Claude", "path": "/Applications/Claude.app/Contents/MacOS/Claude", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
   ]
 }

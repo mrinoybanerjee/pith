@@ -153,10 +153,10 @@ private let clonePaths = [
 }
 
 @Test func execIsRegrouped() {  // an exec keeps the PID and start time: an SSH shell runs Python
-  let shell = Fixture.table("orphan").samples[0]  // zsh, executable 0
+  let shell = Fixture.table("orphan").samples[0]  // zsh, ID version 0
   let python = ProcessSample(
     key: shell.key, parent: shell.parent, uid: 501, name: "python3", path: "/usr/bin/python3",
-    executableID: .executable(1), footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
+    idVersion: 1, footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
   var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
   let ids = [shell, python].map {
     a.assign(ProcessTable(samples: [$0], takenAtNs: 0, vanished: 0))[$0.key]?.id
@@ -229,7 +229,7 @@ private let clonePaths = [
   let finder = ProcessSample(
     key: ProcessKey(pid: 99_999, startTime: 1), parent: 1, uid: 501, name: "Finder",
     path: "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder",
-    executableID: .executable(0), footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
+    idVersion: 0, footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
   #expect(
     a.assign(ProcessTable(samples: [finder], takenAtNs: 0, vanished: 0))[finder.key]
       == AppIdentity(

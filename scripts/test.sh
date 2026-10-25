@@ -67,19 +67,30 @@ run_tests() {
 
 run_tests "core and app" --parallel --skip NativeInteractionTests
 
-# Native window tests run one per process so an interrupted run affects only that test.
+# Native window tests run one per process so an interrupted run affects only that test. All of
+# them run, so one run shows every failure; the script then fails if any did.
 # grep exits 1 when there are no native tests yet; any other failure stops the script.
 swift test list --skip-build 2>/dev/null \
     | { grep 'NativeInteractionTests/' || (($? == 1)); } >"$LOG_DIR/native.txt"
+# The tests place windows on the main screen, which differs between Macs and CI runners.
+screen="$(osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSApplication.sharedApplication;
+    const s = $.NSScreen.mainScreen, rect = (r) => $.NSStringFromRect(r).js;
+    `main screen ${rect(s.frame)}, visible ${rect(s.visibleFrame)}`')"
+printf 'native windows: macOS %s (%s), %s\n' "$(sw_vers -productVersion)" \
+    "$(sw_vers -buildVersion)" "$screen"
 listed=0
 completed=0
 skipped=0
+failed=()
 while IFS= read -r test_id; do
     # The filter matches the listed ID followed by "/<file>:<line>:<column>".
     pattern="^$(printf '%s' "$test_id" | sed -E 's/[][().*+?^$|\\]/\\&/g')/"
-    # Only the summary is kept; a failure prints its log on stderr and stops the script.
-    summary="$(run_tests "$test_id" --filter "$pattern")"
     listed=$((listed + 1))
+    # Only the summary is kept; a failure prints its log on stderr.
+    if ! summary="$(run_tests "$test_id" --filter "$pattern")"; then
+        failed+=("$test_id")
+        continue
+    fi
     counts="${summary##*: }"  # "1 passed, 0 skipped"
     completed=$((completed + ${counts%% passed*}))
     counts="${counts##*, }"
@@ -90,4 +101,9 @@ if ((listed == 0)) && grep -rq --include='*.swift' 'NativeInteractionTests' Test
     echo "error: Tests define NativeInteractionTests, but the test listing found none" >&2
     exit 1
 fi
-printf 'native windows: %s passed, %s skipped, one process each\n' "$completed" "$skipped"
+printf 'native windows: %s passed, %s skipped, %s failed, one process each\n' \
+    "$completed" "$skipped" "${#failed[@]}"
+if ((${#failed[@]} > 0)); then
+    printf 'error: native test failed: %s\n' "${failed[@]}" >&2
+    exit 1
+fi

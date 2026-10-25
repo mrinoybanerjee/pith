@@ -79,16 +79,9 @@ extension ProcessProbe {
   static func fake(pids: [Int32], uid: UInt32) -> ProcessProbe {
     ProcessProbe(
       listPIDs: { pids },
-      bsdInfo: { _ in (uid, 1, "fake") },
+      bsdInfo: { _ in (uid, 1, "fake", 1) },
       rusage: { _ in .success(.fake(footprint: 1)) },
       path: { _ in "/Applications/Fake.app/Contents/MacOS/Fake" })
-  }
-}
-
-extension UUID {
-  /// A made-up executable UUID: `n`, then 15 zero bytes. The table fixtures use `executable(0)`.
-  static func executable(_ n: UInt8) -> UUID {
-    UUID(uuid: (n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
   }
 }
 

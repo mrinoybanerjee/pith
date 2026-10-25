@@ -1,4 +1,5 @@
 import Darwin
+import Foundation
 import Testing
 import os
 
@@ -26,6 +27,30 @@ import os
   #expect(b.cpuTimeNs > a.cpuTimeNs && a.key == b.key)
 }
 
+@Test func execOfTheSameBinaryGetsANewIDVersion() throws {  // R140, on the live kernel
+  // zsh prints 1, then on our newline execs /bin/zsh, which prints 2: one process, one binary.
+  let input = Pipe()
+  let output = Pipe()
+  let zsh = Process()
+  zsh.executableURL = URL(fileURLWithPath: "/bin/zsh")
+  zsh.arguments = ["-fc", "echo 1; read x; exec /bin/zsh -fc 'echo 2; read x'"]
+  zsh.standardInput = input
+  zsh.standardOutput = output
+  try zsh.run()
+  func sample(after line: String) throws -> (version: Int32, uuid: UUID, start: UInt64) {
+    #expect(String(decoding: output.fileHandleForReading.availableData, as: UTF8.self) == line)
+    let usage = try ProcessProbe.live.rusage(zsh.processIdentifier).get()
+    let info = try #require(ProcessProbe.live.bsdInfo(zsh.processIdentifier))
+    input.fileHandleForWriting.write(Data("\n".utf8))
+    return (info.idVersion, UUID(uuid: usage.ri_uuid), usage.ri_proc_start_abstime)
+  }
+  let before = try sample(after: "1\n")
+  let after = try sample(after: "2\n")
+  zsh.waitUntilExit()
+  #expect(after.version != before.version)
+  #expect(after.uuid == before.uuid && after.start == before.start)
+}
+
 @Test func vanishedProcessIsCountedNotReported() {  // Review Focus 2
   var probe = ProcessProbe.fake(pids: [10, 11], uid: 501)
   probe.rusage = { $0 == 11 ? .failure(.noSuchProcess) : .success(.fake(footprint: 1)) }
@@ -48,7 +73,7 @@ import os
 
 @Test func otherUsersAndDeniedProcessesAreLeftOut() {
   var probe = ProcessProbe.fake(pids: [10, 11, 12], uid: 501)
-  probe.bsdInfo = { ($0 == 11 ? 0 : 501, 1, "fake") }
+  probe.bsdInfo = { ($0 == 11 ? 0 : 501, 1, "fake", 1) }
   probe.rusage = { $0 == 12 ? .failure(.notPermitted) : .success(.fake(footprint: 1)) }
   let t = LibprocProcessTable(probe: probe, uid: 501).readTable()
   #expect(t.samples.map(\.key.pid) == [10] && t.vanished == 0)
@@ -61,7 +86,6 @@ import os
   usage.ri_system_time = 600_000  // 0.1 s together
   usage.ri_diskio_bytesread = 3
   usage.ri_diskio_byteswritten = 4
-  usage.ri_uuid.0 = 9
   var probe = ProcessProbe.fake(pids: [10], uid: 501)
   probe.rusage = { [usage] _ in .success(usage) }
   let table = LibprocProcessTable(
@@ -70,25 +94,21 @@ import os
     table.readTable().samples == [
       ProcessSample(
         key: ProcessKey(pid: 10, startTime: 1_000_000), parent: 1, uid: 501, name: "fake",
-        path: "/Applications/Fake.app/Contents/MacOS/Fake", executableID: .executable(9),
+        path: "/Applications/Fake.app/Contents/MacOS/Fake", idVersion: 1,
         footprint: 7, cpuTimeNs: 100_000_000, diskRead: 3, diskWritten: 4)
     ])
 }
 
 @Test func execReadsThePathAgain() {  // an exec keeps the PID and start time: a shell runs Python
-  let image = OSAllocatedUnfairLock(initialState: UInt8(1))
+  let image = OSAllocatedUnfairLock(initialState: Int32(1))
   var probe = ProcessProbe.fake(pids: [10], uid: 501)
-  probe.rusage = { _ in
-    var usage = rusage_info_v6.fake(footprint: 1)
-    usage.ri_uuid.0 = image.withLock { $0 }
-    return .success(usage)
-  }
+  probe.bsdInfo = { _ in (501, 1, "fake", image.withLock { $0 }) }
   probe.path = { _ in image.withLock { $0 } == 1 ? "/bin/zsh" : "/usr/bin/python3" }
   let table = LibprocProcessTable(probe: probe, uid: 501)
   let shell = table.readTable().samples[0]
   image.withLock { $0 = 2 }
   let python = table.readTable().samples[0]
-  #expect(shell.key == python.key && shell.executableID != python.executableID)
+  #expect(shell.key == python.key && shell.idVersion != python.idVersion)
   #expect([shell.path, python.path] == ["/bin/zsh", "/usr/bin/python3"])
 }
 
@@ -127,7 +147,7 @@ import os
 
 @Test func missingBSDInfoIsSkippedNotCounted() {
   var probe = ProcessProbe.fake(pids: [10, 11], uid: 501)
-  probe.bsdInfo = { $0 == 11 ? nil : (501, 1, "fake") }
+  probe.bsdInfo = { $0 == 11 ? nil : (501, 1, "fake", 1) }
   let t = LibprocProcessTable(probe: probe, uid: 501).readTable()
   #expect(t.samples.map(\.key.pid) == [10] && t.vanished == 0)
 }

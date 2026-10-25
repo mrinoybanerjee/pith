@@ -1,4 +1,3 @@
-import Foundation
 import System
 
 public struct ProcessKey: Hashable, Sendable, Codable {
@@ -14,7 +13,7 @@ public struct ProcessKey: Hashable, Sendable, Codable {
 /// A process and the executable it runs, so an `exec` makes a new key for the same `ProcessKey`.
 struct ExecutableKey: Hashable, Sendable {
   let process: ProcessKey
-  let executableID: UUID
+  let idVersion: Int32
 }
 
 public struct ProcessSample: Sendable, Equatable, Codable {
@@ -23,15 +22,16 @@ public struct ProcessSample: Sendable, Equatable, Codable {
   public let uid: UInt32
   public let name: String
   public let path: String
-  /// ri_uuid, the executable's UUID. An `exec` changes it and keeps the `ProcessKey`.
-  public let executableID: UUID
+  /// p_idversion. Each `exec` changes it, even of the same binary from another path, and keeps
+  /// the `ProcessKey` (R140).
+  public let idVersion: Int32
   public let footprint: UInt64  // ri_phys_footprint, bytes
   public let cpuTimeNs: UInt64  // ri_user_time + ri_system_time, converted from Mach ticks
   public let diskRead: UInt64
   public let diskWritten: UInt64
 
   public init(
-    key: ProcessKey, parent: Int32, uid: UInt32, name: String, path: String, executableID: UUID,
+    key: ProcessKey, parent: Int32, uid: UInt32, name: String, path: String, idVersion: Int32,
     footprint: UInt64, cpuTimeNs: UInt64, diskRead: UInt64, diskWritten: UInt64
   ) {
     self.key = key
@@ -39,7 +39,7 @@ public struct ProcessSample: Sendable, Equatable, Codable {
     self.uid = uid
     self.name = name
     self.path = path
-    self.executableID = executableID
+    self.idVersion = idVersion
     self.footprint = footprint
     self.cpuTimeNs = cpuTimeNs
     self.diskRead = diskRead
@@ -49,7 +49,7 @@ public struct ProcessSample: Sendable, Equatable, Codable {
   /// The executable's file name, or the 16-byte kernel name when `path` is "".
   var fileName: String { FilePath(path).lastComponent?.string ?? name }
 
-  var executableKey: ExecutableKey { ExecutableKey(process: key, executableID: executableID) }
+  var executableKey: ExecutableKey { ExecutableKey(process: key, idVersion: idVersion) }
 }
 
 public struct ProcessTable: Sendable, Equatable, Codable {
