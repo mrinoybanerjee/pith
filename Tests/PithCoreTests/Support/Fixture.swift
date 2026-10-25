@@ -46,9 +46,12 @@ enum Fixture {
 }
 
 extension ProcessTable {
-  /// The `chrome-usage` fixture taken at 0 s, then 1 s later with 0.1 s of CPU in each process.
+  /// The `chrome-usage` fixture taken at 0 s, then each second after with 0.1 s more CPU in each
+  /// process.
   static let chromeAt0 = chromeUsage(at: 0, cpuNs: 0)
   static let chromeAt1s = chromeUsage(at: 1_000_000_000, cpuNs: 100_000_000)
+  static let chromeAt2s = chromeUsage(at: 2_000_000_000, cpuNs: 200_000_000)
+  static let chromeAt3s = chromeUsage(at: 3_000_000_000, cpuNs: 300_000_000)
 
   private static func chromeUsage(at ns: UInt64, cpuNs: UInt64) -> ProcessTable {
     let samples = Fixture.table("chrome-usage").samples.map {

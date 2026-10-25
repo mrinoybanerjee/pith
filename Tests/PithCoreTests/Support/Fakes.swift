@@ -58,6 +58,13 @@ final class SequenceTable: ProcessTableReading {
   func readTable() -> ProcessTable { tables.withLock { $0.removeFirst() } }
 }
 
+/// A `SystemReader` CPU sampler that returns the given samples in order. A read past the last
+/// one traps.
+func scriptedTicks(_ samples: Reading<[CPUTicks]>...) -> @Sendable () -> Reading<[CPUTicks]> {
+  let rest = OSAllocatedUnfairLock(initialState: samples)
+  return { rest.withLock { $0.removeFirst() } }
+}
+
 extension AppGrouper {
   /// Groups the table fixtures in `.limited` mode.
   static let fake = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)

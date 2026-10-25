@@ -42,3 +42,26 @@ private func engine(_ processes: any ProcessTableReading) -> Engine {
   await e.resetBaseline()
   #expect(await e.tick(mode: .open).apps[0].cpu == .unavailable("first sample"))
 }
+
+@Test func cpuResidualRestartsAfterAFailedSystemRead() async {  // R55
+  // Each interval is 1 s, and Chrome uses 0.05 of the machine in it (5 processes × 0.1 s on 10
+  // cores). The sample before the failure is 0, the recovery sample is 100 busy of 200 ticks
+  // (0.5 over the two intervals), and the last interval is 30 busy of 100 (0.3).
+  let ticks = scriptedTicks(
+    .value([CPUTicks(user: 0, system: 0, idle: 0, nice: 0)]),
+    .unavailable("host_processor_info failed: 4"),
+    .value([CPUTicks(user: 100, system: 0, idle: 100, nice: 0)]),
+    .value([CPUTicks(user: 130, system: 0, idle: 170, nice: 0)]))
+  let e = Engine(
+    system: SystemReader(sampleTicks: ticks),
+    processes: SequenceTable(.chromeAt0, .chromeAt1s, .chromeAt2s, .chromeAt3s), grouper: .fake,
+    guide: .empty, cpuCount: 10)
+  var residual: [Reading<Double>] = []
+  for _ in 0..<4 { residual.append(await e.tick(mode: .open).system.value!.cpu) }
+  #expect(
+    residual.prefix(3) == [
+      .unavailable("first sample"), .unavailable("host_processor_info failed: 4"),
+      .unavailable("first sample"),  // not 0.5 - 0.05, which spans two intervals against one
+    ])
+  #expect(abs(residual[3].value! - 0.25) < 1e-9)  // 0.3 - 0.05, both over the last interval
+}

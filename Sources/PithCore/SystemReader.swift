@@ -45,7 +45,8 @@ public protocol SystemTotalsReading: Sendable {
 }
 
 /// Reads the whole-machine totals. CPU busy is the change since the previous `read()`, so the
-/// first `read()` has none, and a failed sample leaves the previous good one as the baseline.
+/// first `read()` has none, and a failed sample clears the baseline, so the next good `read()` has
+/// none either. Both baselines then restart at that tick, in step with the engine's process table.
 /// Storage is read at most once a minute until `invalidateStorageCache()`. A failed kernel read is
 /// unavailable, never 0.
 public final class SystemReader: SystemTotalsReading {
@@ -82,6 +83,7 @@ public final class SystemReader: SystemTotalsReading {
     let cpuBusy: Reading<Double> = state.withLock { s in
       switch sampleTicks() {
       case .unavailable(let reason):
+        s.ticks = nil
         return .unavailable(reason)
       case .value(let ticks):
         defer { s.ticks = ticks }

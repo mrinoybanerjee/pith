@@ -96,17 +96,17 @@ import os
   #expect(busy.filter { $0 == .value(0.25) }.count == 49)
 }
 
-@Test func failedCPUSampleIsUnavailableAndKeepsTheLastGoodBaseline() {
-  let samples = OSAllocatedUnfairLock(
-    initialState: [
-      Reading<[CPUTicks]>.unavailable("host_processor_info failed: 4"),  // before any baseline
+@Test func failedCPUSampleClearsTheBaseline() {
+  let r = SystemReader(
+    sampleTicks: scriptedTicks(
+      .unavailable("host_processor_info failed: 4"),  // before any baseline
       .value([CPUTicks(user: 0, system: 0, idle: 0, nice: 0)]),
       .unavailable("host_processor_info failed: 4"),
-      .value([CPUTicks(user: 1, system: 0, idle: 3, nice: 0)]),
-    ])
-  let r = SystemReader(sampleTicks: { samples.withLock { $0.removeFirst() } })
+      .value([CPUTicks(user: 4, system: 0, idle: 4, nice: 0)]),
+      .value([CPUTicks(user: 5, system: 0, idle: 7, nice: 0)])))
   #expect(r.read().cpuBusy == .unavailable("host_processor_info failed: 4"))
   #expect(r.read().cpuBusy == .unavailable("first sample"))
   #expect(r.read().cpuBusy == .unavailable("host_processor_info failed: 4"))
-  #expect(r.read().cpuBusy == .value(0.25))  // against the first good sample, not the failed one
+  #expect(r.read().cpuBusy == .unavailable("first sample"))  // not 0.5 against the old baseline
+  #expect(r.read().cpuBusy == .value(0.25))  // against the recovery sample
 }
