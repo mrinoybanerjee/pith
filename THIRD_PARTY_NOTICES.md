@@ -8,7 +8,8 @@ header comment.
 
 | Pith file | Stats source at v3.0.22 | What |
 |---|---|---|
-| `SystemReader.swift` | `Modules/RAM/readers.swift` L37–L103 | `host_statistics64`, pressure sysctl and swap sysctl reads |
+| `SystemReader.swift` | `Modules/RAM/readers.swift` L37–L103 | `host_statistics64` and swap sysctl reads |
+| `PressureMonitor.swift` | `Modules/RAM/readers.swift` L37–L103 | Pressure sysctl read |
 | `SystemReader.swift` | `Modules/CPU/readers.swift` L42–L156 | `host_processor_info` per-core deltas with wrap-safe `UInt32` math |
 | `AppGrouper.swift` | `Modules/RAM/readers.swift` L210–L227 | `responsibility_get_pid_responsible_for_pid` through `dlsym` |
 | `ProcessTableSource.swift` | `Modules/Disk/readers.swift` L448–L457 | The `proc_pid_rusage` disk-I/O read pattern |
