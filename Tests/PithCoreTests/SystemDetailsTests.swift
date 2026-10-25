@@ -223,3 +223,14 @@ func unparseableRowThrows(row: String) {
       String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
   #expect(kill(pid, 0) == -1 && errno == ESRCH)  // gone and reaped
 }
+
+@Test func timeoutIsFailedEvenWhenTheChildExitsZero() async {
+  await #expect {
+    // The trap runs when TERM arrives during `wait`, stops the sleep, and exits 0.
+    try await SystemDetails.runProcess(
+      "/bin/sh", ["-c", "sleep 30 >/dev/null & trap 'kill $!; exit 0' TERM; wait"], timeout: 0.5)
+  } throws: { error in
+    guard case SystemDetailsError.failed(let message) = error else { return false }
+    return message.contains("did not finish")
+  }
+}

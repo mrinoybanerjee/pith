@@ -173,8 +173,8 @@ public actor SystemDetails {
   }
 
   /// Runs `/usr/bin/top` with `arguments` and returns what it printed. Throws `.failed` when top
-  /// cannot start, exits with a non-zero status, or is still running after `timeout` seconds. Top
-  /// is then terminated, and killed if it is still running 1 s later.
+  /// cannot start, exits with a non-zero status, or is still running after `timeout` seconds, even
+  /// if it then exits 0. Top is then terminated, and killed if it is still running 1 s later.
   public static func runTop(_ arguments: [String], timeout: TimeInterval = 5) async throws
     -> String
   {
@@ -233,11 +233,13 @@ public actor SystemDetails {
     }
     process.waitUntilExit()
 
+    // A child that traps SIGTERM can exit 0 after the timeout, and its output is then partial.
+    guard !timedOut.withLock({ $0 }) else {
+      throw SystemDetailsError.failed("\(executable) did not finish in \(timeout) s")
+    }
     guard process.terminationStatus == 0 else {
       throw SystemDetailsError.failed(
-        timedOut.withLock { $0 }
-          ? "\(executable) did not finish in \(timeout) s"
-          : "\(executable) exited with status \(process.terminationStatus)")
+        "\(executable) exited with status \(process.terminationStatus)")
     }
     return String(decoding: output, as: UTF8.self)
   }
