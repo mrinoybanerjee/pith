@@ -1,8 +1,9 @@
 import Darwin
 
 /// Owns the readers, the grouper and the previous table (spec 5.3), and returns one immutable
-/// `Snapshot` per tick. Only an open tick reads the process table; a closed tick keeps the
-/// previous one.
+/// `Snapshot` per tick. Only an open tick reads the process table. The system reader diffs on every
+/// tick, so a closed tick drops the previous table: the next open tick shows no app CPU, and app and
+/// system CPU always cover the same interval.
 public actor Engine {
   private let system: any SystemTotalsReading
   private let processes: any ProcessTableReading
@@ -27,6 +28,7 @@ public actor Engine {
   public func tick(mode: Mode) -> Snapshot {
     let totals = system.read()
     guard mode == .open else {
+      previousTable = nil
       return Aggregator.snapshot(
         previous: nil, current: nil, groups: [:], totals: totals, cpuCount: cpuCount,
         guide: guide, grouping: grouper.quality, mode: .closed,
