@@ -11,6 +11,12 @@ enum Fixture {
     return try! JSONDecoder().decode(ProcessTable.self, from: Data(contentsOf: url))
   }
 
+  /// `Fixtures/<name>.txt`, for example `top/two-samples`: made-up command output.
+  static func text(_ name: String) -> String {
+    let url = Bundle.module.resourceURL!.appendingPathComponent("Fixtures/\(name).txt")
+    return try! String(contentsOf: url, encoding: .utf8)
+  }
+
   /// The bundles the table fixtures use. Any other `.app` has no readable bundle.
   static func bundleInfo(_ appPath: String) -> (id: String, name: String)? {
     bundles[appPath]
