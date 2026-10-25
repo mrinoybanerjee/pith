@@ -51,16 +51,17 @@ struct TilesView: View {
       words: [word] + [swap].compactMap { $0 }, tint: tint)
   }
 
-  /// "38%", then Light under 30%, Moderate to 70%, Busy above, judged on the percent shown.
+  /// "38%", then Light under 30%, Moderate to 70%, Busy above, judged on the percent shown, so the
+  /// two never disagree.
   private var cpu: some View {
     let busy = totals?.cpuBusy.value
-    let word = busy.map { busy in
-      let percent = (busy * 100).rounded()
+    let shown = busy.map { split(PercentFormat.total($0)) }
+    let word = shown.map { number, _ in
+      let percent = Int(number)!
       return Text(percent < 30 ? "Light" : percent <= 70 ? "Moderate" : "Busy")
     }
     return Tile(
-      caption: "CPU", value: busy.map { split(PercentFormat.total($0)) }, fraction: busy,
-      words: word.map { [$0] } ?? [], tint: nil)
+      caption: "CPU", value: shown, fraction: busy, words: word.map { [$0] } ?? [], tint: nil)
   }
 
   /// "112 GB free", then "of 228 GB"; the meter is the used share.
@@ -99,17 +100,17 @@ private struct Tile: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       Text(caption)
-        .font(.system(size: 13, weight: .medium))
+        .font(.panel(.body, weight: .medium))
         .foregroundStyle(.secondary)
       Group {
         if let value {
           let number = Text(value.number).font(
-            .system(size: 19, weight: .semibold).monospacedDigit())
-          let unit = Text(value.unit).font(.system(size: 13, weight: .medium).monospacedDigit())
+            .panel(.value, weight: .semibold).monospacedDigit())
+          let unit = Text(value.unit).font(.panel(.body, weight: .medium).monospacedDigit())
             .foregroundStyle(.secondary)
           Text("\(number)\(unit)")
         } else {
-          Text("—").font(.system(size: 19, weight: .semibold))
+          Text("—").font(.panel(.value, weight: .semibold))
             .accessibilityLabel("not available yet")
         }
       }
@@ -120,7 +121,7 @@ private struct Tile: View {
         .padding(.top, 7)
       ForEach(words.indices, id: \.self) { line in
         words[line]
-          .font(.system(size: 13).monospacedDigit())
+          .font(.panel(.body).monospacedDigit())
           .foregroundStyle(tint ?? .secondary)
           .fixedSize(horizontal: false, vertical: true)
       }

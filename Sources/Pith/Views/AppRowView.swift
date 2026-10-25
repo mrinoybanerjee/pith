@@ -53,20 +53,20 @@ struct RowLayout<Icon: View, Name: View>: View {
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 4) {
         name
-          .font(.system(size: 13, weight: .medium))
+          .font(.panel(.body, weight: .medium))
           .lineLimit(1)
         Bar(fraction: fraction, height: 3, fill: .secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       VStack(alignment: .trailing, spacing: 0) {
         Text(value.text)
-          .font(.system(size: 13, weight: .medium).monospacedDigit())
+          .font(.panel(.body, weight: .medium).monospacedDigit())
           .foregroundStyle(value.amount == nil ? .secondary : .primary)
           .accessibilityLabel(value.label)
           .accessibilityIdentifier("pith.value")
         if let processes {
           Text("\(processes) processes")
-            .font(.system(size: 13).monospacedDigit())
+            .font(.panel(.body).monospacedDigit())
             .foregroundStyle(.secondary)
             .accessibilityIdentifier("pith.value")
         }

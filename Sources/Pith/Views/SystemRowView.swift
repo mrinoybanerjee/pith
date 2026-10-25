@@ -14,11 +14,12 @@ struct SystemRowView: View {
       RowLayout(
         icon: RoundedRectangle(cornerRadius: 6)
           .fill(.quinary)
-          .overlay { Image(systemName: "cpu").font(.system(size: 13)).foregroundStyle(.secondary) },
+          .overlay { Image(systemName: "cpu").font(.panel(.body)).foregroundStyle(.secondary) },
         name: HStack(spacing: 5) {
           Text("macOS system").foregroundStyle(.secondary)
           Image(systemName: expanded ? "chevron.down" : "chevron.right")
-            .font(.system(size: 9, weight: .semibold))
+            .font(.panel(.body, weight: .semibold))
+            .imageScale(.small)
             .foregroundStyle(.tertiary)
             .accessibilityHidden(true)
         },
@@ -50,7 +51,7 @@ struct SystemRowView: View {
           }
           line("Other system work", other(breakdown))
         }
-        .font(.system(size: 13).monospacedDigit())
+        .font(.panel(.body).monospacedDigit())
         .padding(.top, 8)
         ForEach(Array(breakdown.items.enumerated()), id: \.offset) { _, item in
           if let explanation = item.explanation {

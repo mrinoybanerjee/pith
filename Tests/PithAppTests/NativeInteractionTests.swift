@@ -93,6 +93,48 @@ extension NativeInteractionTests {
     #expect(resizesWhileShown == 0 && w.frame == shown)
   }
 
+  /// R85: an open never animates from what the panel drew before. The capture at show and the one
+  /// 300 ms later are the same pixels: at the first open, and at a re-open whose rows changed
+  /// while it was closed, with a row that was open when it closed.
+  @Test func anOpenIsNeverAnimated() async throws {
+    let store = testStore(guide: try Guide.bundled())
+    let reading = NextReading(DemoSnapshots.calm)
+    let controller = PanelController(
+      store: store, defaults: testDefaults(),
+      onChange: { visible, _, _ in if visible { store.apply(reading.snapshot) } })
+    let w = controller.panel
+    controller.toggle(under: try anchor())
+    let first = try pixels(w)
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(try pixels(w) == first)
+    store.toggle(store.rows[0].id)
+    try await Task.sleep(for: .milliseconds(300))
+    controller.toggle(under: try anchor())  // closes it
+    reading.snapshot = DemoSnapshots.tight  // other apps, in another order
+    controller.toggle(under: try anchor())
+    #expect(w.isVisible && store.expandedAppID == nil)
+    let reopened = try pixels(w)
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(try pixels(w) == reopened)
+  }
+
+  /// R88: while an open waits for its reading, a late occlusion note from the closed panel still
+  /// reports it shown and not covered, so the speed stays open, attached or pinned.
+  @Test func aLateOcclusionNoteKeepsAPendingOpenOpen() throws {
+    let store = testStore(guide: try Guide.bundled())
+    var reports: [String] = []
+    let controller = PanelController(
+      store: store, defaults: testDefaults(),
+      onChange: { visible, pinned, occluded in reports.append("\(visible) \(pinned) \(occluded)") })
+    let note = Notification(name: NSWindow.didChangeOcclusionStateNotification)
+    reports = []  // the closed panel's own report when it starts
+    controller.toggle(under: try anchor())
+    controller.windowDidChangeOcclusionState(note)
+    #expect(reports == ["true false false", "true false false"])
+    store.apply(DemoSnapshots.calm)
+    #expect(controller.panel.isVisible)
+  }
+
   /// Spec 4.8: ↑ and ↓ move between the rows, "macOS system" last, and stop at the ends; Return
   /// opens and closes the row; ⌘1–⌘3 pick the metric; Escape closes the attached panel.
   @Test func theKeyboardMovesOpensSwitchesAndCloses() throws {
@@ -231,6 +273,35 @@ extension NativeInteractionTests {
     #expect(labels.contains("Memory, 15.1 of 16 GB, pressure not available"))
     // 29.6% shows as 30%, so the word is Moderate, not Light.
     #expect(labels.contains("CPU, 30%, Moderate"))
+  }
+
+  /// R89: the CPU word comes from the percent the tile shows, rounded once, as `PercentFormat`
+  /// rounds it. At 70.5% the tile and the word agree.
+  @Test func theCPUWordMatchesTheShownPercentAt70Point5() throws {
+    let calm = DemoSnapshots.calm
+    let t = calm.totals
+    let busy = Snapshot(
+      takenAtNs: calm.takenAtNs, mode: .open,
+      totals: SystemTotals(
+        memoryUsed: t.memoryUsed, memoryTotal: t.memoryTotal, pressure: t.pressure,
+        swapUsed: t.swapUsed, cpuBusy: .value(0.705), storageFree: t.storageFree,
+        storageTotal: t.storageTotal),
+      apps: calm.apps, system: calm.system, grouping: .full)
+    let shown = PercentFormat.total(0.705)
+    let word = Int(shown.dropLast())! <= 70 ? "Moderate" : "Busy"
+    #expect(axLabels(in: try hostPanel(busy)).contains("CPU, \(shown), \(word)"))
+  }
+
+  /// R89: VoiceOver calls the pin "Pin", selected while pinned; its tooltip says what a click does.
+  @Test func thePinsTooltipSaysUnpinWhilePinned() async throws {
+    defer { clearDefaults() }
+    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
+    #expect(try axNode("Pin", in: w).help == "Pin")
+    store.pinned = true
+    #expect(
+      try await eventually(w) {
+        (try? axNode("Pin", in: w)).map { $0.help == "Unpin" && $0.selected } == true
+      })
   }
 
   /// R59 and R47: opening "macOS system" measures once and says "Measuring…" until it is done.
@@ -391,18 +462,26 @@ extension NativeInteractionTests {
     #expect(!axLabels(in: w).contains("Using the most"))
   }
 
-  /// R76: the font check reads headings by their height, a button's text as its child, and a font
-  /// that a container passes down; and it sees the 11.5 pt footer when it is not left out.
-  @Test func theFontCheckSeesHeadingsButtonsAndInheritedFonts() throws {
+  /// R76 and R87: the font check reads headings by their height and a font that a container
+  /// passes down, and it sees the 11.5 pt footer when it is not left out. A button's label has no
+  /// font for VoiceOver, so buttons use the `PanelType` sizes, which a unit test checks.
+  @Test func theFontCheckSeesHeadingsAndInheritedFonts() throws {
     let w = try hostPanel(DemoSnapshots.calm)
     let title = try axNode("All calm", in: w).fontSizes
     #expect(title.count == 1 && abs(title[0] - 17) < 1, "\(title)")
     #expect(try axNode("Using the most", in: w).fontSizes.allSatisfy { abs($0 - 13) < 1 })
-    #expect(try axNode("Memory", in: w).flattened.flatMap(\.fontSizes) == [13])
+    #expect(try axNode("Memory", in: w).role == "AXButton")
     #expect(minimumReadableFontSize(w, excludingIdentifier: "none") == 11.5)
     let inherited = hostView(VStack { Text("Inherited") }.font(.system(size: 12)))
     #expect(axNodes(in: inherited).flatMap(\.fontSizes) == [12])
   }
+}
+
+/// The reading that the stand-in lifecycle takes when the panel opens.
+@MainActor private final class NextReading {
+  var snapshot: Snapshot
+
+  init(_ snapshot: Snapshot) { self.snapshot = snapshot }
 }
 
 /// A control that has the keyboard focus, as full keyboard access gives one.

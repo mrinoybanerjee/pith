@@ -9,7 +9,7 @@ import Testing
 @MainActor private var hostedPanels: [PanelController] = []
 
 /// A status item in the middle of the main screen's menu bar.
-@MainActor private func anchor() throws -> (itemFrame: CGRect, visibleFrame: CGRect) {
+@MainActor func anchor() throws -> (itemFrame: CGRect, visibleFrame: CGRect) {
   let screen = try #require(NSScreen.main).visibleFrame
   return (CGRect(x: screen.midX, y: screen.maxY, width: 22, height: 24), screen)
 }
@@ -98,14 +98,19 @@ import Testing
       charactersIgnoringModifiers: characters ?? typed, isARepeat: false, keyCode: code)!)
 }
 
-/// Renders the panel offscreen, as `screencapture` cannot run over SSH.
-@MainActor func writePNG(_ window: NSWindow, to path: String) throws {
+/// The panel as it draws now, as PNG data. It renders offscreen, as `screencapture` cannot run
+/// over SSH.
+@MainActor func pixels(_ window: NSWindow) throws -> Data {
   let view = try #require(window.contentView)
   view.layoutSubtreeIfNeeded()
   let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
   view.cacheDisplay(in: view.bounds, to: bitmap)
+  return try #require(bitmap.representation(using: .png, properties: [:]))
+}
+
+@MainActor func writePNG(_ window: NSWindow, to path: String) throws {
   let url = URL(fileURLWithPath: path)
   try FileManager.default.createDirectory(
     at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-  try #require(bitmap.representation(using: .png, properties: [:])).write(to: url)
+  try pixels(window).write(to: url)
 }

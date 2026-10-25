@@ -42,8 +42,8 @@ public enum Aggregator {
       grouping: grouping)
   }
 
-  /// One app's row. Inside, processes group by helper label; the app's own executable is the
-  /// "Main process", and any other process is listed by its file name.
+  /// One app's row. Inside, processes group by helper label; a bundled app's own executable (its
+  /// `CFBundleExecutable`) is the "Main process"; any other process is listed by its file name.
   private static func usage(
     _ members: [ProcessSample], _ groups: [ProcessKey: AppIdentity], _ baseline: Baseline?,
     _ cpuCount: Int, _ guide: Guide
@@ -66,9 +66,10 @@ public enum Aggregator {
       cpu = .value(min(share, 1))
       disk = .value(Double(bytes) / (wallNs / 1e9))
     }
-    let inside = Dictionary(grouping: members) {
-      guide.helperLabel(processName: $0.fileName)
-        ?? ($0.fileName == identity.name ? "Main process" : $0.fileName)
+    let inside = Dictionary(grouping: members) { (member: ProcessSample) -> String in
+      let file = member.fileName
+      return guide.helperLabel(processName: file)
+        ?? (file == identity.executable ? "Main process" : file)
     }
     .map { label, group in HelperGroup(label: label, count: group.count, memory: footprint(group)) }
     .sorted { $0.memory != $1.memory ? $0.memory > $1.memory : $0.label < $1.label }

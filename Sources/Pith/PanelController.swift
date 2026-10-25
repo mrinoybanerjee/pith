@@ -21,8 +21,11 @@ import SwiftUI
   private let store: Store
   private let defaults: UserDefaults
   private let onChange: @MainActor (_ visible: Bool, _ pinned: Bool, _ occluded: Bool) -> Void
-  /// From a click that opens the panel until the reading it asked for is applied.
+  /// From a click that opens the panel until the first open reading applied after it, unless a
+  /// pause or a second click comes first.
   private var opening = false
+  /// Counts the opens, so each one draws a new panel view (R85).
+  private var opens = 0
   /// Where the attached panel hangs: the status item's frame and its screen's visible frame.
   private var anchor = (itemFrame: CGRect.zero, visibleFrame: CGRect.zero)
   /// The outside-click monitor, installed while the panel is attached and open.
@@ -35,7 +38,7 @@ import SwiftUI
     self.store = store
     self.defaults = defaults
     self.onChange = onChange
-    hosting = PanelHostingView(rootView: PanelView(store: store))
+    hosting = PanelHostingView(rootView: PanelView(store: store, open: 0))
     super.init()
     panel.isFloatingPanel = true
     panel.hidesOnDeactivate = false
@@ -79,11 +82,21 @@ import SwiftUI
   /// The content's height, up to `maxHeight`.
   private var height: CGFloat { min(hosting.fittingSize.height.rounded(.up), Self.maxHeight) }
 
-  /// Shows the panel when the first open reading after the click has been applied. The hidden
-  /// content is laid out first, so the panel opens at its final size.
+  /// A pause drops a pending open: its reading does not come, and the wake must not open the
+  /// panel by itself (R88).
+  func cancelOpening() {
+    guard opening else { return }
+    opening = false
+    report()
+  }
+
+  /// Shows the panel when the first open reading after the click has been applied. It draws a new
+  /// view, laid out at once, so the panel opens at its final size with nothing animating (R85).
   private func show() {
     guard opening else { return }
     opening = false
+    opens += 1
+    hosting.rootView = PanelView(store: store, open: opens)
     hosting.layoutSubtreeIfNeeded()
     if store.pinned {
       resize()
@@ -182,8 +195,12 @@ import SwiftUI
     monitors = []
   }
 
+  /// An open that waits for its reading counts as shown and not covered, so a late occlusion note
+  /// from the closed panel cannot switch the speed to closed (R88).
   private func report() {
-    onChange(panel.isVisible, store.pinned, !panel.occlusionState.contains(.visible))
+    onChange(
+      opening || panel.isVisible, store.pinned,
+      !opening && !panel.occlusionState.contains(.visible))
   }
 }
 

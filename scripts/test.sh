@@ -45,14 +45,13 @@ run_tests() {
             printf 'error: %s matched no tests\n' "$name" >&2
             return 1
         fi
-        # Swift 6.2 adds "in N suites" to the summary; Swift 6.0 and 6.1 do not.
+        # Swift 6.2 adds "in N suites" to the summary; Swift 6.0 and 6.1 do not. A skipped test
+        # also ends in a passing summary, so the skips are counted apart.
         if grep -Eq '^✔ Test run with [0-9]+ tests? (in [0-9]+ suites? )?passed' "$log"; then
-            # A skipped test also ends in a passing summary; say that it was skipped.
-            if grep -Eq '^➜ Test .* skipped' "$log"; then
-                printf '%s: skipped (%s)\n' "$name" "$(grep -cE '^➜ Test .* skipped' "$log")"
-            else
-                printf '%s: %s\n' "$name" "$(grep -E '^✔ Test run with' "$log")"
-            fi
+            local total skipped
+            total="$(grep -E '^✔ Test run with' "$log" | grep -oE '[0-9]+' | head -1)"
+            skipped="$(grep -cE '^➜ Test .* skipped' "$log" || true)"
+            printf '%s: %s passed, %s skipped\n' "$name" "$((total - skipped))" "$skipped"
             return 0
         fi
         printf 'warning: %s ended before Swift Testing reported completion (attempt %s)\n' \
@@ -69,22 +68,23 @@ run_tests "core and app" --parallel --skip NativeInteractionTests
 # grep exits 1 when there are no native tests yet; any other failure stops the script.
 swift test list --skip-build 2>/dev/null \
     | { grep 'NativeInteractionTests/' || (($? == 1)); } >"$LOG_DIR/native.txt"
-native_count=0
-skipped_count=0
+listed=0
+completed=0
+skipped=0
 while IFS= read -r test_id; do
     # The filter matches the listed ID followed by "/<file>:<line>:<column>".
     pattern="^$(printf '%s' "$test_id" | sed -E 's/[][().*+?^$|\\]/\\&/g')/"
     # Only the summary is kept; a failure prints its log on stderr and stops the script.
     summary="$(run_tests "$test_id" --filter "$pattern")"
-    native_count=$((native_count + 1))
-    if [[ $summary == *": skipped ("* ]]; then
-        printf '%s\n' "$summary"
-        skipped_count=$((skipped_count + 1))
-    fi
+    listed=$((listed + 1))
+    counts="${summary##*: }"  # "1 passed, 0 skipped"
+    completed=$((completed + ${counts%% passed*}))
+    counts="${counts##*, }"
+    skipped=$((skipped + ${counts%% *}))
+    [[ $counts == "0 skipped" ]] || printf '%s\n' "$summary"
 done <"$LOG_DIR/native.txt"
-if ((native_count == 0)) && grep -rq --include='*.swift' 'NativeInteractionTests' Tests; then
+if ((listed == 0)) && grep -rq --include='*.swift' 'NativeInteractionTests' Tests; then
     echo "error: Tests define NativeInteractionTests, but the test listing found none" >&2
     exit 1
 fi
-printf 'native windows: %s tests completed, %s skipped, one process each\n' \
-    "$native_count" "$skipped_count"
+printf 'native windows: %s passed, %s skipped, one process each\n' "$completed" "$skipped"

@@ -1,7 +1,7 @@
 import PithCore
 import SwiftUI
 
-/// The three settings (spec 4.6), as native controls that full keyboard access reaches. The login
+/// The three settings (spec 4.6), as controls that full keyboard access reaches. The login
 /// toggle shows what macOS says, and says so when macOS refuses a change (R74). Limited grouping
 /// is a visible degraded mode (spec 6.5).
 struct SettingsView: View {
@@ -28,13 +28,9 @@ struct SettingsView: View {
         Divider()
         HStack {
           label("Refresh while open")
-          Picker("Refresh while open", selection: $store.settings.refresh) {
-            Text("1 s").tag(RefreshSetting.oneSecond)
-            Text("2 s").tag(RefreshSetting.twoSeconds)
-          }
-          .pickerStyle(.segmented)
-          .labelsHidden()
-          .fixedSize()
+          Segmented(
+            label: "Refresh while open", selection: $store.settings.refresh,
+            options: [(.oneSecond, "1 s"), (.twoSeconds, "2 s")])
         }
         Divider()
         label("Dot turns amber on")
@@ -53,11 +49,11 @@ struct SettingsView: View {
           .padding(.horizontal, 4)
       }
     }
-    .font(.system(size: 13))
+    .font(.panel(.body))
     .padding(EdgeInsets(top: 0, leading: 12, bottom: 12, trailing: 12))
   }
 
-  /// The visible name of a native control. VoiceOver reads it from the control instead.
+  /// The visible name of a control. VoiceOver reads it from the control instead.
   private func label(_ text: String) -> some View {
     Text(text)
       .frame(maxWidth: .infinity, alignment: .leading)

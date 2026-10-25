@@ -22,7 +22,7 @@ struct AppDetailView: View {
           .accessibilityElement(children: .combine)
         }
       }
-      .font(.system(size: 13).monospacedDigit())
+      .font(.panel(.body).monospacedDigit())
       .foregroundStyle(.secondary)
     }
     .detailWell()

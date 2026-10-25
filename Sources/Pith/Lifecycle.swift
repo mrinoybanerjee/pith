@@ -52,6 +52,8 @@ enum PauseReason { case sleep, screensSleep, locked }
   private var pending = false
   private var pressure: AnyObject?
   private var observers: [any NSObjectProtocol] = []
+  /// Told about each pause, so a panel that waits for an open reading stops waiting (R88).
+  var onPause: () -> Void = {}
 
   /// Tests replace the system's parts: fresh notification centers (the screen lock notifications
   /// on the real distributed center reach every process in the login session), a pressure monitor
@@ -172,6 +174,7 @@ enum PauseReason { case sleep, screensSleep, locked }
     pauseReasons.insert(reason)
     paused = true
     clock.pause()
+    onPause()
   }
 
   private func wake(_ reason: PauseReason) {

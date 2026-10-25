@@ -45,3 +45,10 @@ import os
   store.readLoginItem()
   #expect(!store.launchesAtLogin && !store.loginItemFailed && item.registrations == 1)
 }
+
+/// R87: every type size the user must read is at least 13 pt (spec 4.2); only the decorative footer
+/// is smaller.
+@Test func everyReadableTypeSizeIsAtLeast13Points() {
+  #expect(PanelType.allCases.filter { $0 != .footer }.allSatisfy { $0.rawValue >= 13 })
+  #expect(PanelType.footer.rawValue == 11.5)
+}

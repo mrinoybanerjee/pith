@@ -99,12 +99,18 @@ public struct AppIdentity: Sendable, Equatable {
   public let name: String
   public let bundlePath: String?
   public let bundleID: String?  // nil when there is no bundle or it cannot be read
+  /// The bundle's `CFBundleExecutable`, the app's own process; nil when there is no bundle or it
+  /// cannot be read.
+  public let executable: String?
 
-  public init(id: String, name: String, bundlePath: String?, bundleID: String?) {
+  public init(
+    id: String, name: String, bundlePath: String?, bundleID: String?, executable: String?
+  ) {
     self.id = id
     self.name = name
     self.bundlePath = bundlePath
     self.bundleID = bundleID
+    self.executable = executable
   }
 }
 

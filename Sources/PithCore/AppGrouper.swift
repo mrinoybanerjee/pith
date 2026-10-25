@@ -8,13 +8,16 @@ import System
 /// Maps each process to the app it belongs to (spec 6.5), so helpers count toward their app.
 public struct AppGrouper: Sendable {
   private let responsible: (@Sendable (Int32) -> Int32?)?
-  private let bundleInfo: @Sendable (String) -> (bundleID: String, name: String)?
+  private let bundleInfo: @Sendable (String) -> BundleInfo?
   private var cache: [ExecutableKey: AppIdentity] = [:]
+
+  /// What an `.app` says about itself: its bundle ID, its name and its main executable's file name.
+  public typealias BundleInfo = (bundleID: String, name: String, executable: String?)
 
   /// `responsible` is nil when the responsibility call is missing. `bundleInfo` reads an `.app`.
   public init(
     responsible: (@Sendable (Int32) -> Int32?)?,
-    bundleInfo: @escaping @Sendable (String) -> (bundleID: String, name: String)?
+    bundleInfo: @escaping @Sendable (String) -> BundleInfo?
   ) {
     self.responsible = responsible
     self.bundleInfo = bundleInfo
@@ -43,7 +46,10 @@ public struct AppGrouper: Sendable {
         let name =
           bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
           ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
-        return (id, name ?? FilePath(appPath).stem!)
+        return (
+          id, name ?? FilePath(appPath).stem!,
+          bundle.object(forInfoDictionaryKey: "CFBundleExecutable") as? String
+        )
       })
   }
 
@@ -111,7 +117,8 @@ public struct AppGrouper: Sendable {
       [responsiblePID == s.key.pid ? own.last : own.first]
       + parents.prefix(5).map { Self.enclosingAppPath($0.path) }
     for case let app? in apps { if let found = identity(app) { return found } }
-    return AppIdentity(id: "proc:\(s.fileName)", name: s.fileName, bundlePath: nil, bundleID: nil)
+    return AppIdentity(
+      id: "proc:\(s.fileName)", name: s.fileName, bundlePath: nil, bundleID: nil, executable: nil)
   }
 
   /// An app's id is its path. A Chromium clone runs from a temporary path, so it has no path and
@@ -121,10 +128,13 @@ public struct AppGrouper: Sendable {
     let info = bundleInfo(app)
     guard !app.hasSuffix(".app.bundle") else {
       return info.map {
-        AppIdentity(id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID)
+        AppIdentity(
+          id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID,
+          executable: $0.executable)
       }
     }
     return AppIdentity(
-      id: app, name: info?.name ?? FilePath(app).stem!, bundlePath: app, bundleID: info?.bundleID)
+      id: app, name: info?.name ?? FilePath(app).stem!, bundlePath: app, bundleID: info?.bundleID,
+      executable: info?.executable)
   }
 }

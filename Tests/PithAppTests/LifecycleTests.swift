@@ -393,4 +393,25 @@ extension NativeInteractionTests {
     panel.toggle(under: (.zero, .zero))
     #expect(rig.clock.calls.last == closedSchedule)
   }
+
+  /// R88: a pause while an open waits for its reading drops the open, so neither the reading that
+  /// lands after it nor the wake opens the panel by itself.
+  @Test func aPauseDropsAPendingOpen() async throws {
+    let rig = Rig()
+    defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+    try await rig.start()
+    let panel = PanelController(
+      store: rig.store, defaults: rig.defaults,
+      onChange: rig.lifecycle.panelChanged(visible:pinned:occluded:))
+    rig.lifecycle.onPause = { panel.cancelOpening() }
+    rig.engine.holding = true
+    panel.toggle(under: try anchor())
+    #expect(try await settled { rig.engine.calls == ["tick open"] })
+    rig.post(rig.workspace, willSleep)
+    rig.engine.release()  // the open reading lands during the sleep
+    rig.post(rig.workspace, didWake)
+    #expect(
+      try await settled { rig.engine.calls == ["tick open", "resetBaseline", "tick closed"] })
+    #expect(!panel.panel.isVisible)
+  }
 }

@@ -15,7 +15,7 @@ struct HeaderView: View {
         .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 4) {
         Text(store.status.title)
-          .font(.system(size: 17, weight: .semibold))
+          .font(.panel(.title, weight: .semibold))
           .kerning(-0.17)
           .accessibilityAddTraits(.isHeader)
         // "6.4 GB" stays on one line.
@@ -23,17 +23,21 @@ struct HeaderView: View {
           store.status.sentence.replacing(" GB", with: "\u{A0}GB")
             .replacing(" MB", with: "\u{A0}MB")
         )
-        .font(.system(size: 13))
+        .font(.panel(.body))
         .foregroundStyle(.secondary)
         .lineSpacing(1.5)
         .fixedSize(horizontal: false, vertical: true)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       HStack(spacing: 2) {
-        IconButton(symbol: "pin", label: "Pin", on: store.pinned) {
+        IconButton(
+          symbol: "pin", label: "Pin", help: store.pinned ? "Unpin" : "Pin", on: store.pinned
+        ) {
           store.pinned.toggle()
         }
-        IconButton(symbol: "gearshape", label: "Settings", on: store.showingSettings) {
+        IconButton(
+          symbol: "gearshape", label: "Settings", help: "Settings", on: store.showingSettings
+        ) {
           store.showingSettings.toggle()
         }
       }
@@ -50,17 +54,19 @@ struct HeaderView: View {
   }
 }
 
-/// A 26 pt icon button. When on, it sits in a well, and VoiceOver reads it as selected.
+/// A 26 pt icon button. When on, it sits in a well, and VoiceOver reads it as selected. The
+/// tooltip says what a click does.
 private struct IconButton: View {
   let symbol: String
   let label: String
+  let help: String
   let on: Bool
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
       Image(systemName: symbol)
-        .font(.system(size: 13, weight: .medium))
+        .font(.panel(.body, weight: .medium))
         .foregroundStyle(on ? .primary : .secondary)
         .frame(width: 26, height: 26)
         .background(.quinary.opacity(on ? 1 : 0), in: .rect(cornerRadius: 7))
@@ -69,6 +75,6 @@ private struct IconButton: View {
     .buttonStyle(.plain)
     .accessibilityLabel(label)
     .accessibilityAddTraits(on ? .isSelected : [])
-    .help(label)
+    .help(help)
   }
 }

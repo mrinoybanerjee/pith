@@ -25,6 +25,7 @@ import PithCore
       clock: clock, engine: engine, store: store, reader: reader, defaults: defaults)
     panel = PanelController(
       store: store, defaults: defaults, onChange: lifecycle.panelChanged(visible:pinned:occluded:))
+    lifecycle.onPause = { [weak self] in self?.panel.cancelOpening() }
     statusItem = StatusItemController { [weak self] in
       guard let self else { return }
       panel.toggle(under: statusItem.anchor)

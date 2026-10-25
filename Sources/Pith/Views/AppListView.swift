@@ -23,10 +23,12 @@ struct AppListView: View {
     VStack(spacing: 0) {
       HStack {
         Text("Using the most")
-          .font(.system(size: 13, weight: .semibold))
+          .font(.panel(.body, weight: .semibold))
           .accessibilityAddTraits(.isHeader)
         Spacer()
-        MetricPicker(metric: Bindable(store).metric)
+        Segmented(
+          label: "Sort by", selection: Bindable(store).metric,
+          options: [(.memory, "Memory"), (.cpu, "CPU"), (.disk, "Disk")])
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 6)
@@ -61,44 +63,5 @@ struct AppListView: View {
   private func reveal(_ proxy: ScrollViewProxy) {
     guard let id = store.expandedAppID else { return }
     Task { proxy.scrollTo(id) }
-  }
-}
-
-/// Memory · CPU · Disk in the approved design's style: a well with the chosen segment raised, each
-/// as wide as its name. VoiceOver reads a "Sort by" group of buttons, the chosen one selected; the
-/// keyboard uses ⌘1–⌘3. Each segment keeps its text visible to VoiceOver, so its font is checked.
-private struct MetricPicker: View {
-  @Binding var metric: Metric
-  @Environment(\.colorScheme) private var scheme
-
-  var body: some View {
-    HStack(spacing: 0) {
-      ForEach([(Metric.memory, "Memory"), (.cpu, "CPU"), (.disk, "Disk")], id: \.0) {
-        option, title in
-        let chosen = option == metric
-        Text(title)
-          .font(.system(size: 13, weight: .medium))
-          .foregroundStyle(chosen ? .primary : .secondary)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 2)
-          .background {
-            if chosen {
-              RoundedRectangle(cornerRadius: 5)
-                .fill(.white.opacity(scheme == .dark ? 0.16 : 1))
-                .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
-            }
-          }
-          .contentShape(.rect)
-          .onTapGesture { metric = option }
-          .accessibilityElement(children: .contain)
-          .accessibilityLabel(title)
-          .accessibilityAddTraits(chosen ? [.isButton, .isSelected] : .isButton)
-          .accessibilityAction(.default) { metric = option }
-      }
-    }
-    .padding(2)
-    .background(.quinary, in: .rect(cornerRadius: 7))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel("Sort by")
   }
 }

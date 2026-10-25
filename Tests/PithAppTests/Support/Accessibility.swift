@@ -12,6 +12,8 @@ import Testing
   let label: String?
   let value: String?
   let identifier: String?
+  /// The tooltip.
+  let help: String?
   let selected: Bool
   /// In screen coordinates.
   let frame: CGRect
@@ -43,6 +45,7 @@ import Testing
     label = (object("accessibilityLabel") as? String).flatMap { $0.isEmpty ? nil : $0 }
     value = text(object("accessibilityValue"))
     identifier = object("accessibilityIdentifier") as? String
+    help = object("accessibilityHelp") as? String
     selected = Self.call(element, "isAccessibilitySelected", as: Bool.self) ?? false
     frame = Self.call(element, "accessibilityFrame", as: CGRect.self) ?? .zero
     fontSizes =
