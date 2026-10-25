@@ -30,6 +30,25 @@ private func entry(_ match: GuideMatch, _ title: String) -> GuideEntry {
   }
 }
 
+@Test(arguments: [
+  #"{"name":"a","bundleId":"b"}"#,  // a known key beside a misspelled one
+  #"{"bundleId":"b"}"#,  // a misspelled key alone
+  #"{"name":""}"#,
+  #"{"helperPattern":""}"#,  // would match every process
+])
+func invalidMatchIsRejected(json: String) {
+  #expect(throws: DecodingError.self) {
+    try JSONDecoder().decode(GuideMatch.self, from: Data(json.utf8))
+  }
+}
+
+@Test func duplicateMatchIsReportedAsAnError() {
+  let entry = #"{"match":{"name":"a"},"title":"t","explanation":"e","kind":"app","quittable":true}"#
+  #expect(throws: GuideError.duplicateMatch(.name("a"))) {
+    try Guide.decode(Data("[\(entry),\(entry)]".utf8))
+  }
+}
+
 @Test func matchEncodesAsOneKeyObject() throws {
   let all: [GuideMatch] = [
     .name("a"), .bundleID("b"), .pathPrefix("/c"), .helperPattern("d"),

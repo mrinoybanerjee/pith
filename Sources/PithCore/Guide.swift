@@ -7,6 +7,7 @@ public enum GuideKind: String, Codable, Sendable { case app, helper, system }
 public enum GuideMatch: Codable, Hashable, Sendable {
   case name(String)
   case bundleID(String)
+  /// Should end in "/": "/Applications/Foo" would also match "/Applications/FooBar.app".
   case pathPrefix(String)
   case helperPattern(String)
 
@@ -24,16 +25,18 @@ public enum GuideMatch: Codable, Hashable, Sendable {
   }
 
   public init(from decoder: any Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    guard let key = container.allKeys.first, container.allKeys.count == 1 else {
+    // A keyed container lists only the known keys, so a misspelled key would go unseen.
+    let object = try decoder.singleValueContainer().decode([String: String].self)
+    guard object.count == 1, let (name, text) = object.first, let key = CodingKeys(rawValue: name),
+      !text.isEmpty
+    else {
       throw DecodingError.dataCorrupted(
         .init(
           codingPath: decoder.codingPath,
           debugDescription:
-            "Expected exactly one of \"name\", \"bundleID\", \"pathPrefix\" and \"helperPattern\"."
+            "Expected one non-empty \"name\", \"bundleID\", \"pathPrefix\" or \"helperPattern\"; found \(object)."
         ))
     }
-    let text = try container.decode(String.self, forKey: key)
     switch key {
     case .name: self = .name(text)
     case .bundleID: self = .bundleID(text)
@@ -46,6 +49,11 @@ public enum GuideMatch: Codable, Hashable, Sendable {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(parts.text, forKey: parts.key)
   }
+}
+
+public enum GuideError: Error, Equatable {
+  case missingResource(String)
+  case duplicateMatch(GuideMatch)
 }
 
 public struct GuideEntry: Codable, Sendable, Equatable {
@@ -66,7 +74,8 @@ public struct Guide: Sendable, Equatable {
   private let pathPrefixes: [GuideEntry]  // longest first
   private let helperPatterns: [GuideEntry]  // longest first
 
-  /// Two entries with the same match are a bug in the guide, so `init` traps on them.
+  /// Traps on two entries with the same match, as a backstop for hand-built guides. `bundled()`
+  /// reports a duplicate as an error before it gets here.
   public init(entries: [GuideEntry]) {
     self.entries = entries
     byMatch = Dictionary(uniqueKeysWithValues: entries.map { ($0.match, $0) })
@@ -75,8 +84,19 @@ public struct Guide: Sendable, Equatable {
   }
 
   public static func bundled() throws -> Guide {
-    let url = Bundle.module.url(forResource: "guide", withExtension: "json")!
-    return Guide(entries: try JSONDecoder().decode([GuideEntry].self, from: Data(contentsOf: url)))
+    guard let url = Bundle.module.url(forResource: "guide", withExtension: "json") else {
+      throw GuideError.missingResource("guide.json")
+    }
+    return try decode(Data(contentsOf: url))
+  }
+
+  static func decode(_ json: Data) throws -> Guide {
+    let entries = try JSONDecoder().decode([GuideEntry].self, from: json)
+    var seen = Set<GuideMatch>()
+    for entry in entries where !seen.insert(entry.match).inserted {
+      throw GuideError.duplicateMatch(entry.match)
+    }
+    return Guide(entries: entries)
   }
 
   /// A bundle ID match wins, then an exact name, then the longest path prefix. Helper patterns

@@ -10,7 +10,7 @@
   {
     "match": { "name": "WindowServer" },
     "title": "Window server",
-    "explanation": "Draws every window on your screen and sends your clicks and keys to the right app. Busy with many windows or large displays.",
+    "explanation": "Manages the windows on your screen, combines them into one picture and routes your clicks and key presses to the right app.",
     "kind": "system",
     "quittable": false,
     "source": "man:WindowServer(8)"
@@ -18,15 +18,15 @@
   {
     "match": { "name": "photoanalysisd" },
     "title": "Photos analysis",
-    "explanation": "Scans your photo library in the background to find people, places and objects for search. Normal after you add many photos.",
+    "explanation": "Analyzes your photo library in the background for Memories, People, and search by scene or object.",
     "kind": "system",
     "quittable": false,
     "source": "man:photoanalysisd(8)"
   },
   {
     "match": { "name": "kernel_task" },
-    "title": "macOS core",
-    "explanation": "The core of macOS. It also holds back the CPU on purpose to cool a hot Mac, so high use here is usually not a fault.",
+    "title": "CPU heat management",
+    "explanation": "Helps manage CPU temperature by making the CPU less available to busy processes. It reacts to heat and does not cause it.",
     "kind": "system",
     "quittable": false,
     "source": "https://support.apple.com/en-us/102172"
@@ -34,7 +34,7 @@
   {
     "match": { "name": "backupd" },
     "title": "Time Machine backup",
-    "explanation": "Makes Time Machine backups and keeps their history. Busy while a backup runs.",
+    "explanation": "Creates Time Machine backups and manages their history.",
     "kind": "system",
     "quittable": false,
     "source": "man:backupd(8)"
@@ -42,7 +42,7 @@
   {
     "match": { "name": "mdworker_shared" },
     "title": "Spotlight file scanning",
-    "explanation": "Reads new and changed files so Spotlight can search them. Many can run at once after updates or big copies.",
+    "explanation": "Scans and indexes files for Spotlight when a disk is mounted or a file changes.",
     "kind": "system",
     "quittable": false,
     "source": "man:mdworker(8)"
@@ -50,31 +50,31 @@
   {
     "match": { "name": "softwareupdated" },
     "title": "Software updates",
-    "explanation": "Runs macOS software updates. Busy for a while when an update downloads or installs.",
+    "explanation": "The main part of macOS that runs software updates.",
     "kind": "system",
     "quittable": false,
     "source": "man:softwareupdated(8)"
   },
   {
     "match": { "name": "cloudd" },
-    "title": "iCloud sync",
-    "explanation": "Syncs app data with iCloud. Busy when apps change a lot of data or after you sign in.",
+    "title": "iCloud (CloudKit)",
+    "explanation": "Supports CloudKit, the feature that lets apps store their data in iCloud.",
     "kind": "system",
     "quittable": false,
     "source": "man:cloudd(8)"
   },
   {
     "match": { "name": "bird" },
-    "title": "iCloud Drive",
-    "explanation": "Keeps your iCloud Drive files in sync. Busy during big uploads or downloads.",
+    "title": "iCloud documents",
+    "explanation": "Supports Documents in the Cloud, the feature that stores your documents in iCloud.",
     "kind": "system",
     "quittable": false,
     "source": "man:bird(8)"
   },
   {
     "match": { "name": "nsurlsessiond" },
-    "title": "Background transfers",
-    "explanation": "Does downloads and uploads for apps while they are in the background. Busy when apps sync or fetch large files.",
+    "title": "Background network tasks",
+    "explanation": "Performs network tasks for apps that set them to run in the background.",
     "kind": "system",
     "quittable": false,
     "source": "man:nsurlsessiond(8)"
