@@ -81,6 +81,12 @@ func unparseableRowThrows(row: String) {
   #expect(rows.map(\.uid) == [88, 0])
 }
 
+@Test func signedUIDIsReadAsUnsigned() throws {
+  // top prints the UID as a signed number: `nobody` is 4294967294, shown as -2.
+  let rows = try TopParser.parse(secondSample(rows: ["1 a 0.0 1M -2"]), excludingUID: 501)
+  #expect(rows.map(\.uid) == [4_294_967_294])
+}
+
 @Test func columnsAreFoundByHeader() throws {
   let rows = try TopParser.parse(
     secondSample(columns: "PID UID COMMAND MEM %CPU", rows: ["7 88 Some Name 3M 0.5"]),
@@ -156,7 +162,8 @@ func unparseableRowThrows(row: String) {
   let b = try await SystemDetails(
     guide: try .bundled(), nowNs: { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
   ).measure()
-  #expect(!b.items.isEmpty)
+  // Every process is listed, so a Mac always has more than 4 that are not the user's.
+  #expect(b.items.count == 4 && b.other > 0)
 }
 
 @Test func runTopFailsOnNonZeroExit() async {
@@ -169,11 +176,11 @@ func unparseableRowThrows(row: String) {
   #expect(output.utf8.count > 65_536)
 }
 
-@Test func runTopStopsTopAfterThreeSeconds() async {
+@Test func runTopStopsTopAfterTheTimeout() async {
   let start = ContinuousClock.now
   await #expect(throws: SystemDetailsError.self) {
-    try await SystemDetails.runTop(["-l", "100", "-s", "1"])  // would run for 100 s
+    try await SystemDetails.runTop(["-l", "100", "-s", "1"], timeout: 0.5)  // would run for 100 s
   }
-  #expect(ContinuousClock.now - start >= .seconds(3))
+  #expect(ContinuousClock.now - start >= .seconds(0.5))
   #expect(ContinuousClock.now - start < .seconds(10))
 }
