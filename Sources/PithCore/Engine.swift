@@ -50,6 +50,9 @@ public actor Engine {
     return tick(mode: .open)
   }
 
+  /// The table of the last open tick, for the per-process debug output of `--snapshot-json`.
+  public var lastTable: ProcessTable? { previousTable }
+
   /// The next open tick has no previous table, so it shows no CPU or disk rates yet. The next system
   /// CPU reading is a first sample too, so none averages over the gap, for example after wake.
   public func resetBaseline() {

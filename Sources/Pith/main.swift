@@ -3,7 +3,8 @@ import PithCore
 
 // The debug modes (spec 10, R128, R129) run and then exit. None makes a status item, so none
 // starts a second Pith next to the one running:
-// - `--snapshot-json`: two open readings 1 s apart; the second as JSON on stdout;
+// - `--snapshot-json <seconds>`: two open readings that many seconds apart; the second as JSON on
+//   stdout, with each process's footprint and CPU share between them (R138);
 // - `--benchmark-sweep <n>`: the mean and longest time of n open readings back to back;
 // - `--render-panel <dir>`: the real panel with the second of two live open readings 1 s apart,
 //   in light and dark, as real-light.png and real-dark.png. They show real process names, so they
@@ -31,11 +32,40 @@ func argument(after flag: String) -> String? {
   dispatchMain()
 }
 
-func liveSnapshot() async -> Snapshot {
+/// The second of two open readings `seconds` apart, and each of its processes by PID: its
+/// footprint, and its share of the whole Mac between the readings when it ran the same executable
+/// in both, as the engine counts it (R132). For `scripts/accuracy.sh`, which compares only the
+/// PIDs that `top` saw too (R138).
+struct LiveReading: Encodable {
+  struct Process: Encodable {
+    let footprint: UInt64
+    let cpu: Double?
+  }
+
+  let snapshot: Snapshot
+  let processes: [String: Process]
+}
+
+func liveReading(_ seconds: Double) async -> LiveReading {
   let engine = Engine.live(SystemReader(), guide: try! Guide.bundled(in: .main))
   _ = await engine.tick(mode: .open)
-  try! await Task.sleep(for: .seconds(1))
-  return await engine.tick(mode: .open)
+  let first = await engine.lastTable!
+  try! await Task.sleep(for: .seconds(seconds))
+  let snapshot = await engine.tick(mode: .open)
+  let second = await engine.lastTable!
+  let before = Dictionary(uniqueKeysWithValues: first.samples.map { ($0.key.pid, $0) })
+  let wallNs = Double(second.takenAtNs - first.takenAtNs)
+  let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
+  return LiveReading(
+    snapshot: snapshot,
+    processes: Dictionary(
+      uniqueKeysWithValues: second.samples.map { s in
+        let p = before[s.key.pid].flatMap {
+          $0.key == s.key && $0.executableID == s.executableID ? $0 : nil
+        }
+        let cpu = p.map { Double(s.cpuTimeNs - $0.cpuTimeNs) / (wallNs * cores) }
+        return ("\(s.key.pid)", LiveReading.Process(footprint: s.footprint, cpu: cpu))
+      }))
 }
 
 /// The first reading fills the path cache and is not counted (R21).
@@ -81,13 +111,15 @@ func benchmark(_ count: Int) async -> String {
 var delegate: AppDelegate?
 // The `--demo` panel.
 var demo: PanelController?
-if arguments.contains("--snapshot-json") {
-  runAndExit { FileHandle.standardOutput.write(try! JSONEncoder().encode(await liveSnapshot())) }
+if let seconds = argument(after: "--snapshot-json") {
+  runAndExit {
+    FileHandle.standardOutput.write(try! JSONEncoder().encode(await liveReading(Double(seconds)!)))
+  }
 } else if let count = argument(after: "--benchmark-sweep") {
   runAndExit { print(await benchmark(Int(count)!)) }
 } else if let dir = argument(after: "--render-panel") {
   runAndExit(appKit: true) {
-    let snapshot = await liveSnapshot()
+    let snapshot = await liveReading(1).snapshot
     try! FileManager.default.createDirectory(
       atPath: dir, withIntermediateDirectories: true)
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
