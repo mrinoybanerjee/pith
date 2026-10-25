@@ -739,7 +739,8 @@ extension NativeInteractionTests {
   }
 
   /// R106: closing a pinned panel drops its pending check, so a panel closed within 0.25 s of a
-  /// move is neither clamped nor saved when the button comes up.
+  /// move is neither clamped nor saved when the button comes up. The check is against the origin
+  /// AppKit accepted for the move, which may differ from the one asked for (R131).
   @Test func closingAPinnedPanelDropsItsPendingClamp() async throws {
     defer { clearDefaults() }
     let (controller, checks, mouse) = try await hostPinnedPanel()
@@ -748,11 +749,12 @@ extension NativeInteractionTests {
     mouse.down = true
     w.setFrameOrigin(origin)
     await settle()
+    let accepted = w.frame.origin
     try clickStatusItem(of: w)
     #expect(!w.isVisible && w.isMovableByWindowBackground)  // closed, and still pinned
     mouse.down = false
     await checks.fire()
-    #expect(w.frame.origin == origin)
+    #expect(w.frame.origin == accepted)
     #expect(UserDefaults(suiteName: testSuite())!.pinnedFrame == nil)
   }
 
