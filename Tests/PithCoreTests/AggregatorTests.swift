@@ -35,13 +35,14 @@ private func snap(fixture: String, memoryUsed: UInt64 = 16 << 30) -> Snapshot {
 /// A process of `/Applications/<app>.app` with 64 MB; its kernel name is `file` cut to 16 bytes.
 private func process(
   _ pid: Int32, start: UInt64 = 1_000, app: String = "Notes", file: String? = nil,
-  cpu: UInt64 = 0, read: UInt64 = 0, written: UInt64 = 0, memory: UInt64 = 64 << 20
+  executable: UInt8 = 0, cpu: UInt64 = 0, read: UInt64 = 0, written: UInt64 = 0,
+  memory: UInt64 = 64 << 20
 ) -> ProcessSample {
   let file = file ?? app
   return ProcessSample(
     key: ProcessKey(pid: pid, startTime: start), parent: 1, uid: 501, name: String(file.prefix(16)),
-    path: "/Applications/\(app).app/Contents/MacOS/\(file)", footprint: memory, cpuTimeNs: cpu,
-    diskRead: read, diskWritten: written)
+    path: "/Applications/\(app).app/Contents/MacOS/\(file)", executableID: .executable(executable),
+    footprint: memory, cpuTimeNs: cpu, diskRead: read, diskWritten: written)
 }
 
 private func table(_ samples: [ProcessSample], at ns: UInt64) -> ProcessTable {
@@ -229,6 +230,13 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   )
   #expect(s.apps[0].cpu == .unavailable("first sample"))
   #expect(s.apps[0].diskBytesPerSecond == .unavailable("first sample"))
+}
+
+@Test func cpuDiffsAcrossAnExec() {  // the same task runs a new executable, and its counters go on
+  let s = snap(
+    previous: table([process(300)], at: 0),
+    current: table([process(300, executable: 1, cpu: 2_000_000_000)], at: 1_000_000_000))
+  #expect(s.apps[0].cpu == .value(0.2))
 }
 
 @Test func zeroMemoryResidualIsAValue() {

@@ -2,6 +2,7 @@
 // Copyright (c) 2020 Serhiy Mytrovtsiy. Source: Modules/Disk/readers.swift L448-L457 at v3.0.22 (1282cd5).
 
 import Darwin
+import Foundation
 import System
 import os
 
@@ -79,12 +80,13 @@ public struct ProcessProbe: Sendable {
 }
 
 /// Reads the user's own processes in-process: one PID listing, then the short BSD info of each
-/// PID and `proc_pid_rusage` for those owned by `uid`. Paths are read once per `ProcessKey`.
+/// PID and `proc_pid_rusage` for those owned by `uid`. Paths are read once per `ExecutableKey`,
+/// so again after an `exec`.
 public final class LibprocProcessTable: ProcessTableReading {
   private let probe: ProcessProbe
   private let uid: UInt32
   private let timebase: MachTimebase
-  private let pathCache = OSAllocatedUnfairLock(initialState: [ProcessKey: String]())
+  private let pathCache = OSAllocatedUnfairLock(initialState: [ExecutableKey: String]())
 
   public init(
     probe: ProcessProbe = .live, uid: UInt32 = getuid(), timebase: MachTimebase = .current
@@ -99,7 +101,7 @@ public final class LibprocProcessTable: ProcessTableReading {
       let takenAtNs = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
       var samples: [ProcessSample] = []
       samples.reserveCapacity(cache.count)
-      var seen = [ProcessKey: String](minimumCapacity: cache.count)
+      var seen = [ExecutableKey: String](minimumCapacity: cache.count)
       var vanished = 0
       for pid in probe.listPIDs() {
         // A PID that exited before its info read has no known owner, so it is not `vanished`.
@@ -117,13 +119,14 @@ public final class LibprocProcessTable: ProcessTableReading {
         }
         let start = timebase.nanoseconds(fromTicks: usage.ri_proc_start_abstime) / 1_000
         let key = ProcessKey(pid: pid, startTime: start)
-        // "" when the path can't be read (a deleted executable). Cached, so it is read once.
-        let path = cache[key] ?? probe.path(pid) ?? ""
-        seen[key] = path
+        let executable = ExecutableKey(process: key, executableID: UUID(uuid: usage.ri_uuid))
+        // "" when the path can't be read (a deleted executable). Read once per executable.
+        let path = cache[executable] ?? probe.path(pid) ?? ""
+        seen[executable] = path
         samples.append(
           ProcessSample(
             key: key, parent: info.parent, uid: uid, name: info.name, path: path,
-            footprint: usage.ri_phys_footprint,
+            executableID: executable.executableID, footprint: usage.ri_phys_footprint,
             cpuTimeNs: timebase.nanoseconds(fromTicks: usage.ri_user_time + usage.ri_system_time),
             diskRead: usage.ri_diskio_bytesread, diskWritten: usage.ri_diskio_byteswritten))
       }

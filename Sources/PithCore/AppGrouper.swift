@@ -9,7 +9,7 @@ import System
 public struct AppGrouper: Sendable {
   private let responsible: (@Sendable (Int32) -> Int32?)?
   private let bundleInfo: @Sendable (String) -> (bundleID: String, name: String)?
-  private var cache: [ProcessKey: AppIdentity] = [:]
+  private var cache: [ExecutableKey: AppIdentity] = [:]
 
   /// `responsible` is nil when the responsibility call is missing. `bundleInfo` reads an `.app`.
   public init(
@@ -58,9 +58,9 @@ public struct AppGrouper: Sendable {
       .map { String(path[..<$0.endIndex]) }
   }
 
-  /// The app of each process in `t`. Each `ProcessKey` is grouped once, and keys not in `t` leave
-  /// the cache, so it holds only live processes. A reused PID has a new start time, so a new key.
-  /// A PID that appears twice in `t` traps.
+  /// The app of each process in `t`. Each `ExecutableKey` is grouped once, and keys not in `t`
+  /// leave the cache, so it holds only live processes. A reused PID has a new start time and an
+  /// `exec` a new executable ID, so either is a new key. A PID that appears twice in `t` traps.
   ///
   /// Then a Chromium clone (the only identity with a bundle ID and no path) takes the identity of
   /// the one installation in `t` with its bundle ID; with none or several, it stays apart. That
@@ -68,8 +68,13 @@ public struct AppGrouper: Sendable {
   public mutating func assign(_ t: ProcessTable) -> [ProcessKey: AppIdentity] {
     let table = Dictionary(uniqueKeysWithValues: t.samples.map { ($0.key.pid, $0) })
     var groups = [ProcessKey: AppIdentity](minimumCapacity: t.samples.count)
-    for s in t.samples { groups[s.key] = cache[s.key] ?? group(s, table) }
-    cache = groups
+    var live = [ExecutableKey: AppIdentity](minimumCapacity: t.samples.count)
+    for s in t.samples {
+      let app = cache[s.executableKey] ?? group(s, table)
+      groups[s.key] = app
+      live[s.executableKey] = app
+    }
+    cache = live
     let clones = groups.filter { $0.value.bundlePath == nil && $0.value.bundleID != nil }
     guard !clones.isEmpty else { return groups }
     let cloneIDs = Set(clones.values.map(\.bundleID))

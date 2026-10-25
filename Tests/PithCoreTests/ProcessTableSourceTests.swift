@@ -61,6 +61,7 @@ import os
   usage.ri_system_time = 600_000  // 0.1 s together
   usage.ri_diskio_bytesread = 3
   usage.ri_diskio_byteswritten = 4
+  usage.ri_uuid.0 = 9
   var probe = ProcessProbe.fake(pids: [10], uid: 501)
   probe.rusage = { [usage] _ in .success(usage) }
   let table = LibprocProcessTable(
@@ -69,9 +70,26 @@ import os
     table.readTable().samples == [
       ProcessSample(
         key: ProcessKey(pid: 10, startTime: 1_000_000), parent: 1, uid: 501, name: "fake",
-        path: "/Applications/Fake.app/Contents/MacOS/Fake", footprint: 7, cpuTimeNs: 100_000_000,
-        diskRead: 3, diskWritten: 4)
+        path: "/Applications/Fake.app/Contents/MacOS/Fake", executableID: .executable(9),
+        footprint: 7, cpuTimeNs: 100_000_000, diskRead: 3, diskWritten: 4)
     ])
+}
+
+@Test func execReadsThePathAgain() {  // an exec keeps the PID and start time: a shell runs Python
+  let image = OSAllocatedUnfairLock(initialState: UInt8(1))
+  var probe = ProcessProbe.fake(pids: [10], uid: 501)
+  probe.rusage = { _ in
+    var usage = rusage_info_v6.fake(footprint: 1)
+    usage.ri_uuid.0 = image.withLock { $0 }
+    return .success(usage)
+  }
+  probe.path = { _ in image.withLock { $0 } == 1 ? "/bin/zsh" : "/usr/bin/python3" }
+  let table = LibprocProcessTable(probe: probe, uid: 501)
+  let shell = table.readTable().samples[0]
+  image.withLock { $0 = 2 }
+  let python = table.readTable().samples[0]
+  #expect(shell.key == python.key && shell.executableID != python.executableID)
+  #expect([shell.path, python.path] == ["/bin/zsh", "/usr/bin/python3"])
 }
 
 @Test func pathIsReadOncePerKeyAndEvictedWhenGone() {
