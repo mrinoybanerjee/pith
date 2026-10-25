@@ -48,12 +48,29 @@ private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1
 }
 
 @Test func chromeIsOneApp() {
-  let g = grouped("chrome")
-  #expect(Set(g.values.map(\.id)) == ["com.google.Chrome"])
-  #expect(Set((101...105).map { g[key($0)]?.bundlePath }) == ["/Applications/Google Chrome.app"])
-  // The main process runs from a temporary code-sign clone, so it joins by bundle ID, pathless.
-  #expect(
-    g[key(100)] == AppIdentity(id: "com.google.Chrome", name: "Google Chrome", bundlePath: nil))
+  let chrome = AppIdentity(
+    id: "/Applications/Google Chrome.app", name: "Google Chrome",
+    bundlePath: "/Applications/Google Chrome.app", bundleID: "com.google.Chrome")
+  // The main process runs from a temporary code-sign clone, so it adopts the one installation.
+  for g in [grouped("chrome"), grouped("chrome", limited: true)] {
+    #expect(g.count == 6 && g.values.allSatisfy { $0 == chrome })
+  }
+}
+
+@Test func cloneJoinsOnlyASingleInstallation() {  // R52
+  let clone = AppIdentity(
+    id: "clone:com.google.Chrome", name: "Google Chrome", bundlePath: nil,
+    bundleID: "com.google.Chrome")
+  let chrome = Fixture.table("chrome")
+  let alone = ProcessTable(samples: [chrome.samples[0]], takenAtNs: 0, vanished: 0)
+  var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
+  // The cache keeps the clone, so it joins and leaves its installation as the table changes.
+  #expect(a.assign(alone)[key(100)] == clone)
+  #expect(a.assign(chrome)[key(100)]?.id == "/Applications/Google Chrome.app")
+  #expect(a.assign(alone)[key(100)] == clone)
+  let two = a.assign(Fixture.table("clone-two-installs"))  // Chrome in two places
+  #expect(two[key(100)] == clone)
+  #expect(two[key(102)]?.id == "/Volumes/Demo/Google Chrome.app")
 }
 
 @Test func xcodeXPCServicesFoldIntoXcode() {
@@ -77,8 +94,8 @@ private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1
 
 @Test func responsibleStepFallsThrough() {
   let g = grouped("precedence")
-  #expect(g[key(303)]?.id == "com.example.Slack")  // its responsible PID is not in the table
-  #expect(g[key(304)]?.id == "com.example.Codex")  // its responsible process has no app
+  #expect(g[key(303)]?.id == "/Applications/Slack.app")  // its responsible PID is not in the table
+  #expect(g[key(304)]?.id == "/Applications/Codex.app")  // its responsible process has no app
 }
 
 @Test func reusedResponsiblePIDIsIgnored() {  // 307 started after 306, so it reuses the PID
@@ -86,7 +103,7 @@ private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1
 }
 
 @Test func ownAppBeatsParentApp() {
-  #expect(grouped("precedence", limited: true)[key(302)]?.id == "com.apple.Preview")
+  #expect(grouped("precedence", limited: true)[key(302)]?.id == "/System/Applications/Preview.app")
 }
 
 @Test func selfResponsibleNestedAppStandsAlone() {  // R28
@@ -107,16 +124,18 @@ private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1
   var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
   _ = a.assign(Fixture.table("reuse-before"))
   let after = a.assign(Fixture.table("reuse-after"))
-  #expect(after[ProcessKey(pid: 77, startTime: 2_000)]?.id == "com.example.Slack")
+  #expect(after[ProcessKey(pid: 77, startTime: 2_000)]?.id == "/Applications/Slack.app")
 }
 
-@Test func sameNameDifferentPathsStayApart() {  // Review Focus 4
-  let g = grouped("same-name")  // /Applications/Notes.app and /Volumes/Demo/Notes.app
+@Test func sameNameDifferentPathsStayApart() {  // Review Focus 4 and R52
+  // /Applications/Notes.app and /Volumes/Demo/Notes.app, both com.example.Notes
+  let g = grouped("same-name")
   #expect(Set(g.values.map(\.id)).count == 2)
   #expect(
     g[key(81)]
       == AppIdentity(
-        id: "/Volumes/Demo/Notes.app", name: "Notes", bundlePath: "/Volumes/Demo/Notes.app"))
+        id: "/Volumes/Demo/Notes.app", name: "Notes", bundlePath: "/Volumes/Demo/Notes.app",
+        bundleID: "com.example.Notes"))
 }
 
 @Test func missingResponsibilityCallIsLimited() {
@@ -130,10 +149,13 @@ private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1
   let g = grouped("unreadable-path")
   #expect(g[key(601)]?.name == "Slack")
   #expect(grouped("unreadable-path", limited: true)[key(601)]?.name == "Slack")
-  #expect(g[key(602)] == AppIdentity(id: "proc:gone", name: "gone", bundlePath: nil))
+  #expect(
+    g[key(602)] == AppIdentity(id: "proc:gone", name: "gone", bundlePath: nil, bundleID: nil))
   // A clone with no readable bundle is no app, so its temporary path never becomes an id.
   #expect(
-    g[key(603)] == AppIdentity(id: "proc:Brave Browser", name: "Brave Browser", bundlePath: nil))
+    g[key(603)]
+      == AppIdentity(
+        id: "proc:Brave Browser", name: "Brave Browser", bundlePath: nil, bundleID: nil))
 }
 
 @Test func parentChainStopsAfterFiveLevels() {
@@ -171,6 +193,6 @@ private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1
   #expect(
     a.assign(ProcessTable(samples: [finder], takenAtNs: 0, vanished: 0))[finder.key]
       == AppIdentity(
-        id: "com.apple.finder", name: "Finder",
-        bundlePath: "/System/Library/CoreServices/Finder.app"))
+        id: "/System/Library/CoreServices/Finder.app", name: "Finder",
+        bundlePath: "/System/Library/CoreServices/Finder.app", bundleID: "com.apple.finder"))
 }

@@ -78,16 +78,20 @@ public struct SystemTotals: Sendable, Equatable, Codable {
 }
 
 public struct AppIdentity: Sendable, Equatable {
-  /// The bundle ID, else the `.app` path, else "proc:" and the executable's file name (the kernel
-  /// name only when `path` is "").
+  /// A bundled app's `.app` path, so separate installations of one app stay apart. A Chromium
+  /// clone takes the id of the one installation in the same table with its bundle ID, else it is
+  /// "clone:" and the bundle ID. Any other process is "proc:" and its executable's file name (the
+  /// kernel name only when `path` is "").
   public let id: String
   public let name: String
   public let bundlePath: String?
+  public let bundleID: String?  // nil when there is no bundle or it cannot be read
 
-  public init(id: String, name: String, bundlePath: String?) {
+  public init(id: String, name: String, bundlePath: String?, bundleID: String?) {
     self.id = id
     self.name = name
     self.bundlePath = bundlePath
+    self.bundleID = bundleID
   }
 }
 
@@ -104,11 +108,14 @@ public struct HelperGroup: Sendable, Equatable, Codable {
 }
 
 public struct AppUsage: Sendable, Equatable, Codable, Identifiable {
-  /// The bundle ID, else the `.app` path, else "proc:" and the executable's file name (the kernel
-  /// name only when `path` is "").
+  /// A bundled app's `.app` path, so separate installations of one app stay apart. A Chromium
+  /// clone takes the id of the one installation in the same table with its bundle ID, else it is
+  /// "clone:" and the bundle ID. Any other process is "proc:" and its executable's file name (the
+  /// kernel name only when `path` is "").
   public let id: String
   public let name: String
   public let bundlePath: String?
+  public let bundleID: String?
   public let pids: [Int32]
   public let processCount: Int
   public let memory: UInt64
@@ -117,13 +124,14 @@ public struct AppUsage: Sendable, Equatable, Codable, Identifiable {
   public let inside: [HelperGroup]
 
   public init(
-    id: String, name: String, bundlePath: String?, pids: [Int32], processCount: Int,
-    memory: UInt64, cpu: Reading<Double>, diskBytesPerSecond: Reading<Double>,
+    id: String, name: String, bundlePath: String?, bundleID: String?, pids: [Int32],
+    processCount: Int, memory: UInt64, cpu: Reading<Double>, diskBytesPerSecond: Reading<Double>,
     inside: [HelperGroup]
   ) {
     self.id = id
     self.name = name
     self.bundlePath = bundlePath
+    self.bundleID = bundleID
     self.pids = pids
     self.processCount = processCount
     self.memory = memory

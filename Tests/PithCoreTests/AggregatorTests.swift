@@ -126,10 +126,10 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   #expect(s.apps[0].processCount == 3 && s.apps[0].memory == 3 * 64 << 20)
 }
 
-@Test func rowTakesItsPathFromAMemberThatHasOne() {
-  // The clone main process comes first and has no bundlePath; its helpers have one.
-  #expect(
-    snap(fixture: "chrome-usage").apps.map(\.bundlePath) == ["/Applications/Google Chrome.app"])
+@Test func rowCopiesItsIdentity() {  // the clone main process comes first
+  let chrome = snap(fixture: "chrome-usage").apps[0]
+  #expect(chrome.id == "/Applications/Google Chrome.app" && chrome.name == "Google Chrome")
+  #expect(chrome.bundlePath == chrome.id && chrome.bundleID == "com.google.Chrome")
 }
 
 @Test func insideUsesFileNamesAndBreaksTiesByLabel() {  // not the 16-byte kernel names
@@ -157,7 +157,10 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
         process(3, app: "Claude", memory: 1 << 30),
       ],
       at: 0))
-  #expect(s.apps.map(\.id) == ["com.example.Claude", "com.example.Notes", "com.example.Slack"])
+  #expect(
+    s.apps.map(\.id) == [
+      "/Applications/Claude.app", "/Applications/Notes.app", "/Applications/Slack.app",
+    ])
 }
 
 @Test func cpuResidualIsBusyMinusApps() { #expect(cpuResidual(busy: .value(0.5)) == .value(0.25)) }
@@ -187,7 +190,7 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
         process(300, cpu: 2_500_000_000),
         process(400, app: "Slack", cpu: 1_000_000_000, read: 1_000),
       ], at: 1_000_000_000))
-  #expect(s.apps.map(\.id) == ["com.example.Notes", "com.example.Slack"])
+  #expect(s.apps.map(\.id) == ["/Applications/Notes.app", "/Applications/Slack.app"])
   #expect(s.apps.map(\.cpu) == [.value(0.25), .unavailable("first sample")])
   #expect(s.apps.map(\.diskBytesPerSecond) == [.value(0), .unavailable("first sample")])
   #expect(s.system.value?.cpu == .value(0.25))  // Slack's first second stays in the residual

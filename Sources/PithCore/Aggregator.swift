@@ -42,8 +42,7 @@ public enum Aggregator {
       grouping: grouping)
   }
 
-  /// One app's row. Its path is the first member path that is not nil (a Chromium clone's main
-  /// process has none). Inside, processes group by helper label, else by their own file name.
+  /// One app's row. Inside, processes group by helper label, else by their own file name.
   private static func usage(
     _ members: [ProcessSample], _ groups: [ProcessKey: AppIdentity], _ baseline: Baseline?,
     _ cpuCount: Int, _ guide: Guide
@@ -73,7 +72,7 @@ public enum Aggregator {
     .sorted { $0.memory != $1.memory ? $0.memory > $1.memory : $0.label < $1.label }
     return AppUsage(
       id: identity.id, name: identity.name,
-      bundlePath: members.lazy.compactMap { groups[$0.key]!.bundlePath }.first,
+      bundlePath: identity.bundlePath, bundleID: identity.bundleID,
       pids: members.map(\.key.pid), processCount: members.count, memory: footprint(members),
       cpu: cpu, diskBytesPerSecond: disk, inside: inside)
   }

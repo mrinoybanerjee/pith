@@ -18,11 +18,11 @@ enum Fixture {
   }
 
   /// The bundles the table fixtures use. Any other `.app` has no readable bundle.
-  static func bundleInfo(_ appPath: String) -> (id: String, name: String)? {
+  static func bundleInfo(_ appPath: String) -> (bundleID: String, name: String)? {
     bundles[appPath]
   }
 
-  private static let bundles: [String: (id: String, name: String)] = [
+  private static let bundles: [String: (bundleID: String, name: String)] = [
     "/Applications/Google Chrome.app": ("com.google.Chrome", "Google Chrome"),
     "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app.bundle": (
       "com.google.Chrome", "Google Chrome"
@@ -37,6 +37,8 @@ enum Fixture {
     "/Applications/Slack.app": ("com.example.Slack", "Slack"),
     "/System/Applications/Preview.app": ("com.apple.Preview", "Preview"),
     "/Applications/Notes.app": ("com.example.Notes", "Notes"),
+    "/Volumes/Demo/Notes.app": ("com.example.Notes", "Notes"),
+    "/Volumes/Demo/Google Chrome.app": ("com.google.Chrome", "Google Chrome"),
   ]
 }
 

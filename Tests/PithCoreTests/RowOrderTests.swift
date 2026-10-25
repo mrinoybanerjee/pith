@@ -7,8 +7,8 @@ private func usage(
   disk: Reading<Double> = .unavailable("first sample")
 ) -> AppUsage {
   AppUsage(
-    id: id, name: id, bundlePath: nil, pids: [], processCount: 1, memory: mem, cpu: cpu,
-    diskBytesPerSecond: disk, inside: [])
+    id: id, name: id, bundlePath: nil, bundleID: nil, pids: [], processCount: 1, memory: mem,
+    cpu: cpu, diskBytesPerSecond: disk, inside: [])
 }
 
 @Test func rowsKeepOrderWithinTwoPercent() {

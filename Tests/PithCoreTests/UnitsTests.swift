@@ -88,9 +88,9 @@ import Testing
       cpuBusy: .value(0.38), storageFree: .unavailable("no volume"), storageTotal: .value(500)),
     apps: [
       AppUsage(
-        id: "com.example.Browser", name: "Browser", bundlePath: "/Applications/Browser.app",
-        pids: [300, 301], processCount: 2, memory: 3 << 30, cpu: .unavailable("first tick"),
-        diskBytesPerSecond: .value(1024),
+        id: "/Applications/Browser.app", name: "Browser", bundlePath: "/Applications/Browser.app",
+        bundleID: "com.example.Browser", pids: [300, 301], processCount: 2, memory: 3 << 30,
+        cpu: .unavailable("first tick"), diskBytesPerSecond: .value(1024),
         inside: [HelperGroup(label: "Tabs and sites", count: 1, memory: 1 << 30)])
     ],
     system: .value(SystemResidual(memory: 1 << 30, cpu: .value(0.01))),

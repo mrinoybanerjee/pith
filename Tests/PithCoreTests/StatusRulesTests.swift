@@ -4,8 +4,8 @@ import Testing
 
 private func app(_ name: String, memory: UInt64, processes: Int, cpu: Reading<Double>) -> AppUsage {
   AppUsage(
-    id: name, name: name, bundlePath: nil, pids: [], processCount: processes, memory: memory,
-    cpu: cpu, diskBytesPerSecond: .unavailable("first sample"), inside: [])
+    id: name, name: name, bundlePath: nil, bundleID: nil, pids: [], processCount: processes,
+    memory: memory, cpu: cpu, diskBytesPerSecond: .unavailable("first sample"), inside: [])
 }
 
 private let chrome = app(
