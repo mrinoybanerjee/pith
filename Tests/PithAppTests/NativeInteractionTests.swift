@@ -509,12 +509,13 @@ private let quitSentence = "Quit Google Chrome? It can ask you to save first."
   view as? NSScrollView ?? view.subviews.lazy.compactMap(scrollView).first
 }
 
-/// Whether the button `label` shows whole in the list, not scrolled out of it.
+/// Whether the button `label` shows whole in the list, not scrolled out of it. A button that is
+/// not there yet does not show; `eventually` polls with this.
 @MainActor private func showsInTheList(_ label: String, in w: NSWindow) -> Bool {
-  guard let button = try? buttonFrame(label, in: w), let list = try? listFrame(in: w) else {
-    return false
-  }
-  return list.contains(button)
+  guard let button = axInteractiveElements(in: w).first(where: { $0.label == label }),
+    let list = scrollView(in: w.contentView!)
+  else { return false }
+  return list.convert(list.bounds, to: nil).contains(w.convertFromScreen(button.frame))
 }
 
 extension NativeInteractionTests {
@@ -525,7 +526,9 @@ extension NativeInteractionTests {
     test: String = #function
   ) async throws -> (NSWindow, Store, FakeRunningApps) {
     let apps = FakeRunningApps(
-      snapshot.apps.map { FakeApp(pid: $0.pids[0], bundlePath: $0.bundlePath!) })
+      snapshot.apps.map {
+        FakeApp(pid: $0.pids[0], bundlePath: $0.bundlePath!, bundleID: $0.bundleID)
+      })
     let (w, store) = try hostPanelWithStore(
       snapshot, appearance: appearance, store: apps.store(guide: Guide.bundled()), test: test)
     store.toggle(try #require(store.rows.first { $0.name == name }).id)
@@ -553,7 +556,7 @@ extension NativeInteractionTests {
     let spoken = axNodes(in: w).compactMap(\.spoken)
     let sentence = try #require(spoken.firstIndex(of: quitSentence))
     #expect(Array(spoken[(sentence + 1)...].prefix(2)) == ["Cancel", "Quit"])
-    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
     #expect(chrome.terminations == 0)
     apps.passTheConfirmGuard()
     sendKey("↩", to: w)
@@ -569,7 +572,7 @@ extension NativeInteractionTests {
     let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
     let chrome = try target(apps, store)
     try press("Quit", in: w)
-    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
     apps.nowNs += 399_000_000
     try press("Quit", in: w)
     sendKey("↩", to: w)
@@ -606,7 +609,7 @@ extension NativeInteractionTests {
     let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
     let chrome = try target(apps, store)
     try press("Quit", in: w)
-    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
     apps.passTheConfirmGuard()
     sendKey("↓", to: w)
     #expect(store.quitFlow.state == .idle && store.selectedRowID == nil)
@@ -617,10 +620,10 @@ extension NativeInteractionTests {
     #expect(chrome.terminations == 0 && store.quitFlow.state == .idle)
   }
 
-  /// R94: Return presses the default button only while it shows whole in the list. The list
-  /// scrolls as the app scrolls it, to a selected row: to Google Chrome at the top, which takes
-  /// Slack's confirm out of view, and to the last row, which brings it back. Out of view, Return
-  /// does nothing; in view, it quits.
+  /// R94 and R101: Return presses the default button only while it shows whole in the list. The
+  /// list scrolls as the app scrolls it, to a selected row: to Google Chrome at the top, which
+  /// takes Slack's confirm out of view, and to the last row, which brings it back. Out of view,
+  /// Return does nothing. Back in view, the button's 0.4 s start again, and then Return quits.
   @Test func returnDoesNothingWhileTheConfirmIsScrolledAway() async throws {
     defer { clearDefaults() }
     let (w, store, apps) = try await hostOpened("Slack", in: DemoSnapshots.calm)
@@ -636,6 +639,9 @@ extension NativeInteractionTests {
     #expect(slack.terminations == 0 && store.quitFlow.state == .confirming)
     store.moveSelection(10)  // "macOS system"
     #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
+    sendKey("↩", to: w)
+    #expect(slack.terminations == 0)
+    apps.passTheConfirmGuard()
     sendKey("↩", to: w)
     #expect(slack.terminations == 1)
   }
@@ -778,12 +784,16 @@ extension NativeInteractionTests {
     }
   }
 
-  /// R91: Settings end with Quit Pith, and ⌘Q quits Pith while the panel is key, at once.
+  /// R91 and R101: Settings end with Quit Pith, and ⌘Q quits Pith while the panel is key, at
+  /// once. While a confirm shows, ⌘Q does nothing, as it could be read as the confirm's Quit.
   @Test func quitPithInSettingsAndCommandQ() async throws {
     defer { clearDefaults() }
-    let apps = FakeRunningApps([])
-    let (w, store) = try hostPanelWithStore(
-      DemoSnapshots.calm, store: apps.store(guide: Guide.bundled()))
+    let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    sendKey("q", modifiers: .command, to: w)
+    #expect(apps.pithQuits == 0 && store.quitFlow.state == .confirming)
+    sendKey("⎋", to: w)
     sendKey("q", modifiers: .command, to: w)
     #expect(apps.pithQuits == 1)
     store.showingSettings = true
@@ -791,6 +801,69 @@ extension NativeInteractionTests {
       try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == "Quit Pith" } })
     try press("Quit Pith", in: w)
     #expect(apps.pithQuits == 2)
+  }
+
+  /// R101: back from Settings, the confirm's default button waits 0.4 s again before Return or
+  /// VoiceOver can press it.
+  @Test func aConfirmBackFromSettingsWaitsAgain() async throws {
+    defer { clearDefaults() }
+    let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    let chrome = try target(apps, store)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { store.confirmButtonInView })
+    apps.passTheConfirmGuard()
+    store.showingSettings = true
+    #expect(try await eventually(w) { !store.confirmButtonInView })
+    store.showingSettings = false
+    #expect(try await eventually(w) { store.confirmButtonInView })
+    sendKey("↩", to: w)
+    try press("Quit", in: w)
+    #expect(chrome.terminations == 0 && store.quitFlow.state == .confirming)
+    apps.passTheConfirmGuard()
+    sendKey("↩", to: w)
+    #expect(chrome.terminations == 1)
+  }
+
+  /// R101: a pinned panel tells the store whether other windows cover it, as the speed does, so
+  /// a confirm on a covered panel cannot be pressed. An attached panel never counts as covered.
+  @Test func aPinnedPanelReportsWhetherItIsCovered() async throws {
+    defer { clearDefaults() }
+    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
+    #expect(!store.panelCovered)
+    store.pinned = true
+    #expect(try await eventually(w) { w.isMovableByWindowBackground })
+    #expect(store.panelCovered == !w.occlusionState.contains(.visible))
+  }
+
+  /// R102: a row opened again shows itself, and a later reading that changes what is inside it
+  /// does not scroll the list. Tight's Slack opens at the list's bottom edge.
+  @Test func aReadingAfterAReopenDoesNotScroll() async throws {
+    defer { clearDefaults() }
+    let (w, store, _) = try await hostOpened("Slack", in: DemoSnapshots.tight)
+    let slack = try #require(store.rows.first { $0.name == "Slack" })
+    store.toggle(slack.id)
+    #expect(try await eventually(w) { store.expandedAppID == nil })
+    try await Task.sleep(for: .milliseconds(100))
+    store.toggle(slack.id)
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    try await Task.sleep(for: .milliseconds(100))
+    w.contentView!.layoutSubtreeIfNeeded()
+    let header = {
+      try #require(axNodes(in: w).first { $0.label?.hasPrefix("Slack,") == true }).frame
+    }
+    let before = try header()
+    let grown = AppUsage(
+      id: slack.id, name: slack.name, bundlePath: slack.bundlePath, bundleID: slack.bundleID,
+      pids: slack.pids, processCount: slack.processCount, memory: slack.memory, cpu: slack.cpu,
+      diskBytesPerSecond: slack.diskBytesPerSecond,
+      inside: slack.inside + [HelperGroup(label: "Utilities", count: 1, memory: 20 << 20)])
+    store.apply(
+      remake(
+        DemoSnapshots.tight, apps: DemoSnapshots.tight.apps.map { $0.id == slack.id ? grown : $0 }))
+    #expect(try await eventually(w) { axLabels(in: w).contains("Utilities, 20 MB") })
+    try await Task.sleep(for: .milliseconds(100))
+    w.contentView!.layoutSubtreeIfNeeded()
+    #expect(try header() == before)
   }
 
   /// Task 11 review: pressing a segment chooses it. VoiceOver hears the "Sort by" group with the

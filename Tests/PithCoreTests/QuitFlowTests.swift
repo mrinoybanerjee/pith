@@ -66,8 +66,10 @@ import Testing
     (.done, []),
   ]
   for (state, events) in offered {
+    for event in events { #expect(QuitFlow(state: state).offers(event), "\(event) in \(state)") }
     for event in [QuitFlow.Event.tapQuit, .cancel, .confirm, .tick, .tapForce, .confirmForce]
     where !events.contains(event) {
+      #expect(!QuitFlow(state: state).offers(event), "\(event) in \(state)")
       var f = QuitFlow(state: state)
       var calls = 0
       f.send(

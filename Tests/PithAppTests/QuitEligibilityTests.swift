@@ -118,25 +118,85 @@ private func guide(_ match: GuideMatch, kind: GuideKind, quittable: Bool) -> Gui
   #expect(canQuit(app, from: path, guide: guide(prefix, kind: .app, quittable: true)))
 }
 
-/// R90: Quit acts on the app itself, never a helper: the first regular app among the row's PIDs,
-/// even when an accessory helper is older; else an accessory app whose bundle is the row's own,
-/// a menu-bar app; else nothing.
+/// A row for the app at `bundlePath`, holding `pids`.
+private func row(_ bundlePath: String, _ bundleID: String, pids: [Int32]) -> AppUsage {
+  AppUsage(
+    id: bundlePath, name: "Example", bundlePath: bundlePath, bundleID: bundleID, pids: pids,
+    processCount: pids.count, memory: 1 << 20, cpu: .value(0), diskBytesPerSecond: .value(0),
+    inside: [])
+}
+
+/// The target for `row` among `apps`.
+@MainActor private func target(_ row: AppUsage, _ apps: [FakeApp]) -> (any QuitTarget)? {
+  QuitEligibility.target(
+    for: row, in: FakeRunningApps(apps).runningApps, uid: getuid(), guide: .empty)
+}
+
+/// R90 and R100: Quit acts on the row's own app, never a helper: the regular app whose bundle is
+/// the row's, even when an accessory helper comes first; an accessory app whose bundle is the
+/// row's, a menu-bar app; and nothing when only a helper or a background process is left.
 @MainActor @Test func theQuitTargetIsTheAppNeverAHelper() {
   let bundle = "/Applications/Example.app"
-  let row = AppUsage(
-    id: bundle, name: "Example", bundlePath: bundle, bundleID: "com.example.app",
-    pids: [503, 501, 502], processCount: 3, memory: 1 << 20, cpu: .value(0),
-    diskBytesPerSecond: .value(0), inside: [])
+  let example = row(bundle, "com.example.app", pids: [503, 501, 502])
   let helper = FakeApp(
-    pid: 501, bundlePath: "\(bundle)/Contents/Helpers/Example Helper.app", policy: .accessory)
-  let main = FakeApp(pid: 502, bundlePath: bundle)
-  let background = FakeApp(pid: 503, bundlePath: bundle, policy: .prohibited)
-  func target(_ apps: [FakeApp]) -> (any QuitTarget)? {
-    QuitEligibility.target(
-      for: row, in: FakeRunningApps(apps).runningApps, uid: getuid(), guide: .empty)
+    pid: 501, bundlePath: "\(bundle)/Contents/Helpers/Example Helper.app",
+    bundleID: "com.example.app.helper", policy: .accessory)
+  let main = FakeApp(pid: 502, bundlePath: bundle, bundleID: "com.example.app")
+  let background = FakeApp(
+    pid: 503, bundlePath: bundle, bundleID: "com.example.app", policy: .prohibited)
+  #expect(target(example, [helper, main, background]) === main)
+  let menuBar = FakeApp(
+    pid: 502, bundlePath: bundle, bundleID: "com.example.app", policy: .accessory)
+  #expect(target(example, [helper, menuBar, background]) === menuBar)
+  #expect(target(example, [helper, background]) == nil)
+}
+
+/// R100: a row can hold another bundle's app, such as one started from Terminal. Terminal's row
+/// quits Terminal, whatever the PID order, and a row whose only app is another bundle's has no
+/// Quit.
+@MainActor @Test func theQuitTargetIsTheRowsOwnAppNotOneItHolds() {
+  let path = "/System/Applications/Utilities/Terminal.app"
+  let started = { (pid: Int32) in
+    FakeApp(pid: pid, bundlePath: "/Applications/Started.app", bundleID: "com.example.started")
   }
-  #expect(target([helper, main, background]) === main)
-  let menuBar = FakeApp(pid: 502, bundlePath: bundle, policy: .accessory)
-  #expect(target([helper, menuBar, background]) === menuBar)
-  #expect(target([helper, background]) == nil)
+  let terminal = FakeApp(pid: 600, bundlePath: path, bundleID: "com.apple.Terminal")
+  let orders: [([Int32], FakeApp)] = [([600, 601], started(601)), ([599, 600], started(599))]
+  for (pids, child) in orders {
+    #expect(target(row(path, "com.apple.Terminal", pids: pids), [terminal, child]) === terminal)
+  }
+  #expect(target(row(path, "com.apple.Terminal", pids: [601]), [started(601)]) == nil)
+}
+
+/// R100: Chromium's main process can run from its code-sign clone, outside the row's bundle. With
+/// no bundle match, the one regular app with the row's bundle ID is the target; two such apps
+/// give none, as Pith cannot tell which the row means.
+@MainActor @Test func aBundleIDMatchIsTheTargetOnlyWhenItIsTheOnlyOne() {
+  let chrome = row("/Applications/Google Chrome.app", "com.google.Chrome", pids: [410, 411, 412])
+  let clone = FakeApp(
+    pid: 410,
+    bundlePath: "/private/var/folders/xy/T/code_sign_clone.aB3dE9/Google Chrome.app.bundle",
+    bundleID: "com.google.Chrome")
+  let helper = FakeApp(
+    pid: 411, bundlePath: "/Applications/Google Chrome.app/Contents/Frameworks/Helper.app",
+    bundleID: "com.google.Chrome.helper", policy: .accessory)
+  #expect(target(chrome, [clone, helper]) === clone)
+  let other = FakeApp(
+    pid: 412, bundlePath: "/Users/Shared/Google Chrome.app", bundleID: "com.google.Chrome")
+  #expect(target(chrome, [clone, helper, other]) == nil)
+}
+
+/// R100: the bundle paths are compared with their symlinks resolved, so an app that runs through
+/// a symlinked folder still matches its row.
+@MainActor @Test func aSymlinkedInstallStillMatchesItsRow() throws {
+  let base = FileManager.default.temporaryDirectory.appending(path: "pith.tests.symlinked")
+  defer { try? FileManager.default.removeItem(at: base) }
+  try? FileManager.default.removeItem(at: base)
+  let real = base.appending(path: "Real/Example.app")
+  try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+  try FileManager.default.createSymbolicLink(
+    at: base.appending(path: "Linked"), withDestinationURL: base.appending(path: "Real"))
+  let linked = FakeApp(
+    pid: 700, bundlePath: base.appending(path: "Linked/Example.app").path,
+    bundleID: "com.example.other")
+  #expect(target(row(real.path, "com.example.app", pids: [700]), [linked]) === linked)
 }

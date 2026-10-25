@@ -17,9 +17,21 @@ public struct QuitFlow {
 
   public init(state: State = .idle) { self.state = state }
 
+  /// Whether the state takes `e`. Any other event, such as a second click on a button that has
+  /// just gone, changes nothing.
+  public func offers(_ e: Event) -> Bool {
+    switch (state, e) {
+    case (.idle, .tapQuit), (.confirming, .cancel), (.confirming, .confirm), (.waiting, .tick),
+      (.offerForce, .tapForce), (.offerForce, .tick), (.confirmingForce, .cancel),
+      (.confirmingForce, .confirmForce), (.confirmingForce, .tick):
+      true
+    default: false
+    }
+  }
+
   /// A tick while the app quits, or while Force Quit is offered or asked, checks whether the app is
   /// gone. Force Quit waits again, in case even that does not end the app. An event that the state
-  /// does not offer, such as a second click on a button that has just gone, changes nothing.
+  /// does not offer changes nothing.
   public mutating func send(
     _ e: Event, nowNs: UInt64, isRunning: () -> Bool, terminate: () -> Void,
     forceTerminate: () -> Void

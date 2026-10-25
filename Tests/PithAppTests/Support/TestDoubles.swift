@@ -29,7 +29,7 @@ extension LoginItem {
 /// No app is running, so no row offers Quit, and Quit Pith does nothing.
 extension RunningApps {
   static let stub = RunningApps(
-    app: { _ in nil }, ownerUID: { _ in nil },
+    running: { _ in [] }, ownerUID: { _ in nil },
     nextCheck: { try await Task.sleep(for: .seconds(1)) }, quitPith: {})
 }
 
@@ -50,27 +50,30 @@ extension RunningApps {
 @MainActor final class FakeApp: NSObject, QuitTarget {
   let processIdentifier: pid_t
   let bundleURL: URL?
+  let bundleIdentifier: String?
   let activationPolicy: NSApplication.ActivationPolicy
   var isTerminated = false
-  /// macOS refuses the calls, as for an app that has just ended.
-  var refuses = false
   private(set) var terminations = 0
   private(set) var forcedTerminations = 0
 
-  init(pid: pid_t, bundlePath: String, policy: NSApplication.ActivationPolicy = .regular) {
+  init(
+    pid: pid_t, bundlePath: String, bundleID: String?,
+    policy: NSApplication.ActivationPolicy = .regular
+  ) {
     processIdentifier = pid
     bundleURL = URL(fileURLWithPath: bundlePath)
+    bundleIdentifier = bundleID
     activationPolicy = policy
   }
 
   func terminate() -> Bool {
     terminations += 1
-    return !refuses
+    return true
   }
 
   func forceTerminate() -> Bool {
     forcedTerminations += 1
-    return !refuses
+    return true
   }
 }
 
@@ -115,7 +118,8 @@ extension RunningApps {
 
   var runningApps: RunningApps {
     RunningApps(
-      app: { self.apps[$0] }, ownerUID: { self.owners[$0] ?? getuid() },
+      running: { pids in pids.compactMap { self.apps[$0] } },
+      ownerUID: { self.owners[$0] ?? getuid() },
       nextCheck: { await self.checks.wait() }, quitPith: { self.pithQuits += 1 })
   }
 
@@ -123,13 +127,13 @@ extension RunningApps {
     testStore(guide: guide, runningApps: runningApps, nowNs: { self.nowNs })
   }
 
-  /// Moves the time past the 0.4 s that a confirm's buttons wait (R93).
+  /// Moves the time past the 0.4 s that a confirm's default button waits once in view (R93).
   func passTheConfirmGuard() { nowNs += 400_000_000 }
 }
 
 /// The main process of the mockups' Google Chrome.
 @MainActor func fakeChrome() -> FakeApp {
-  FakeApp(pid: 410, bundlePath: "/Applications/Google Chrome.app")
+  FakeApp(pid: 410, bundlePath: "/Applications/Google Chrome.app", bundleID: "com.google.Chrome")
 }
 
 extension AppUsage {

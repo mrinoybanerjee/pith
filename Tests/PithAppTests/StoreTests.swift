@@ -53,12 +53,14 @@ import os
   #expect(PanelType.footer.rawValue == 11.5)
 }
 
-/// The tight mockup with Google Chrome opened and asked to quit; the confirm shows.
+/// The tight mockup with Google Chrome opened and asked to quit; the confirm shows, and its
+/// button reports itself in view, as the view does.
 @MainActor private func askToQuitChrome(_ apps: FakeRunningApps) throws -> Store {
   let store = apps.store(guide: .empty)
   store.apply(DemoSnapshots.tight)
   store.toggle(store.rows[0].id)
   store.askToQuit(try #require(store.quitTarget(for: store.rows[0])))
+  store.confirmButtonInView = true
   #expect(store.quitFlow.state == .confirming)
   return store
 }
@@ -107,7 +109,8 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   store.confirmQuit()
   #expect(first.terminations == 1)
   first.isTerminated = true
-  let second = FakeApp(pid: 990, bundlePath: "/Applications/Google Chrome.app")
+  let second = FakeApp(
+    pid: 990, bundlePath: "/Applications/Google Chrome.app", bundleID: "com.google.Chrome")
   apps.apps = [990: second]
   store.apply(tight(chromePIDs: [990, 991]))
   #expect(store.quitFlow.state == .idle)
@@ -206,6 +209,7 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   store.cancelQuit()
   #expect(store.quitFlow.state == .offerForce)
   store.offerForceQuit()
+  store.confirmButtonInView = true
   apps.nowNs += 399_000_000
   store.confirmQuit()
   #expect(store.quitFlow.state == .confirmingForce && chrome.forcedTerminations == 0)
@@ -214,4 +218,66 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   #expect(chrome.forcedTerminations == 1)
   store.panelClosed()
   await apps.checks.fire()
+}
+
+/// R101: `confirmQuit()` is the one gate for a click, Space, Return and VoiceOver. It does
+/// nothing while the default button is out of view or the pinned panel is covered, and each time
+/// the button comes back into view, its 0.4 s start again.
+@MainActor @Test func theConfirmGateNeedsTheButtonInViewFor0Point4Seconds() throws {
+  let chrome = fakeChrome()
+  let apps = FakeRunningApps([chrome])
+  let store = try askToQuitChrome(apps)
+  apps.passTheConfirmGuard()
+  store.confirmButtonInView = false  // scrolled away, in Settings, or not drawn
+  store.confirmQuit()
+  store.confirmButtonInView = true
+  store.confirmQuit()  // in view again: its 0.4 s start again
+  #expect(store.quitFlow.state == .confirming && chrome.terminations == 0)
+  apps.passTheConfirmGuard()
+  store.panelCovered = true
+  store.confirmQuit()
+  store.panelCovered = false
+  apps.nowNs += 399_000_000
+  store.confirmQuit()
+  #expect(store.quitFlow.state == .confirming && chrome.terminations == 0)
+  apps.nowNs += 1_000_000
+  store.confirmQuit()
+  #expect(chrome.terminations == 1)
+}
+
+/// R101: a stale event, such as a late click on a button that has gone, does nothing and never
+/// traps. Quit on another process while a flow is in progress does not take it over.
+@MainActor @Test func aStaleEventDoesNothing() throws {
+  let chrome = fakeChrome()
+  let apps = FakeRunningApps([chrome])
+  let idle = apps.store(guide: .empty)
+  idle.offerForceQuit()
+  idle.cancelQuit()
+  idle.confirmQuit()
+  #expect(idle.quitFlow.state == .idle)
+  let store = try askToQuitChrome(apps)
+  let other = FakeApp(
+    pid: 411, bundlePath: "/Applications/Google Chrome.app", bundleID: "com.google.Chrome")
+  store.askToQuit(other)
+  store.offerForceQuit()
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  #expect(chrome.terminations == 1 && other.terminations == 0)
+  store.confirmQuit()
+  store.askToQuit(other)
+  #expect(chrome.terminations == 1 && store.quitFlow.state == .waiting(sinceNs: 400_000_000))
+  store.panelClosed()
+}
+
+/// R95 and R102: at the confirm, the same process that Pith may no longer quit, here because it
+/// now belongs to another user, starts the flow over, and nothing is called.
+@MainActor @Test func aProcessThatBecameIneligibleIsNotQuit() throws {
+  let chrome = fakeChrome()
+  let apps = FakeRunningApps([chrome])
+  let store = try askToQuitChrome(apps)
+  apps.owners[410] = getuid() + 1
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  #expect(store.quitFlow.state == .idle)
+  #expect(chrome.terminations == 0 && chrome.forcedTerminations == 0)
 }

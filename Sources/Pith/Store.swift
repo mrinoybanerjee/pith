@@ -35,9 +35,14 @@ enum SystemDetailsState: Equatable {
   /// or the panel closes (R78), and when the row no longer has the process that the user asked to
   /// quit (R95). So no confirm outlives its row or its process. A quit already sent stays sent.
   private(set) var quitFlow = QuitFlow()
-  /// Whether the confirm's default button shows whole in the list. Only then does Return press it
-  /// (R94). The confirm reports it.
-  @ObservationIgnored var confirmButtonInView = false
+  /// Whether the confirm's default button is drawn whole in the list; the button reports it.
+  @ObservationIgnored var confirmButtonInView = false {
+    didSet { confirmVisible = confirmButtonInView && !panelCovered }
+  }
+  /// Whether the pinned panel is covered by other windows; the panel reports it.
+  @ObservationIgnored var panelCovered = false {
+    didSet { confirmVisible = confirmButtonInView && !panelCovered }
+  }
   var pinned = false
   var settings: Settings {
     didSet {
@@ -61,7 +66,12 @@ enum SystemDetailsState: Equatable {
   @ObservationIgnored private let nowNs: @MainActor @Sendable () -> UInt64
   /// The process that the quit flow acts on, from the Quit click until the flow starts over (R95).
   @ObservationIgnored private var flowTarget: (any QuitTarget)?
-  /// When the confirm that shows appeared. Its buttons wait 0.4 s (R93).
+  /// Whether the user can see the confirm's default button. Each time it comes into view, its
+  /// 0.4 s start again (R93 and R101): when it appears, after Settings, after a moment undrawn,
+  /// and when a pinned panel is uncovered.
+  @ObservationIgnored private var confirmVisible = false {
+    didSet { if confirmVisible, !oldValue { confirmShownNs = nowNs() } }
+  }
   @ObservationIgnored private var confirmShownNs: UInt64 = 0
   /// Checks the quitting app once per second (R78 and R95).
   @ObservationIgnored private var quitChecks: Task<Void, any Error>? {
@@ -131,7 +141,9 @@ enum SystemDetailsState: Equatable {
   }
 
   /// Quit, on the opened row: the confirm shows, for `target`, the process the row has now (R95).
+  /// A flow in progress keeps its own process.
   func askToQuit(_ target: any QuitTarget) {
+    guard quitFlow.offers(.tapQuit) else { return }
     flowTarget = target
     sendQuit(.tapQuit)
   }
@@ -139,14 +151,18 @@ enum SystemDetailsState: Equatable {
   /// The Force Quit offer: the second confirm shows.
   func offerForceQuit() { sendQuit(.tapForce) }
 
-  /// A confirm's default button, by a click, Return or VoiceOver. It does nothing for 0.4 s after
-  /// the confirm shows, so a double-click cannot pass it (R93). It acts only while the row still
-  /// has the process that the user asked to quit and may quit it; otherwise the flow starts over
-  /// (R95).
+  /// The one gate for a confirm's default button, by a click, Space, Return or VoiceOver (R101).
+  /// It acts only while a confirm shows, once its button has been in view for 0.4 s, so a
+  /// double-click cannot pass it (R93), and only while the user can see the whole button (R94).
+  /// It acts only while the row still has the process that the user asked to quit and may quit
+  /// it; otherwise the flow starts over (R95).
   func confirmQuit() {
-    guard confirmArmed else { return }
+    let event: QuitFlow.Event = quitFlow.state == .confirming ? .confirm : .confirmForce
+    guard quitFlow.offers(event), confirmVisible, nowNs() - confirmShownNs >= 400_000_000 else {
+      return
+    }
     guard flowTargetHolds else { return resetQuit() }
-    sendQuit(quitFlow.state == .confirming ? .confirm : .confirmForce)
+    sendQuit(event)
   }
 
   /// Cancel, Escape, ↑ or ↓ cancel a confirm at once, drawn or not (R94). A cancel is never
@@ -155,8 +171,6 @@ enum SystemDetailsState: Equatable {
 
   /// Quit Pith, in Settings or with ⌘Q: Pith's own quit, at once (R91).
   func quitPith() { runningApps.quitPith() }
-
-  private var confirmArmed: Bool { nowNs() - confirmShownNs >= 400_000_000 }
 
   /// Whether the opened row still has the flow's process, and Pith may quit it (R95).
   private var flowTargetHolds: Bool {
@@ -167,17 +181,21 @@ enum SystemDetailsState: Equatable {
   }
 
   /// Every call goes to the flow's own process, never to a PID looked up again (R95). While the
-  /// app quits, or Force Quit is offered or asked, the flow checks it once per second.
+  /// app quits, or Force Quit is offered or asked, the flow checks it once per second. An event
+  /// that the state does not offer, such as a late click, does nothing (R101).
   private func sendQuit(_ event: QuitFlow.Event) {
-    let target = flowTarget!
+    guard quitFlow.offers(event) else { return }
+    guard let target = flowTarget else {
+      return assertionFailure("the quit flow in \(quitFlow.state) has no process")
+    }
     let shown = quitFlow.state
     quitFlow.send(
       event, nowNs: nowNs(), isRunning: { !target.isTerminated },
       terminate: { if !target.terminate() { Self.refused("terminate", target) } },
       forceTerminate: { if !target.forceTerminate() { Self.refused("forceTerminate", target) } })
     let state = quitFlow.state
+    // A new confirm counts as seen only once its button reports itself in view.
     if state != shown, state == .confirming || state == .confirmingForce {
-      confirmShownNs = nowNs()
       confirmButtonInView = false
     }
     switch state {

@@ -14,6 +14,7 @@ struct RunningAppInfo {
 @MainActor protocol QuitTarget: NSObjectProtocol {
   var processIdentifier: pid_t { get }
   var bundleURL: URL? { get }
+  var bundleIdentifier: String? { get }
   var activationPolicy: NSApplication.ActivationPolicy { get }
   var isTerminated: Bool { get }
   func terminate() -> Bool
@@ -36,29 +37,31 @@ enum QuitEligibility {
       && running.pid != getpid() && entry.map { $0.kind != .system && $0.quittable } ?? true
   }
 
-  /// The process that Quit acts on for `app`, when Pith may quit it. It is the app itself, never a
-  /// helper (R90): the first `.regular` app among the row's PIDs, oldest first; else an
-  /// `.accessory` one whose bundle is the row's own, a menu-bar app.
+  /// The process that Quit acts on for `app`, when Pith may quit it: the row's own app, never a
+  /// helper or another app that the row holds, such as one started from Terminal (R90 and R100).
+  /// It is the one regular or accessory app whose bundle, symlinks resolved, is the row's;
+  /// otherwise the one regular app with the row's bundle ID, such as Chromium's main process
+  /// running from its code-sign clone. Two of either is no target: Pith cannot tell which.
   @MainActor static func target(
     for app: AppUsage, in apps: RunningApps, uid: UInt32, guide: Guide
   ) -> (any QuitTarget)? {
-    func eligible(_ target: any QuitTarget) -> (any QuitTarget)? {
-      guard let path = target.bundleURL?.path, let owner = apps.ownerUID(target.processIdentifier)
-      else { return nil }
-      let running = RunningAppInfo(pid: target.processIdentifier, bundlePath: path, ownerUID: owner)
-      return canQuit(app, running: running, uid: uid, guide: guide) ? target : nil
+    guard let bundlePath = app.bundlePath else { return nil }
+    let candidates = apps.running(app.pids).filter {
+      $0.activationPolicy == .regular || $0.activationPolicy == .accessory
     }
-    var menuBarApp: (any QuitTarget)?
-    for pid in app.pids.sorted() {
-      guard let candidate = apps.app(pid) else { continue }
-      if candidate.activationPolicy == .regular { return eligible(candidate) }
-      if menuBarApp == nil, candidate.activationPolicy == .accessory,
-        candidate.bundleURL?.path == app.bundlePath
-      {
-        menuBarApp = candidate
-      }
+    let own = URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
+    let byPath = candidates.filter { $0.bundleURL?.resolvingSymlinksInPath().path == own }
+    let byID = candidates.filter {
+      $0.activationPolicy == .regular && $0.bundleIdentifier != nil
+        && $0.bundleIdentifier == app.bundleID
     }
-    return menuBarApp.flatMap(eligible)
+    let matches = byPath.isEmpty ? byID : byPath
+    guard matches.count == 1, let path = matches[0].bundleURL?.path,
+      let owner = apps.ownerUID(matches[0].processIdentifier)
+    else { return nil }
+    let running = RunningAppInfo(
+      pid: matches[0].processIdentifier, bundlePath: path, ownerUID: owner)
+    return canQuit(app, running: running, uid: uid, guide: guide) ? matches[0] : nil
   }
 }
 
@@ -66,13 +69,17 @@ enum QuitEligibility {
 /// which never quit a real app.
 struct RunningApps {
   static let live = RunningApps(
-    app: { NSRunningApplication(processIdentifier: $0) },
+    running: { pids in
+      let pids = Set(pids)
+      return NSWorkspace.shared.runningApplications.filter { pids.contains($0.processIdentifier) }
+    },
     ownerUID: { ProcessProbe.live.bsdInfo($0)?.uid },
     nextCheck: { try await Task.sleep(for: .seconds(1)) },
     quitPith: { NSApplication.shared.terminate(nil) })
 
-  /// The app that macOS runs as a PID, if any.
-  let app: @MainActor @Sendable (Int32) -> (any QuitTarget)?
+  /// The apps that macOS runs among these PIDs. Live, it reads `runningApplications` once, as
+  /// every PID of a row is a candidate (R100); its instances are kept by `NSWorkspace`.
+  let running: @MainActor @Sendable ([Int32]) -> [any QuitTarget]
   let ownerUID: @MainActor @Sendable (Int32) -> UInt32?
   /// Returns at the next check of an app that is quitting, 1 s on (R97).
   let nextCheck: @MainActor @Sendable () async throws -> Void

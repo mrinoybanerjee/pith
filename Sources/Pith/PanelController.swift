@@ -148,8 +148,9 @@ import SwiftUI
   /// layout. Escape closes the attached panel. ⌘Q quits Pith (R91).
   ///
   /// While a quit confirm is up (R94), ↑ and ↓ cancel it and do not move. Return presses its
-  /// default button only while that shows whole in the list, and otherwise does nothing. Escape
-  /// cancels it even when it is not drawn.
+  /// default button through the store's one gate, which acts only while the user sees the button
+  /// (R101). Escape cancels it even when it is not drawn. ⌘Q does nothing, as it could be read as
+  /// the confirm's Quit.
   private func handle(_ event: NSEvent) -> Bool {
     let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
     let list = !store.showingSettings
@@ -158,12 +159,12 @@ import SwiftUI
     case ([.command], 18): store.metric = .memory
     case ([.command], 19): store.metric = .cpu
     case ([.command], 20): store.metric = .disk
-    case ([.command], _) where event.charactersIgnoringModifiers == "q": store.quitPith()
+    case ([.command], _) where event.charactersIgnoringModifiers == "q":
+      if !confirming { store.quitPith() }
     case ([], 126) where list && confirming, ([], 125) where list && confirming: store.cancelQuit()
     case ([], 126) where list: store.moveSelection(-1)
     case ([], 125) where list: store.moveSelection(1)
-    case ([], 36) where list && confirming, ([], 76) where list && confirming:
-      if store.confirmButtonInView { store.confirmQuit() }
+    case ([], 36) where list && confirming, ([], 76) where list && confirming: store.confirmQuit()
     case ([], 36) where list, ([], 76) where list: store.toggleSelected()
     case ([], 53) where confirming: store.cancelQuit()
     case ([], 53) where !store.pinned: close()
@@ -206,11 +207,12 @@ import SwiftUI
   }
 
   /// An open that waits for its reading counts as shown and not covered, so a late occlusion note
-  /// from the closed panel cannot switch the speed to closed (R88).
+  /// from the closed panel cannot switch the speed to closed (R88). As for the speed, only a
+  /// pinned panel counts as covered, which hides a confirm on it (R101).
   private func report() {
-    onChange(
-      opening || panel.isVisible, store.pinned,
-      !opening && !panel.occlusionState.contains(.visible))
+    let covered = !opening && !panel.occlusionState.contains(.visible)
+    store.panelCovered = store.pinned && covered
+    onChange(opening || panel.isVisible, store.pinned, covered)
   }
 }
 

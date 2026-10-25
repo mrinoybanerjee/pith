@@ -62,17 +62,16 @@ struct AppListView: View {
         .scrollBounceBehavior(.basedOnSize)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) { listHeight = $0 }
         .onChange(of: store.selectedRowID) { _, id in if let id { proxy.scrollTo(id) } }
-        .onChange(of: store.expandedAppID) { request(.row) }
+        .onChange(of: store.expandedAppID) {
+          // A row that opens again at its last height must still be shown.
+          opened = OpenedRow(id: "", height: 0)
+          request(.row)
+        }
         .onChange(of: store.systemDetails) { request(.row) }
         .onChange(of: store.quitFlow.state) { _, state in
           request([.confirming, .confirmingForce].contains(state) ? .confirm : .row)
         }
-        .onChange(of: opened) {
-          if revealPending {
-            revealPending = false
-            show(proxy)
-          }
-        }
+        .onChange(of: opened) { if revealPending { show(proxy) } }
         .onChange(of: listHeight) { show(proxy) }
         .onChange(of: order) { AppIcons.keep(Set(store.rows.compactMap(\.bundlePath))) }
       }
@@ -99,6 +98,7 @@ struct AppListView: View {
   /// goes; the confirm names the app (R98).
   private func show(_ proxy: ScrollViewProxy) {
     guard opened.id == store.expandedAppID else { return }
+    revealPending = false
     switch reveal {
     case .row: proxy.scrollTo(opened.id, anchor: opened.height <= listHeight ? nil : .top)
     case .confirm: proxy.scrollTo(AppDetailView.confirmID)
