@@ -430,6 +430,25 @@ extension NativeInteractionTests {
     }
   }
 
+  /// R104: a pinned panel dragged partly past the bottom, left or right edge comes back 8 pt inside
+  /// the screen when the drag ends, and the frame it saves is the one it comes back to.
+  @Test func aPinnedPanelDraggedPastAnEdgeComesBackAndSavesThatFrame() async throws {
+    defer { clearDefaults() }
+    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
+    store.pinned = true
+    #expect(try await eventually(w) { w.isMovableByWindowBackground })
+    let visible = try #require(NSScreen.main).visibleFrame
+    let inside = visible.insetBy(dx: 8, dy: 8)
+    for origin in [
+      CGPoint(x: 400, y: visible.minY - 100), CGPoint(x: visible.minX - 100, y: 300),
+      CGPoint(x: visible.maxX - 100, y: 300),
+    ] {
+      w.setFrameOrigin(origin)  // where the drag ends
+      #expect(inside.contains(w.frame), "\(origin) ended at \(w.frame)")
+      #expect(UserDefaults(suiteName: testSuite())!.pinnedFrame == w.frame, "\(origin)")
+    }
+  }
+
   /// R74: Settings show whether Pith opens at login as macOS says, read when the panel opens. A
   /// refused change says so under the toggle and the toggle goes back; the next open clears it.
   @Test func aRefusedLoginItemChangeSaysSoUntilThePanelOpensAgain() async throws {
@@ -826,13 +845,26 @@ extension NativeInteractionTests {
 
   /// R101: a pinned panel tells the store whether other windows cover it, as the speed does, so
   /// a confirm on a covered panel cannot be pressed. An attached panel never counts as covered.
+  /// The test sets what macOS reports, so it means the same on any screen (R104).
   @Test func aPinnedPanelReportsWhetherItIsCovered() async throws {
     defer { clearDefaults() }
-    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
-    #expect(!store.panelCovered)
+    let store = testStore(guide: try Guide.bundled())
+    let controller = PanelController(
+      store: store, defaults: testDefaults(),
+      onChange: { visible, _, _ in if visible { store.apply(DemoSnapshots.calm) } })
+    var covered = true
+    controller.isCovered = { _ in covered }
+    let w = controller.panel
+    let note = Notification(name: NSWindow.didChangeOcclusionStateNotification)
+    controller.toggle(under: try anchor())
+    controller.windowDidChangeOcclusionState(note)
+    #expect(w.isVisible && !store.panelCovered)
     store.pinned = true
     #expect(try await eventually(w) { w.isMovableByWindowBackground })
-    #expect(store.panelCovered == !w.occlusionState.contains(.visible))
+    #expect(store.panelCovered)
+    covered = false
+    controller.windowDidChangeOcclusionState(note)
+    #expect(!store.panelCovered)
   }
 
   /// R102: a row opened again shows itself, and a later reading that changes what is inside it

@@ -30,6 +30,8 @@ import SwiftUI
   private var anchor = (itemFrame: CGRect.zero, visibleFrame: CGRect.zero)
   /// The outside-click monitor, installed while the panel is attached and open.
   private var monitors: [Any] = []
+  /// Whether other windows cover the panel, as macOS reports it. Tests set it (R104).
+  var isCovered: (NSWindow) -> Bool = { !$0.occlusionState.contains(.visible) }
 
   init(
     store: Store, defaults: UserDefaults,
@@ -73,8 +75,12 @@ import SwiftUI
     onChange(true, store.pinned, false)
   }
 
+  /// A drag that ends past an edge pulls the pinned panel back 8 pt inside its screen, so no part
+  /// of it, such as a quit confirm, can sit off screen. The frame it comes back to is saved.
   func windowDidMove(_ notification: Notification) {
-    if store.pinned { defaults.pinnedFrame = panel.frame }
+    guard store.pinned, let visible = visibleFrame(of: panel.screen) else { return }
+    panel.setFrame(PanelGeometry.clamp(panel.frame, to: visible), display: true)
+    defaults.pinnedFrame = panel.frame
   }
 
   func windowDidChangeOcclusionState(_ notification: Notification) { report() }
@@ -210,7 +216,7 @@ import SwiftUI
   /// from the closed panel cannot switch the speed to closed (R88). As for the speed, only a
   /// pinned panel counts as covered, which hides a confirm on it (R101).
   private func report() {
-    let covered = !opening && !panel.occlusionState.contains(.visible)
+    let covered = !opening && isCovered(panel)
     store.panelCovered = store.pinned && covered
     onChange(opening || panel.isVisible, store.pinned, covered)
   }

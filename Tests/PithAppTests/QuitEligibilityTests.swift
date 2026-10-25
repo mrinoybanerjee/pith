@@ -185,8 +185,8 @@ private func row(_ bundlePath: String, _ bundleID: String, pids: [Int32]) -> App
   #expect(target(chrome, [clone, helper, other]) == nil)
 }
 
-/// R100: the bundle paths are compared with their symlinks resolved, so an app that runs through
-/// a symlinked folder still matches its row.
+/// R100: the bundle paths are compared with their symlinks resolved on both sides, so an app that
+/// runs through a symlinked folder still matches its row, and so does a row read through one.
 @MainActor @Test func aSymlinkedInstallStillMatchesItsRow() throws {
   let base = FileManager.default.temporaryDirectory.appending(path: "pith.tests.symlinked")
   defer { try? FileManager.default.removeItem(at: base) }
@@ -195,8 +195,39 @@ private func row(_ bundlePath: String, _ bundleID: String, pids: [Int32]) -> App
   try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
   try FileManager.default.createSymbolicLink(
     at: base.appending(path: "Linked"), withDestinationURL: base.appending(path: "Real"))
-  let linked = FakeApp(
-    pid: 700, bundlePath: base.appending(path: "Linked/Example.app").path,
-    bundleID: "com.example.other")
+  let linkedPath = base.appending(path: "Linked/Example.app").path
+  let linked = FakeApp(pid: 700, bundlePath: linkedPath, bundleID: "com.example.other")
   #expect(target(row(real.path, "com.example.app", pids: [700]), [linked]) === linked)
+  let direct = FakeApp(pid: 701, bundlePath: real.path, bundleID: "com.example.other")
+  #expect(target(row(linkedPath, "com.example.app", pids: [701]), [direct]) === direct)
+}
+
+/// R103: Pith cannot tell which of two path matches the row means (an app opened twice), so there
+/// is no Quit. The bundle-ID rule counts regular apps only, so an accessory app with the row's
+/// bundle ID, outside the row's bundle, is no target either.
+@MainActor @Test func twoPathMatchesOrAnAccessoryIDMatchGiveNoTarget() {
+  let bundle = "/Applications/Example.app"
+  let example = row(bundle, "com.example.app", pids: [801, 802])
+  let first = FakeApp(pid: 801, bundlePath: bundle, bundleID: "com.example.app")
+  let second = FakeApp(pid: 802, bundlePath: bundle, bundleID: "com.example.app")
+  #expect(target(example, [first, second]) == nil)
+  let accessory = FakeApp(
+    pid: 801, bundlePath: "/Applications/Other/Example.app", bundleID: "com.example.app",
+    policy: .accessory)
+  #expect(target(example, [accessory]) == nil)
+}
+
+/// R104: the `/System/Library/` guard reads the target's path with its symlinks resolved, as the
+/// match does, so an app reached through a symlink into `/System/Library/` has no Quit.
+@MainActor @Test func anAppLinkedIntoSystemLibraryCannotQuit() throws {
+  let base = FileManager.default.temporaryDirectory.appending(path: "pith.tests.systemlinked")
+  defer { try? FileManager.default.removeItem(at: base) }
+  try? FileManager.default.removeItem(at: base)
+  try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+  let real = "/System/Library/CoreServices/Finder.app"
+  let link = base.appending(path: "Example.app")
+  try FileManager.default.createSymbolicLink(
+    at: link, withDestinationURL: URL(fileURLWithPath: real))
+  let app = FakeApp(pid: 900, bundlePath: link.path, bundleID: "com.example.agent")
+  #expect(target(row(real, "com.example.agent", pids: [900]), [app]) == nil)
 }

@@ -56,7 +56,8 @@ enum QuitEligibility {
         && $0.bundleIdentifier == app.bundleID
     }
     let matches = byPath.isEmpty ? byID : byPath
-    guard matches.count == 1, let path = matches[0].bundleURL?.path,
+    // The `/System/Library/` guard reads the resolved path, as the match does.
+    guard matches.count == 1, let path = matches[0].bundleURL?.resolvingSymlinksInPath().path,
       let owner = apps.ownerUID(matches[0].processIdentifier)
     else { return nil }
     let running = RunningAppInfo(
