@@ -1,0 +1,11 @@
+{
+  "takenAtNs": 1000000000,
+  "vanished": 0,
+  "samples": [
+    {"key": {"pid": 100, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Google Chrome", "path": "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app.bundle/Contents/MacOS/Google Chrome", "footprint": 104857600, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 101, "startTime": 1000}, "parent": 100, "uid": 501, "name": "Google Chrome He", "path": "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/1/Helpers/Google Chrome Helper (GPU).app/Contents/MacOS/Google Chrome Helper (GPU)", "footprint": 104857600, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 102, "startTime": 1000}, "parent": 100, "uid": 501, "name": "Google Chrome He", "path": "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/1/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)", "footprint": 104857600, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 103, "startTime": 1000}, "parent": 100, "uid": 501, "name": "Google Chrome He", "path": "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/1/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)", "footprint": 104857600, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 104, "startTime": 1000}, "parent": 100, "uid": 501, "name": "Google Chrome He", "path": "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/1/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper (Renderer)", "footprint": 104857600, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+  ]
+}

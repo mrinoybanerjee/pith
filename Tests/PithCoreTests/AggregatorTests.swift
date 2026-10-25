@@ -1,0 +1,175 @@
+import Testing
+
+@testable import PithCore
+
+private let guide = Guide(entries: [
+  helper("Helper (Renderer)", "Tabs and sites"), helper("Helper (GPU)", "Graphics"),
+])
+
+private func helper(_ pattern: String, _ title: String) -> GuideEntry {
+  GuideEntry(
+    match: .helperPattern(pattern), title: title, explanation: "e", kind: .helper,
+    quittable: false, source: nil)
+}
+
+/// Aggregates `current` against `previous`, grouped by `AppGrouper` in `.limited` mode.
+private func snap(
+  previous: ProcessTable?, current: ProcessTable?, cores: Int = 10,
+  memoryUsed: UInt64 = 16 << 30, cpuBusy: Reading<Double> = .value(0.5), mode: Mode = .open
+) -> Snapshot {
+  var grouper = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
+  return Aggregator.snapshot(
+    previous: previous, current: current, groups: current.map { grouper.assign($0) } ?? [:],
+    totals: SystemTotals(
+      memoryUsed: memoryUsed, memoryTotal: 16 << 30, pressure: .normal, swapUsed: 0,
+      cpuBusy: cpuBusy, storageFree: .unavailable("unused"), storageTotal: .unavailable("unused")),
+    cpuCount: cores, guide: guide, grouping: grouper.quality, mode: mode)
+}
+
+/// The first tick of a fixture table: memory only.
+private func snap(fixture: String, memoryUsed: UInt64 = 16 << 30) -> Snapshot {
+  snap(previous: nil, current: Fixture.table(fixture), memoryUsed: memoryUsed)
+}
+
+/// A process of `/Applications/<app>.app` with 64 MB; its kernel name is `file` cut to 16 bytes.
+private func process(
+  _ pid: Int32, app: String = "Notes", file: String? = nil, cpu: UInt64 = 0, read: UInt64 = 0,
+  written: UInt64 = 0, memory: UInt64 = 64 << 20
+) -> ProcessSample {
+  let file = file ?? app
+  return ProcessSample(
+    key: ProcessKey(pid: pid, startTime: 1_000), parent: 1, uid: 501, name: String(file.prefix(16)),
+    path: "/Applications/\(app).app/Contents/MacOS/\(file)", footprint: memory, cpuTimeNs: cpu,
+    diskRead: read, diskWritten: written)
+}
+
+private func table(_ samples: [ProcessSample], at ns: UInt64) -> ProcessTable {
+  ProcessTable(samples: samples, takenAtNs: ns, vanished: 0)
+}
+
+/// One Notes process, pid 300.
+private func table(cpu: UInt64, at ns: UInt64, read: UInt64 = 0, written: UInt64 = 0)
+  -> ProcessTable
+{
+  table([process(300, cpu: cpu, read: read, written: written)], at: ns)
+}
+
+private func snapWithDisk(read: UInt64, written: UInt64, overSeconds seconds: UInt64) -> Snapshot {
+  snap(
+    previous: table(cpu: 0, at: 0),
+    current: table(cpu: 0, at: seconds * 1_000_000_000, read: read, written: written))
+}
+
+/// The CPU residual when the apps use 25% of the Mac (2.5 s over 1 s on 10 cores).
+private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
+  snap(
+    previous: table(cpu: 0, at: 0), current: table(cpu: 2_500_000_000, at: 1_000_000_000),
+    cpuBusy: busy
+  ).system.value?.cpu
+}
+
+@Test func cpuIsShareOfWholeMac() {  // 2 s of CPU over 1 s wall on 10 cores = 20%
+  let s = snap(
+    previous: table(cpu: 0, at: 0), current: table(cpu: 2_000_000_000, at: 1_000_000_000),
+    cores: 10)
+  #expect(s.apps[0].cpu == .value(0.2))
+}
+
+@Test func firstTickHasNoCPUOrDisk() {
+  let s = snap(previous: nil, current: table(cpu: 5, at: 0), cores: 10)
+  #expect(s.apps[0].cpu == .unavailable("first sample") && s.apps[0].memory > 0)
+  #expect(s.apps[0].diskBytesPerSecond == .unavailable("first sample"))
+}
+
+@Test func diskRateFromDeltas() {
+  #expect(
+    snapWithDisk(read: 4_000_000, written: 1_000_000, overSeconds: 2).apps[0].diskBytesPerSecond
+      == .value(2_500_000))
+}
+
+@Test func helpersSumAndInsideGroups() {
+  let s = snap(fixture: "chrome-usage")
+  #expect(s.apps[0].processCount == 5 && s.apps[0].memory == 5 * 100 << 20)
+  #expect(
+    s.apps[0].inside.first == HelperGroup(label: "Tabs and sites", count: 3, memory: 300 << 20))
+}
+
+@Test func residualIsTotalMinusApps() {
+  let s = snap(fixture: "chrome-usage", memoryUsed: 2 << 30)
+  #expect(s.system.value?.memory == (2 << 30) - 5 * (100 << 20))
+}
+
+@Test func negativeResidualIsVisibleMismatch() {
+  #expect(
+    snap(fixture: "chrome-usage", memoryUsed: 1).system == .unavailable("accounting mismatch"))
+}
+
+@Test func closedModeHasNoApps() {
+  #expect(snap(previous: nil, current: nil, mode: .closed).apps.isEmpty)
+}
+
+@Test func closedModeHasNoResidual() {
+  #expect(snap(previous: nil, current: nil, mode: .closed).system == .unavailable("closed"))
+}
+
+@Test func ratesCountOnlyProcessesInBothTables() {  // 1 s + 1 s over 1 s on 10 cores; 302 is new
+  let s = snap(
+    previous: table([process(300), process(301)], at: 0),
+    current: table(
+      [
+        process(300, cpu: 1_000_000_000), process(301, cpu: 1_000_000_000),
+        process(302, cpu: 5_000_000_000, read: 1_000),
+      ], at: 1_000_000_000))
+  #expect(s.apps.map(\.cpu) == [.value(0.2)])
+  #expect(s.apps[0].diskBytesPerSecond == .value(0))
+  #expect(s.apps[0].processCount == 3 && s.apps[0].memory == 3 * 64 << 20)
+}
+
+@Test func rowTakesItsPathFromAMemberThatHasOne() {
+  // The clone main process comes first and has no bundlePath; its helpers have one.
+  #expect(
+    snap(fixture: "chrome-usage").apps.map(\.bundlePath) == ["/Applications/Google Chrome.app"])
+}
+
+@Test func insideUsesFileNamesAndBreaksTiesByLabel() {  // not the 16-byte kernel names
+  let s = snap(
+    previous: nil,
+    current: table(
+      [
+        process(300, file: "Notes Helper (Renderer)"),
+        process(301, file: "Notes Background Worker"),
+      ],
+      at: 0))
+  #expect(
+    s.apps[0].inside == [
+      HelperGroup(label: "Notes Background Worker", count: 1, memory: 64 << 20),
+      HelperGroup(label: "Tabs and sites", count: 1, memory: 64 << 20),
+    ])
+}
+
+@Test func appsSortByMemoryThenID() {
+  let s = snap(
+    previous: nil,
+    current: table(
+      [
+        process(1, app: "Slack"), process(2, app: "Notes"),
+        process(3, app: "Claude", memory: 1 << 30),
+      ],
+      at: 0))
+  #expect(s.apps.map(\.id) == ["com.example.Claude", "com.example.Notes", "com.example.Slack"])
+}
+
+@Test func cpuResidualIsBusyMinusApps() { #expect(cpuResidual(busy: .value(0.5)) == .value(0.25)) }
+
+@Test func smallNegativeCPUResidualIsRounding() {
+  #expect(cpuResidual(busy: .value(0.245)) == .value(0))
+}
+
+@Test func largeNegativeCPUResidualIsVisibleMismatch() {
+  #expect(cpuResidual(busy: .value(0.2)) == .unavailable("accounting mismatch"))
+}
+
+@Test func cpuResidualNeedsBothInputs() {
+  #expect(cpuResidual(busy: .unavailable("no ticks elapsed")) == .unavailable("no ticks elapsed"))
+  #expect(snap(fixture: "chrome-usage").system.value?.cpu == .unavailable("first sample"))
+}

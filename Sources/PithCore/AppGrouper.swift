@@ -90,8 +90,7 @@ public struct AppGrouper: Sendable {
       [responsiblePID == s.key.pid ? own.last : own.first]
       + parents.prefix(5).map { Self.enclosingAppPath($0.path) }
     for case let app? in apps { if let found = identity(app) { return found } }
-    let file = FilePath(s.path).lastComponent?.string ?? s.name  // the kernel name when path is ""
-    return AppIdentity(id: "proc:\(file)", name: file, bundlePath: nil)
+    return AppIdentity(id: "proc:\(s.fileName)", name: s.fileName, bundlePath: nil)
   }
 
   /// A Chromium clone joins its app by bundle ID, with no path. A clone whose bundle can't be read
@@ -104,4 +103,9 @@ public struct AppGrouper: Sendable {
     return AppIdentity(
       id: info?.id ?? app, name: info?.name ?? FilePath(app).stem!, bundlePath: app)
   }
+}
+
+extension ProcessSample {
+  /// The executable's file name, or the 16-byte kernel name when `path` is "".
+  var fileName: String { FilePath(path).lastComponent?.string ?? name }
 }

@@ -73,7 +73,9 @@ public struct SystemTotals: Sendable, Equatable, Codable {
 }
 
 public struct AppIdentity: Sendable, Equatable {
-  public let id: String  // bundle ID, else the .app path, else "proc:<name>"
+  /// The bundle ID, else the `.app` path, else "proc:" and the executable's file name (the kernel
+  /// name only when `path` is "").
+  public let id: String
   public let name: String
   public let bundlePath: String?
 
@@ -97,7 +99,9 @@ public struct HelperGroup: Sendable, Equatable, Codable {
 }
 
 public struct AppUsage: Sendable, Equatable, Codable, Identifiable {
-  public let id: String  // bundle ID, else the .app path, else "proc:<name>"
+  /// The bundle ID, else the `.app` path, else "proc:" and the executable's file name (the kernel
+  /// name only when `path` is "").
+  public let id: String
   public let name: String
   public let bundlePath: String?
   public let pids: [Int32]
