@@ -12,6 +12,10 @@ import os
   #expect(!t.samples.contains { $0.key.pid == 1 })
 }
 
+@Test func liveListingReachesLaunchd() {  // launchd is the oldest process
+  #expect(ProcessProbe.live.listPIDs().contains(1))
+}
+
 @Test func cpuTimeAdvances() throws {
   let src = LibprocProcessTable()
   let a = try #require(src.readTable().samples.first { $0.key.pid == getpid() })
@@ -87,4 +91,25 @@ import os
   pids.withLock { $0 = [10, 11] }
   _ = table.readTable()  // so its path is read again
   #expect(reads.withLock { $0 } == [10, 11, 11])
+}
+
+@Test func unreadablePathKeepsTheSampleWithAnEmptyPath() {
+  let reads = OSAllocatedUnfairLock(initialState: 0)
+  var probe = ProcessProbe.fake(pids: [10], uid: 501)
+  probe.path = { _ in
+    reads.withLock { $0 += 1 }
+    return nil
+  }
+  let table = LibprocProcessTable(probe: probe, uid: 501)
+  _ = table.readTable()
+  let t = table.readTable()
+  #expect(t.samples.map(\.path) == [""] && t.vanished == 0)
+  #expect(reads.withLock { $0 } == 1)  // the empty path is cached too
+}
+
+@Test func missingBSDInfoIsSkippedNotCounted() {
+  var probe = ProcessProbe.fake(pids: [10, 11], uid: 501)
+  probe.bsdInfo = { $0 == 11 ? nil : (501, 1, "fake") }
+  let t = LibprocProcessTable(probe: probe, uid: 501).readTable()
+  #expect(t.samples.map(\.key.pid) == [10] && t.vanished == 0)
 }

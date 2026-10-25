@@ -15,7 +15,7 @@ public func listAllPIDs(
   count: () -> Int32, fill: (UnsafeMutablePointer<Int32>, Int32) -> Int32
 ) -> [Int32] {
   var capacity = count()
-  assert(capacity > 0)
+  precondition(capacity > 0, "PID buffer capacity \(capacity)")
   while true {
     let pids = [Int32](unsafeUninitializedCapacity: Int(capacity)) { buffer, filled in
       filled = Int(fill(buffer.baseAddress!, capacity))
@@ -35,7 +35,9 @@ public struct ProcessProbe: Sendable {
 
   public static let live: ProcessProbe = {
     // The buffer size that fit last time carries over, so a steady sweep lists once.
-    let pidCapacity = OSAllocatedUnfairLock(initialState: proc_listallpids(nil, 0))
+    let processCount = proc_listallpids(nil, 0)
+    precondition(processCount > 0, "proc_listallpids(nil, 0) failed: errno \(errno)")
+    let pidCapacity = OSAllocatedUnfairLock(initialState: processCount)
     return ProcessProbe(
       listPIDs: {
         pidCapacity.withLock { capacity in
@@ -48,7 +50,12 @@ public struct ProcessProbe: Sendable {
       bsdInfo: { pid in
         var info = proc_bsdshortinfo()
         let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
-        guard proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size else { return nil }
+        let filled = proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size)
+        guard filled == size else {
+          assert(
+            filled == 0 && errno == ESRCH, "proc_pidinfo(\(pid)) gave \(filled): errno \(errno)")
+          return nil
+        }
         let name = withUnsafeBytes(of: info.pbsi_comm) {
           String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
         }
@@ -95,6 +102,7 @@ public final class LibprocProcessTable: ProcessTableReading {
       var seen = [ProcessKey: String](minimumCapacity: cache.count)
       var vanished = 0
       for pid in probe.listPIDs() {
+        // A PID that exited before its info read has no known owner, so it is not `vanished`.
         guard let info = probe.bsdInfo(pid), info.uid == uid else { continue }
         let usage: rusage_info_v6
         switch probe.rusage(pid) {
@@ -109,10 +117,8 @@ public final class LibprocProcessTable: ProcessTableReading {
         }
         let start = timebase.nanoseconds(fromTicks: usage.ri_proc_start_abstime) / 1_000
         let key = ProcessKey(pid: pid, startTime: start)
-        guard let path = cache[key] ?? probe.path(pid) else {  // exited after proc_pid_rusage
-          vanished += 1
-          continue
-        }
+        // "" when the path can't be read (a deleted executable). Cached, so it is read once.
+        let path = cache[key] ?? probe.path(pid) ?? ""
         seen[key] = path
         samples.append(
           ProcessSample(
