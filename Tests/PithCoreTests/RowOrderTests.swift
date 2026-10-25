@@ -55,3 +55,20 @@ private func usage(
   #expect(
     RowOrder.stable(previous: ["a", "b"], apps: apps, metric: .disk).map(\.id) == ["b", "a"])
 }
+
+@Test func ranksBeforeKeepingTheTopEight() {  // a large new app enters, so h drops out
+  let shown = ["a", "b", "c", "d", "e", "f", "g", "h"]
+  let apps =
+    shown.enumerated().map { usage($1, mem: UInt64(800 - 100 * $0)) }
+    + [usage("i", mem: 50), usage("j", mem: 40), usage("k", mem: 30), usage("big", mem: 10_000)]
+  #expect(
+    RowOrder.stable(previous: shown, apps: apps, metric: .memory).map(\.id) == [
+      "big", "a", "b", "c", "d", "e", "f", "g",
+    ])
+}
+
+@Test func exactlyTwoPercentDoesNotSwap() {
+  let apps = [usage("a", mem: 1000), usage("b", mem: 1020)]
+  #expect(
+    RowOrder.stable(previous: ["a", "b"], apps: apps, metric: .memory).map(\.id) == ["a", "b"])
+}

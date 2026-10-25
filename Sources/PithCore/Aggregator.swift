@@ -7,20 +7,23 @@ public enum Aggregator {
   private typealias Baseline = (samples: [ProcessKey: ProcessSample], wallNs: Double)
 
   /// Rows are keyed by app id. CPU and disk rates come only from processes in both tables, so a
-  /// new process adds memory but no rate this tick; with no `previous`, every rate is unavailable.
-  /// A closed snapshot has no table, no apps and no residual. `.open` needs a `current` table.
+  /// new process adds memory but no rate this tick. An app with no process in `previous` has no
+  /// rates yet. An open snapshot is taken at `current.takenAtNs`, and `current` must exist. A
+  /// closed one reads no table: it is taken at `nowNs` and has no apps and no residual.
   public static func snapshot(
     previous: ProcessTable?, current: ProcessTable?, groups: [ProcessKey: AppIdentity],
-    totals: SystemTotals, cpuCount: Int, guide: Guide, grouping: GroupingQuality, mode: Mode
+    totals: SystemTotals, cpuCount: Int, guide: Guide, grouping: GroupingQuality, mode: Mode,
+    nowNs: UInt64
   ) -> Snapshot {
     guard mode == .open else {
       return Snapshot(
-        takenAtNs: 0, mode: mode, totals: totals, apps: [], system: .unavailable("closed"),
+        takenAtNs: nowNs, mode: mode, totals: totals, apps: [], system: .unavailable("closed"),
         grouping: grouping)
     }
-    let current = current!
+    guard let current else { preconditionFailure("an open snapshot needs a current table") }
     let baseline = previous.map { p -> Baseline in
-      assert(current.takenAtNs > p.takenAtNs, "takenAtNs \(p.takenAtNs) -> \(current.takenAtNs)")
+      precondition(
+        current.takenAtNs > p.takenAtNs, "takenAtNs \(p.takenAtNs) -> \(current.takenAtNs)")
       return (
         Dictionary(uniqueKeysWithValues: p.samples.map { ($0.key, $0) }),
         Double(current.takenAtNs - p.takenAtNs)
@@ -29,8 +32,10 @@ public enum Aggregator {
     let apps = Dictionary(grouping: current.samples) { groups[$0.key]!.id }.values
       .map { usage($0, groups, baseline, cpuCount, guide) }
       .sorted { $0.memory != $1.memory ? $0.memory > $1.memory : $0.id < $1.id }
+    // A process that is new this tick has no CPU reading yet, so its CPU stays in the residual.
     let appCPU: Reading<Double> =
-      baseline == nil ? .unavailable("first sample") : .value(apps.reduce(0) { $0 + $1.cpu.value! })
+      baseline == nil
+      ? .unavailable("first sample") : .value(apps.compactMap(\.cpu.value).reduce(0, +))
     return Snapshot(
       takenAtNs: current.takenAtNs, mode: mode, totals: totals, apps: apps,
       system: residual(totals, appMemory: apps.reduce(0) { $0 + $1.memory }, appCPU: appCPU),
@@ -46,18 +51,20 @@ public enum Aggregator {
     let identity = groups[members[0].key]!
     var cpu = Reading<Double>.unavailable("first sample")
     var disk = cpu
-    if let baseline {
+    let continuing = members.compactMap { s in baseline?.samples[s.key].map { ($0, s) } }
+    if let wallNs = baseline?.wallNs, !continuing.isEmpty {
       var cpuNs: UInt64 = 0
       var bytes: UInt64 = 0
-      for s in members {
-        guard let p = baseline.samples[s.key] else { continue }
-        cpuNs += delta(p.cpuTimeNs, s.cpuTimeNs)
-        bytes += delta(p.diskRead, s.diskRead) + delta(p.diskWritten, s.diskWritten)
+      // Keys include the start time, so a counter never goes backwards: if one does, this traps.
+      for (p, s) in continuing {
+        cpuNs += s.cpuTimeNs - p.cpuTimeNs
+        bytes += (s.diskRead - p.diskRead) + (s.diskWritten - p.diskWritten)
       }
-      let share = Double(cpuNs) / (baseline.wallNs * Double(cpuCount))
-      assert((0...(1 + 1e-9)).contains(share), "\(identity.id) CPU share \(share)")
-      cpu = .value(share)
-      disk = .value(Double(bytes) / (baseline.wallNs / 1e9))
+      // Where a scan reads each process can push a saturated Mac a little past 100% (spec 6.3).
+      let share = Double(cpuNs) / (wallNs * Double(cpuCount))
+      assert(share <= 1.02, "\(identity.id) CPU share \(share)")
+      cpu = .value(min(share, 1))
+      disk = .value(Double(bytes) / (wallNs / 1e9))
     }
     let inside = Dictionary(grouping: members) {
       guide.helperLabel(processName: $0.fileName) ?? $0.fileName
@@ -96,13 +103,6 @@ public enum Aggregator {
         .error("accounting mismatch: \(inputs, privacy: .public)")
     #endif
     return .unavailable("accounting mismatch")
-  }
-
-  /// The growth of a cumulative counter of one `ProcessKey`. Keys include the start time, so a
-  /// counter never goes backwards; if one does, it adds 0 in release builds.
-  private static func delta(_ before: UInt64, _ after: UInt64) -> UInt64 {
-    assert(after >= before, "counter went backwards: \(before) -> \(after)")
-    return after >= before ? after - before : 0
   }
 
   private static func footprint(_ samples: [ProcessSample]) -> UInt64 {

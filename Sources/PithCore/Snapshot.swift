@@ -1,3 +1,5 @@
+import System
+
 public struct ProcessKey: Hashable, Sendable, Codable {
   public let pid: Int32
   public let startTime: UInt64  // µs
@@ -33,6 +35,9 @@ public struct ProcessSample: Sendable, Equatable, Codable {
     self.diskRead = diskRead
     self.diskWritten = diskWritten
   }
+
+  /// The executable's file name, or the 16-byte kernel name when `path` is "".
+  var fileName: String { FilePath(path).lastComponent?.string ?? name }
 }
 
 public struct ProcessTable: Sendable, Equatable, Codable {

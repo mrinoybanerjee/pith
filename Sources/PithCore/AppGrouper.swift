@@ -104,8 +104,3 @@ public struct AppGrouper: Sendable {
       id: info?.id ?? app, name: info?.name ?? FilePath(app).stem!, bundlePath: app)
   }
 }
-
-extension ProcessSample {
-  /// The executable's file name, or the 16-byte kernel name when `path` is "".
-  var fileName: String { FilePath(path).lastComponent?.string ?? name }
-}

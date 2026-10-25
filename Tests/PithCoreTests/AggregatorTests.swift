@@ -15,7 +15,8 @@ private func helper(_ pattern: String, _ title: String) -> GuideEntry {
 /// Aggregates `current` against `previous`, grouped by `AppGrouper` in `.limited` mode.
 private func snap(
   previous: ProcessTable?, current: ProcessTable?, cores: Int = 10,
-  memoryUsed: UInt64 = 16 << 30, cpuBusy: Reading<Double> = .value(0.5), mode: Mode = .open
+  memoryUsed: UInt64 = 16 << 30, cpuBusy: Reading<Double> = .value(0.5), mode: Mode = .open,
+  nowNs: UInt64 = 9_000_000_000
 ) -> Snapshot {
   var grouper = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
   return Aggregator.snapshot(
@@ -23,7 +24,7 @@ private func snap(
     totals: SystemTotals(
       memoryUsed: memoryUsed, memoryTotal: 16 << 30, pressure: .normal, swapUsed: 0,
       cpuBusy: cpuBusy, storageFree: .unavailable("unused"), storageTotal: .unavailable("unused")),
-    cpuCount: cores, guide: guide, grouping: grouper.quality, mode: mode)
+    cpuCount: cores, guide: guide, grouping: grouper.quality, mode: mode, nowNs: nowNs)
 }
 
 /// The first tick of a fixture table: memory only.
@@ -33,12 +34,12 @@ private func snap(fixture: String, memoryUsed: UInt64 = 16 << 30) -> Snapshot {
 
 /// A process of `/Applications/<app>.app` with 64 MB; its kernel name is `file` cut to 16 bytes.
 private func process(
-  _ pid: Int32, app: String = "Notes", file: String? = nil, cpu: UInt64 = 0, read: UInt64 = 0,
-  written: UInt64 = 0, memory: UInt64 = 64 << 20
+  _ pid: Int32, start: UInt64 = 1_000, app: String = "Notes", file: String? = nil,
+  cpu: UInt64 = 0, read: UInt64 = 0, written: UInt64 = 0, memory: UInt64 = 64 << 20
 ) -> ProcessSample {
   let file = file ?? app
   return ProcessSample(
-    key: ProcessKey(pid: pid, startTime: 1_000), parent: 1, uid: 501, name: String(file.prefix(16)),
+    key: ProcessKey(pid: pid, startTime: start), parent: 1, uid: 501, name: String(file.prefix(16)),
     path: "/Applications/\(app).app/Contents/MacOS/\(file)", footprint: memory, cpuTimeNs: cpu,
     diskRead: read, diskWritten: written)
 }
@@ -172,4 +173,63 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
 @Test func cpuResidualNeedsBothInputs() {
   #expect(cpuResidual(busy: .unavailable("no ticks elapsed")) == .unavailable("no ticks elapsed"))
   #expect(snap(fixture: "chrome-usage").system.value?.cpu == .unavailable("first sample"))
+}
+
+@Test func closedSnapshotIsTakenNow() {
+  #expect(snap(previous: nil, current: nil, mode: .closed, nowNs: 42).takenAtNs == 42)
+}
+
+@Test func appWithOnlyNewProcessesHasNoRatesYet() {  // Slack started this tick; Notes uses 25%
+  let s = snap(
+    previous: table([process(300)], at: 0),
+    current: table(
+      [
+        process(300, cpu: 2_500_000_000),
+        process(400, app: "Slack", cpu: 1_000_000_000, read: 1_000),
+      ], at: 1_000_000_000))
+  #expect(s.apps.map(\.id) == ["com.example.Notes", "com.example.Slack"])
+  #expect(s.apps.map(\.cpu) == [.value(0.25), .unavailable("first sample")])
+  #expect(s.apps.map(\.diskBytesPerSecond) == [.value(0), .unavailable("first sample")])
+  #expect(s.system.value?.cpu == .value(0.25))  // Slack's first second stays in the residual
+}
+
+@Test func cpuNeverExceedsTheWholeMac() {  // 0.5% over: where the scan read each process
+  let s = snap(
+    previous: table(cpu: 0, at: 0), current: table(cpu: 10_050_000_000, at: 1_000_000_000))
+  #expect(s.apps[0].cpu == .value(1))
+}
+
+@Test func residualSubtractsEveryApp() {  // Notes: 25% and 64 MB; Slack: 12.5% and 128 MB
+  let s = snap(
+    previous: table([process(300), process(400, app: "Slack")], at: 0),
+    current: table(
+      [
+        process(300, cpu: 2_500_000_000),
+        process(400, app: "Slack", cpu: 1_250_000_000, memory: 128 << 20),
+      ], at: 1_000_000_000),
+    memoryUsed: 1 << 30)
+  #expect(s.system == .value(SystemResidual(memory: (1 << 30) - (192 << 20), cpu: .value(0.125))))
+}
+
+@Test func diskRateSumsTheAppsProcesses() {  // 3 MB read by one, 1 MB written by another, in 2 s
+  let s = snap(
+    previous: table([process(300), process(301)], at: 0),
+    current: table(
+      [process(300, read: 3_000_000), process(301, written: 1_000_000)], at: 2_000_000_000))
+  #expect(s.apps[0].diskBytesPerSecond == .value(2_000_000))
+}
+
+@Test func reusedPIDIsANewProcess() {  // pid 300 exited, and a new process got its PID
+  let s = snap(
+    previous: table([process(300)], at: 0),
+    current: table([process(300, start: 2_000, cpu: 1_000_000_000, read: 1_000)], at: 1_000_000_000)
+  )
+  #expect(s.apps[0].cpu == .unavailable("first sample"))
+  #expect(s.apps[0].diskBytesPerSecond == .unavailable("first sample"))
+}
+
+@Test func zeroMemoryResidualIsAValue() {
+  #expect(
+    snap(fixture: "chrome-usage", memoryUsed: 5 * 100 << 20).system
+      == .value(SystemResidual(memory: 0, cpu: .unavailable("first sample"))))
 }
