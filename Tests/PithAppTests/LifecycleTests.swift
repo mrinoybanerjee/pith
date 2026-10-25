@@ -4,13 +4,25 @@ import Testing
 
 @testable import Pith
 
-/// Records each pause, resume and schedule.
+/// Records each pause, resume and schedule, and passes them on to `real` when a test sets one.
 @MainActor private final class RecordingClock: Ticker {
   var calls: [String] = []
+  var real: Clock?
 
-  func configure(seconds: Double, leeway: Double) { calls.append("configure \(seconds) \(leeway)") }
-  func pause() { calls.append("pause") }
-  func resume() { calls.append("resume") }
+  func configure(seconds: Double, leeway: Double) {
+    calls.append("configure \(seconds) \(leeway)")
+    real?.configure(seconds: seconds, leeway: leeway)
+  }
+
+  func pause() {
+    calls.append("pause")
+    real?.pause()
+  }
+
+  func resume() {
+    calls.append("resume")
+    real?.resume()
+  }
 }
 
 /// Records each call. While `holding` is set, a call waits until `release()`.
@@ -44,6 +56,22 @@ import Testing
   }
 }
 
+/// Stands in for `PressureMonitor`, so only the test sends pressure events.
+@MainActor private final class StubPressureMonitor {
+  var onChange: (@Sendable (Reading<Pressure>) -> Void)?
+
+  /// Calls `onChange` from a background queue, as a kernel event does, and waits until it returns.
+  func change() async {
+    let onChange = onChange!
+    await withCheckedContinuation { done in
+      DispatchQueue.global().async {
+        onChange(.value(.warning))
+        done.resume()
+      }
+    }
+  }
+}
+
 /// A snapshot in which only the CPU can change the status.
 private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed) -> Snapshot {
   Snapshot(
@@ -55,8 +83,9 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
     apps: [], system: .unavailable("test"), grouping: .full)
 }
 
-/// A `Lifecycle` over the recording fakes and fresh notification centers, so no test posts to a
-/// center that other processes hear.
+/// A `Lifecycle` over the recording fakes, fresh notification centers, a stub pressure monitor, and
+/// a fixed thermal and Low Power state. So no test posts to a center that other processes hear,
+/// and no real system event reaches the logs.
 @MainActor private final class Rig {
   let suite = "pith.tests.\(UUID())"
   let clock = RecordingClock()
@@ -64,6 +93,7 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
   let store = Store(settings: Settings())
   let workspace = NotificationCenter()
   let distributed = NotificationCenter()
+  let pressure = StubPressureMonitor()
   let defaults: UserDefaults
   let lifecycle: Lifecycle
 
@@ -71,14 +101,18 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
     defaults = UserDefaults(suiteName: suite)!
     lifecycle = Lifecycle(
       clock: clock, engine: engine, store: store, reader: SystemReader(), defaults: defaults,
-      workspaceCenter: workspace, distributedCenter: distributed, loginItem: { _ in })
+      workspaceCenter: workspace, distributedCenter: distributed, localCenter: NotificationCenter(),
+      makePressureMonitor: { [pressure] in
+        pressure.onChange = $0
+        return pressure
+      }, thermalState: { .nominal }, isLowPowerModeEnabled: { false }, loginItem: { _ in })
   }
 
   /// Starts the lifecycle, waits for its first reading, then clears the logs.
   func start() async throws {
     lifecycle.start()
     #expect(try await settled { engine.calls == ["tick closed"] && store.snapshot != nil })
-    #expect(clock.calls == [schedule(.closed, .oneSecond)])
+    #expect(clock.calls == [closedSchedule])
     clock.calls = []
     engine.calls = []
   }
@@ -96,14 +130,9 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
   return condition()
 }
 
-/// The schedule `Lifecycle` gives the clock, for this Mac's Low Power and thermal state.
-private func schedule(_ mode: Mode, _ refresh: RefreshSetting) -> String {
-  let thermal = ProcessInfo.processInfo.thermalState
-  let interval = SamplingPolicy.interval(
-    mode: mode, refresh: refresh, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
-    thermalSerious: thermal == .serious || thermal == .critical)
-  return "configure \(interval.seconds) \(interval.leeway)"
-}
+/// The schedules `Lifecycle` gives the clock with Low Power Mode off and a nominal thermal state.
+private let closedSchedule = "configure 5.0 1.0"
+private let openSchedule = "configure 1.0 0.1"
 
 private let seconds: UInt64 = 1_000_000_000
 private let willSleep = NSWorkspace.willSleepNotification.rawValue
@@ -124,11 +153,7 @@ private let unlocked = "com.apple.screenIsUnlocked"
   rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: true)  // pinned and covered
   rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: false)
   rig.lifecycle.panelChanged(visible: false, pinned: true, occluded: false)  // closed
-  #expect(
-    rig.clock.calls == [
-      schedule(.open, .oneSecond), schedule(.closed, .oneSecond), schedule(.open, .oneSecond),
-      schedule(.closed, .oneSecond),
-    ])
+  #expect(rig.clock.calls == [openSchedule, closedSchedule, openSchedule, closedSchedule])
 }
 
 /// Rule 1: each pause reason pauses the clock, and its own wake resumes it.
@@ -144,13 +169,14 @@ private let unlocked = "com.apple.screenIsUnlocked"
     rig.post(center, pause)
     #expect(rig.clock.calls == ["pause"], "\(pause)")
     rig.post(center, wake)
-    #expect(try await settled { rig.clock.calls == ["pause", "resume"] }, "\(wake)")
+    #expect(
+      try await settled { rig.clock.calls == ["pause", closedSchedule, "resume"] }, "\(wake)")
     rig.clock.calls = []
   }
 }
 
-/// Rule 2: a wake resets the engine's baseline, then the CPU timer, then resumes and ticks, so no
-/// reading spans the gap (R45, R57).
+/// Rule 2: a wake resets the engine's baseline, then the CPU timer, then reschedules, resumes and
+/// ticks, so no reading spans the gap (R45, R57, R65).
 @MainActor @Test func wakeResetsTheBaselineThenTheCPUTimerThenResumes() async throws {
   let rig = Rig()
   defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
@@ -167,7 +193,7 @@ private let unlocked = "com.apple.screenIsUnlocked"
   rig.engine.nowNs = 60 * seconds
   rig.engine.release()
   #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick closed"] })
-  #expect(rig.clock.calls == ["pause", "resume"])
+  #expect(rig.clock.calls == ["pause", closedSchedule, "resume"])
   #expect(rig.store.snapshot?.takenAtNs == 60 * seconds)
   #expect(rig.store.status == .calm)  // the run restarted after the reset
 }
@@ -184,7 +210,7 @@ private let unlocked = "com.apple.screenIsUnlocked"
   rig.post(rig.workspace, screensDidWake)
   #expect(try await settled { rig.clock.calls == ["pause", "pause"] && rig.engine.calls.isEmpty })
   rig.post(rig.distributed, unlocked)
-  #expect(try await settled { rig.clock.calls == ["pause", "pause", "resume"] })
+  #expect(try await settled { rig.clock.calls == ["pause", "pause", closedSchedule, "resume"] })
   #expect(rig.engine.calls == ["resetBaseline", "tick closed"])
 }
 
@@ -204,50 +230,51 @@ private let unlocked = "com.apple.screenIsUnlocked"
   #expect(rig.engine.calls == ["resetBaseline"])
 }
 
-/// Rule 5: the pressure monitor and the clock request readings with `tick()`. While paused, and
-/// until the wake's reset ends, a request takes no reading.
-@MainActor @Test func aTickRequestWhilePausedTakesNoReading() async throws {
+/// Rule 5: a pressure change comes from a background queue. While paused, and until the wake's
+/// reset ends, it takes no reading.
+@MainActor @Test func aPressureChangeWhilePausedTakesNoReading() async throws {
   let rig = Rig()
   defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
   try await rig.start()
 
   rig.engine.holding = true
-  rig.lifecycle.tick()
+  rig.lifecycle.tick()  // a clock tick
   #expect(try await settled { rig.engine.calls == ["tick closed"] })
-  rig.lifecycle.tick()  // a pressure change during that reading
+  await rig.pressure.change()  // during that reading
   rig.post(rig.workspace, willSleep)
   rig.engine.release()
-  rig.lifecycle.tick()  // a pressure change while asleep
+  await rig.pressure.change()  // while asleep
   #expect(try await settled { rig.engine.calls == ["tick closed"] })  // the pause dropped both
   rig.engine.holding = true
   rig.post(rig.workspace, didWake)
   #expect(try await settled { rig.engine.calls == ["tick closed", "resetBaseline"] })
-  rig.lifecycle.tick()  // a pressure change during the reset
+  await rig.pressure.change()  // during the reset
   rig.engine.release()
   #expect(
     try await settled { rig.engine.calls == ["tick closed", "resetBaseline", "tick closed"] })
-  rig.lifecycle.tick()  // a pressure change while running
+  await rig.pressure.change()  // while running
   #expect(
     try await settled {
       rig.engine.calls == ["tick closed", "resetBaseline", "tick closed", "tick closed"]
     })
 }
 
-/// Rule 6: one reading at a time. Requests during a reading give exactly one more, in the mode
-/// of the moment it starts.
+/// Rule 6: one reading at a time. Requests during a reading give exactly one more, in the mode of
+/// the moment it runs, not the moment it was asked for.
 @MainActor @Test func requestsDuringAReadingCoalesceIntoOne() async throws {
   let rig = Rig()
   defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
   try await rig.start()
 
   rig.engine.holding = true
-  rig.lifecycle.tick()
-  #expect(try await settled { rig.engine.calls == ["tick closed"] })
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
+  #expect(try await settled { rig.engine.calls == ["tick open"] })
   rig.lifecycle.tick()
+  rig.lifecycle.tick()
+  rig.lifecycle.panelChanged(visible: false, pinned: false, occluded: false)  // closed
   rig.engine.release()
-  #expect(try await settled { rig.engine.calls == ["tick closed", "tick open"] })
-  #expect(rig.store.snapshot?.mode == .open)
+  #expect(try await settled { rig.engine.calls == ["tick open", "tick closed"] })
+  #expect(rig.store.snapshot?.mode == .closed)
 }
 
 /// Rule 7: a settings change is saved and sets the clock's speed.
@@ -257,9 +284,11 @@ private let unlocked = "com.apple.screenIsUnlocked"
   try await rig.start()
 
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
-  for refresh in [RefreshSetting.twoSeconds, .oneSecond] {
+  for (refresh, schedule) in [
+    (RefreshSetting.twoSeconds, "configure 2.0 0.2"), (.oneSecond, openSchedule),
+  ] {
     rig.store.settings.refresh = refresh
-    #expect(try await settled { rig.clock.calls.last == schedule(.open, refresh) }, "\(refresh)")
+    #expect(try await settled { rig.clock.calls.last == schedule }, "\(refresh)")
     #expect(Settings.load(rig.defaults).refresh == refresh)
   }
 }
@@ -279,20 +308,67 @@ private let unlocked = "com.apple.screenIsUnlocked"
   #expect(store.status.dot == .tight)
 }
 
-/// R64: a pinned panel was just ordered front when it opens, so it is open at once and ticks.
-/// Later occlusion changes update the mode.
-@MainActor @Test func openingAPinnedPanelTicksAtOnce() async throws {
+/// R65: a suspended timer keeps the fire it missed and delivers it on resume. The wake reschedules
+/// the real clock first, so exactly one reading follows within the first interval.
+@MainActor @Test func wakeTakesOneReadingAndNoCatchUp() async throws {
+  let rig = Rig()
+  defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+  rig.clock.real = Clock { [weak lifecycle = rig.lifecycle] in
+    Task { @MainActor in lifecycle?.tick() }
+  }
+  try await rig.start()
+
+  rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // a 1 s interval
+  #expect(try await settled { rig.engine.calls == ["tick open"] })
+  rig.post(rig.workspace, willSleep)
+  try await Task.sleep(for: .milliseconds(1500))  // the suspended timer misses a fire
+  rig.engine.calls = []
+  rig.post(rig.workspace, didWake)
+  #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick open"] })
+  try await Task.sleep(for: .milliseconds(500))  // still inside the first interval
+  #expect(rig.engine.calls == ["resetBaseline", "tick open"])
+}
+
+/// R67: a click that opens the panel proves the Mac is awake and unlocked, so opening it clears a
+/// pause reason whose wake never came. An occlusion change of a pinned panel that stays open
+/// proves nothing.
+@MainActor @Test func openingThePanelClearsStalePauseReasons() async throws {
   let rig = Rig()
   defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
   try await rig.start()
-  rig.store.pinned = true
-  let panel = PanelController(
-    store: rig.store, defaults: rig.defaults,
-    onChange: rig.lifecycle.panelChanged(visible:pinned:occluded:))
 
-  panel.toggle(under: (.zero, .zero))  // a pinned panel ignores the anchor
-  #expect(rig.clock.calls == [schedule(.open, .oneSecond)])
+  rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: false)  // pinned and open
   #expect(try await settled { rig.engine.calls == ["tick open"] })
-  panel.toggle(under: (.zero, .zero))
-  #expect(rig.clock.calls.last == schedule(.closed, .oneSecond))
+  rig.post(rig.distributed, locked)
+  rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: true)  // the lock covers it
+  rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: false)
+  #expect(try await settled { rig.engine.calls == ["tick open"] })  // still paused
+  rig.lifecycle.panelChanged(visible: false, pinned: true, occluded: false)  // closed
+  rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: false)  // opened: no unlock
+  #expect(try await settled { rig.engine.calls == ["tick open", "resetBaseline", "tick open"] })
+  #expect(
+    rig.clock.calls == [
+      openSchedule, "pause", closedSchedule, openSchedule, closedSchedule, openSchedule,
+      openSchedule, "resume",
+    ])
+}
+
+extension NativeInteractionTests {
+  /// R64: a pinned panel was just ordered front when it opens, so it is open at once and ticks.
+  /// Later occlusion changes update the mode.
+  @Test func openingAPinnedPanelTicksAtOnce() async throws {
+    let rig = Rig()
+    defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+    try await rig.start()
+    rig.store.pinned = true
+    let panel = PanelController(
+      store: rig.store, defaults: rig.defaults,
+      onChange: rig.lifecycle.panelChanged(visible:pinned:occluded:))
+
+    panel.toggle(under: (.zero, .zero))  // a pinned panel ignores the anchor
+    #expect(rig.clock.calls == [openSchedule])
+    #expect(try await settled { rig.engine.calls == ["tick open"] })
+    panel.toggle(under: (.zero, .zero))
+    #expect(rig.clock.calls.last == closedSchedule)
+  }
 }

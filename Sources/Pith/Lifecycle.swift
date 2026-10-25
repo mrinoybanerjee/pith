@@ -1,5 +1,6 @@
 import AppKit
 import PithCore
+import os
 
 /// The clock's controls, so a test can record them. `Clock` is the real one.
 @MainActor protocol Ticker: AnyObject {
@@ -24,7 +25,7 @@ enum PauseReason { case sleep, screensSleep, locked }
 /// Runs the sampling loop (spec 5.3 and 9):
 /// - the clock's speed follows the panel, the refresh setting, Low Power Mode and the thermal state;
 /// - sleep, screen lock and display sleep pause the clock; it resumes on a fresh baseline when none
-///   of them is left;
+///   of them is left, or when the user opens the panel;
 /// - readings run one at a time, never while paused, and a pressure change takes one at once;
 /// - a volume mount or unmount re-reads storage;
 /// - the settings stay saved, and the login item follows them.
@@ -36,24 +37,38 @@ enum PauseReason { case sleep, screensSleep, locked }
   private let defaults: UserDefaults
   private let workspaceCenter: NotificationCenter
   private let distributedCenter: NotificationCenter
+  private let localCenter: NotificationCenter
+  private let makePressureMonitor: (@escaping @Sendable (Reading<Pressure>) -> Void) -> AnyObject
+  private let thermalState: () -> ProcessInfo.ThermalState
+  private let isLowPowerModeEnabled: () -> Bool
   private let loginItem: (Bool) -> Void
   private var mode = Mode.closed
+  /// The panel's visibility at the last change, so an open is told apart from an occlusion change.
+  private var panelVisible = false
   private var pauseReasons: Set<PauseReason> = []
   /// From a pause until the clock resumes, which is after the wake's reset. No reading runs.
   private var paused = false
   /// A reading is running; `pending` asks for one more when it ends.
   private var ticking = false
   private var pending = false
-  private var pressure: PressureMonitor?
+  private var pressure: AnyObject?
   private var observers: [any NSObjectProtocol] = []
 
-  /// Tests pass fresh notification centers: the screen lock notifications on the real distributed
-  /// center reach every process in the login session.
+  /// Tests replace the system's parts: fresh notification centers (the screen lock notifications
+  /// on the real distributed center reach every process in the login session), a pressure monitor
+  /// they drive, and a fixed thermal and Low Power state.
   init(
     clock: any Ticker, engine: any Sampler, store: Store, reader: SystemReader,
     defaults: UserDefaults,
     workspaceCenter: NotificationCenter = NSWorkspace.shared.notificationCenter,
     distributedCenter: NotificationCenter = DistributedNotificationCenter.default(),
+    localCenter: NotificationCenter = .default,
+    makePressureMonitor: @escaping (@escaping @Sendable (Reading<Pressure>) -> Void) -> AnyObject =
+      { PressureMonitor(onChange: $0) },
+    thermalState: @escaping () -> ProcessInfo.ThermalState = {
+      ProcessInfo.processInfo.thermalState
+    },
+    isLowPowerModeEnabled: @escaping () -> Bool = { ProcessInfo.processInfo.isLowPowerModeEnabled },
     loginItem: @escaping (Bool) -> Void
   ) {
     self.clock = clock
@@ -63,16 +78,20 @@ enum PauseReason { case sleep, screensSleep, locked }
     self.defaults = defaults
     self.workspaceCenter = workspaceCenter
     self.distributedCenter = distributedCenter
+    self.localCenter = localCenter
+    self.makePressureMonitor = makePressureMonitor
+    self.thermalState = thermalState
+    self.isLowPowerModeEnabled = isLowPowerModeEnabled
     self.loginItem = loginItem
   }
 
   /// Follows the settings and the system, and takes the first reading.
   func start() {
     follow({ [store] in store.settings }, then: { [weak self] in self?.apply($0) })
-    pressure = PressureMonitor { [weak self] _ in Task { @MainActor in self?.tick() } }
+    pressure = makePressureMonitor { [weak self] _ in Task { @MainActor in self?.tick() } }
     let workspace = workspaceCenter
     let distributed = distributedCenter
-    let local = NotificationCenter.default
+    let local = localCenter
     let events:
       [(NotificationCenter, Notification.Name, @MainActor @Sendable (Lifecycle) -> Void)] = [
         (workspace, NSWorkspace.willSleepNotification, { $0.pause(.sleep) }),
@@ -96,8 +115,17 @@ enum PauseReason { case sleep, screensSleep, locked }
   }
 
   /// Called whenever the panel's visibility, pin or occlusion changes. Opening shows the last
-  /// snapshot and ticks at once (spec 6.3).
+  /// snapshot and ticks at once (spec 6.3). The click that opens it proves the Mac is awake and
+  /// unlocked, so any pause reason left then is stale: its wake never came (ruling R67).
   func panelChanged(visible: Bool, pinned: Bool, occluded: Bool) {
+    if visible, !panelVisible, !pauseReasons.isEmpty {
+      let stale = pauseReasons.map { "\($0)" }.sorted()
+      Logger(subsystem: "com.mrinoy.pith", category: "lifecycle")
+        .info("panel opened while paused; clearing stale reasons \(stale, privacy: .public)")
+      pauseReasons = []
+      resume()
+    }
+    panelVisible = visible
     let newMode = ModePolicy.mode(panelVisible: visible, pinned: pinned, occluded: occluded)
     guard newMode != mode else { return }
     mode = newMode
@@ -132,10 +160,9 @@ enum PauseReason { case sleep, screensSleep, locked }
   }
 
   private func configure() {
-    let thermal = ProcessInfo.processInfo.thermalState
+    let thermal = thermalState()
     let interval = SamplingPolicy.interval(
-      mode: mode, refresh: store.settings.refresh,
-      lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
+      mode: mode, refresh: store.settings.refresh, lowPower: isLowPowerModeEnabled(),
       thermalSerious: thermal == .serious || thermal == .critical)
     clock.configure(seconds: interval.seconds, leeway: interval.leeway)
   }
@@ -146,16 +173,21 @@ enum PauseReason { case sleep, screensSleep, locked }
     clock.pause()
   }
 
-  /// No reading spans the gap (rulings R45, R57 and R62). When the last reason goes, the baseline
-  /// and the CPU timer are reset, then the clock resumes and reads at once, unless a reason came
-  /// back during the reset.
   private func wake(_ reason: PauseReason) {
     guard pauseReasons.remove(reason) != nil, pauseReasons.isEmpty else { return }
+    resume()
+  }
+
+  /// No reading spans the gap (rulings R45, R57, R62 and R65). The baseline and the CPU timer are
+  /// reset first. Then, unless a reason came back meanwhile, the clock is rescheduled, which drops
+  /// the fire it missed while suspended, resumes, and reads once.
+  private func resume() {
     Task {
       await engine.resetBaseline()
       store.resetCPUTimer()
       guard pauseReasons.isEmpty else { return }
       paused = false
+      configure()
       clock.resume()
       tick()
     }
