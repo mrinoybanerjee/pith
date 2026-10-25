@@ -211,16 +211,13 @@ extension NativeInteractionTests {
   @Test func voiceOverHearsTheStateOfRowsAndControls() async throws {
     let (w, store) = try hostPanelWithStore(DemoSnapshots.tight)
     let chrome = "Google Chrome, 6.4 GB memory, 41 processes"
-    if (try? axNode(chrome, in: w).value) != "collapsed" { r139Dump(w, store, "F3 collapsed") }
     #expect(try axNode(chrome, in: w).value == "collapsed")
     #expect(try axNode("Memory", in: w).selected && !(try axNode("CPU", in: w).selected))
     #expect(axNodes(in: w).contains { $0.label == "Sort by" && $0.children.count == 3 })
     sendKey("↓", to: w)
     #expect(try await eventually(w) { (try? axNode(chrome, in: w).selected) == true })
     sendKey("↩", to: w)
-    let expanded = try await eventually(w) { (try? axNode(chrome, in: w).value) == "expanded" }
-    if !expanded { r139Dump(w, store, "F3 expanded") }
-    #expect(expanded)
+    #expect(try await eventually(w) { (try? axNode(chrome, in: w).value) == "expanded" })
     #expect(!(try axNode("Settings", in: w).selected))
     store.showingSettings = true
     #expect(try await eventually(w) { (try? axNode("Settings", in: w).selected) == true })
@@ -1028,12 +1025,25 @@ extension NativeInteractionTests {
     try press("Quit", in: w)
     #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
     apps.passTheConfirmGuard()
+    print("R139 F1 moving; run loop mode \(String(describing: RunLoop.main.currentMode))")
     store.moveSelection(-1)  // the last row, "macOS system"
     store.moveSelection(-10)  // the first row, Google Chrome
     let away = try await eventually(w) {
       !showsInTheList("Quit", in: w) && !store.confirmButtonInView
     }
-    if !away { r139Dump(w, store, "F1 scrolled away") }
+    if !away {
+      r139Dump(w, store, "F1 scrolled away")
+      w.displayIfNeeded()
+      print("R139 F1 after displayIfNeeded: \(store.confirmButtonInView)")
+      CATransaction.flush()
+      print("R139 F1 after CATransaction.flush: \(store.confirmButtonInView)")
+      r139SpinRunLoop()
+      print("R139 F1 after one run loop turn: \(store.confirmButtonInView)")
+      store.metric = store.metric
+      try await Task.sleep(for: .milliseconds(50))
+      w.contentView!.layoutSubtreeIfNeeded()
+      print("R139 F1 after an observed change: \(store.confirmButtonInView)")
+    }
     #expect(away)
     sendKey("↩", to: w)
     #expect(slack.terminations == 0 && store.quitFlow.state == .confirming)
@@ -1365,57 +1375,5 @@ private final class KeyRecorder: NSView {
   walk(AXNode(w), 0)
 }
 
-extension NativeInteractionTests {
-  /// R139: temporary probe of row accessibility variants; it fails so that test.sh prints it.
-  @Test func r139AccessibilityVariants() async throws {
-    func row(_ name: String) -> some View {
-      HStack {
-        Text(name)
-        Spacer()
-        Text("6.4 GB").help("tip").accessibilityIdentifier("pith.value")
-      }
-      .frame(width: 300)
-      .contentShape(.rect)
-      .onTapGesture {}
-    }
-    let w = hostView(
-      VStack {
-        row("v1").accessibilityElement(children: .contain).accessibilityLabel("V1 contain")
-          .accessibilityValue("collapsed").accessibilityAddTraits(.isButton)
-          .accessibilityAction(.default) {}
-        row("v2").accessibilityElement(children: .combine).accessibilityLabel("V2 combine")
-          .accessibilityValue("collapsed").accessibilityAddTraits(.isButton)
-          .accessibilityAction(.default) {}
-        row("v3")
-          .overlay {
-            Color.clear.contentShape(.rect).accessibilityElement().accessibilityLabel("V3 overlay")
-              .accessibilityValue("collapsed").accessibilityAddTraits(.isButton)
-              .accessibilityAction(.default) {}
-          }
-          .accessibilityElement(children: .contain)
-        Button {
-        } label: {
-          row("v4")
-        }
-        .buttonStyle(.plain).accessibilityElement(children: .contain)
-        .accessibilityLabel("V4 button contain").accessibilityValue("collapsed")
-        row("v5").accessibilityElement(children: .ignore).accessibilityLabel("V5 ignore children")
-          .accessibilityValue("collapsed").accessibilityAddTraits(.isButton)
-          .accessibilityAction(.default) {}
-          .accessibilityChildren {
-            Text("v5")
-            Text("6.4 GB")
-          }
-        Button {
-        } label: {
-          row("v6")
-        }
-        .buttonStyle(.plain).accessibilityLabel("V6 button").accessibilityValue("collapsed")
-        row("v7").accessibilityElement(children: .contain).accessibilityAddTraits(.isButton)
-          .accessibilityLabel("V7 traits first").accessibilityValue("collapsed")
-          .accessibilityAddTraits(.isSelected)
-      })
-    r139Dump(w, testStore(), "F3 variants")
-    Issue.record("R139 probe output above")
-  }
-}
+/// R139: one turn of the main run loop, from a synchronous context.
+@MainActor private func r139SpinRunLoop() { _ = CFRunLoopRunInMode(.defaultMode, 0.05, false) }
