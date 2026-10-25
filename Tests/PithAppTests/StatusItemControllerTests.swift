@@ -5,6 +5,7 @@ import Testing
 @testable import Pith
 
 @MainActor @Test func dotImageChangesOnlyOnStateChange() {
+  startAppKit()
   let c = StatusItemController(onClick: {})
   c.show(.calm)
   c.show(.calm)
@@ -16,6 +17,7 @@ import Testing
 }
 
 @MainActor @Test func onlyTheCalmDotIsATemplateAndCriticalIsShown() {
+  startAppKit()
   let c = StatusItemController(onClick: {})
   c.show(.calm)
   #expect(c.item.button!.image!.isTemplate)
@@ -28,6 +30,7 @@ import Testing
 }
 
 @MainActor @Test func theLabelNamesTheStatus() {
+  startAppKit()
   let c = StatusItemController(onClick: {})
   c.show(
     status: Status(dot: .critical, title: "Memory is very tight", sentence: "Synthetic sentence."))

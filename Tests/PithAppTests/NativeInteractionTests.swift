@@ -7,9 +7,12 @@ import Testing
 @testable import Pith
 
 // Native windows share the application's key window and first responder. `scripts/test.sh` runs
-// each test of this suite in its own process.
+// each test of this suite in its own process. AppKit is set up before each one, including those
+// that make a panel without the hosting helpers (R127).
 @Suite(.serialized) @MainActor
-struct NativeInteractionTests {}
+struct NativeInteractionTests {
+  init() { startAppKit() }
+}
 
 extension NativeInteractionTests {
   @MainActor @Test func rowsReadAsSentences() throws {
@@ -749,6 +752,28 @@ extension NativeInteractionTests {
     await checks.fire()
     #expect(w.frame.origin == origin)
     #expect(UserDefaults(suiteName: testSuite())!.pinnedFrame == nil)
+  }
+
+  /// R126: a 560 pt pinned panel dragged onto a shorter screen, here a faked 540 pt one, refits
+  /// when the drag ends: 524 pt tall, its top-left corner kept, 8 pt inside that screen.
+  @Test func aPinnedPanelDraggedOntoAShorterScreenRefits() async throws {
+    defer { clearDefaults() }
+    let (controller, checks, mouse) = try await hostPinnedPanel()
+    let w = controller.panel
+    sendKey("↓", to: w)  // Google Chrome, the first row
+    sendKey("↩", to: w)  // opens it, so the content grows past 560 pt
+    #expect(try await eventually(w) { w.frame.height == 560 })
+    let main = try #require(NSScreen.main).visibleFrame
+    let short = CGRect(x: main.minX, y: main.maxY - 540, width: main.width, height: 540)
+    controller.ownScreenFrame = { _ in short }
+    mouse.down = false
+    w.setFrameOrigin(CGPoint(x: short.minX + 100, y: short.maxY - 8 - 560))
+    let top = w.frame.maxY
+    await settle()
+    await checks.fire()
+    #expect(short.insetBy(dx: 8, dy: 8).contains(w.frame), "ended at \(w.frame)")
+    #expect(w.frame.height == 524 && w.frame.maxY == top && w.frame.minX == short.minX + 100)
+    #expect(UserDefaults(suiteName: testSuite())!.pinnedFrame == w.frame)
   }
 
   /// R106: a pinned panel dropped mostly on a second display stays there, 8 pt inside that

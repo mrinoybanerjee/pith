@@ -8,7 +8,7 @@ import PithCore
     .calm: dot(fill: nil), .tight: dot(fill: .systemOrange), .critical: dot(fill: .systemRed),
   ]
 
-  let item = NSStatusBar.system.statusItem(withLength: 22)
+  let item: NSStatusItem
   private let onClick: () -> Void
   private var dot: DotState?
   private(set) var imageChanges = 0
@@ -23,7 +23,12 @@ import PithCore
     return (frame, window.screen!.visibleFrame)
   }
 
+  /// AppKit must be up first: without `NSApplication.shared`, macOS 15's status bar calls the
+  /// window server before the process has a connection, and the process aborts in
+  /// `CGSConnectionByID` (R124). macOS 26 sets the app up itself, which hides the mistake.
   init(onClick: @escaping () -> Void) {
+    assert(NSApp != nil, "a status item needs NSApplication.shared first")
+    item = NSStatusBar.system.statusItem(withLength: 22)
     self.onClick = onClick
     super.init()
     item.button!.target = self

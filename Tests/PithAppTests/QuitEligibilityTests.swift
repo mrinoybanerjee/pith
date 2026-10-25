@@ -168,9 +168,10 @@ private func row(_ bundlePath: String, _ bundleID: String, pids: [Int32]) -> App
   #expect(target(row(path, "com.apple.Terminal", pids: [601]), [started(601)]) == nil)
 }
 
-/// R100: Chromium's main process can run from its code-sign clone, outside the row's bundle. With
-/// no bundle match, the one regular app with the row's bundle ID is the target; two such apps
-/// give none, as Pith cannot tell which the row means.
+/// R100 and R125: Chromium's main process can run from its code-sign clone, outside the row's
+/// bundle. With no bundle match, the one regular app with the row's bundle ID that runs from a
+/// clone is the target; another installation with that ID does not count, and two clones give no
+/// target, as Pith cannot tell which the row means.
 @MainActor @Test func aBundleIDMatchIsTheTargetOnlyWhenItIsTheOnlyOne() {
   let chrome = row("/Applications/Google Chrome.app", "com.google.Chrome", pids: [410, 411, 412])
   let clone = FakeApp(
@@ -183,7 +184,22 @@ private func row(_ bundlePath: String, _ bundleID: String, pids: [Int32]) -> App
   #expect(target(chrome, [clone, helper]) === clone)
   let other = FakeApp(
     pid: 412, bundlePath: "/Users/Shared/Google Chrome.app", bundleID: "com.google.Chrome")
-  #expect(target(chrome, [clone, helper, other]) == nil)
+  #expect(target(chrome, [clone, helper, other]) === clone)
+  let secondClone = FakeApp(
+    pid: 412,
+    bundlePath: "/private/var/folders/xy/T/code_sign_clone.Zz9Yy8/Google Chrome.app.bundle",
+    bundleID: "com.google.Chrome")
+  #expect(target(chrome, [clone, helper, secondClone]) == nil)
+}
+
+/// R125: a row can keep only another installation of its app, one with the same bundle ID that
+/// the row's own app started before it ended. That installation is not the row's app, so the row
+/// has no Quit.
+@MainActor @Test func anotherInstallationWithTheSameBundleIDIsNoTarget() {
+  let chrome = row("/Applications/Google Chrome.app", "com.google.Chrome", pids: [412])
+  let other = FakeApp(
+    pid: 412, bundlePath: "/Users/Shared/Google Chrome.app", bundleID: "com.google.Chrome")
+  #expect(target(chrome, [other]) == nil)
 }
 
 /// R100: the bundle paths are compared with their symlinks resolved on both sides, so an app that

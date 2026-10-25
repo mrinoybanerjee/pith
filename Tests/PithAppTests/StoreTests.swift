@@ -289,3 +289,21 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   #expect(store.quitFlow.state == .idle)
   #expect(chrome.terminations == 0 && chrome.forcedTerminations == 0)
 }
+
+/// R125: the confirm's check uses the same rule as Quit. A flow that was given another
+/// installation of the row's app, with the same bundle ID, does not hold at the confirm: it starts
+/// over, and that installation is not quit.
+@MainActor @Test func theConfirmRejectsAnotherInstallation() throws {
+  let other = FakeApp(
+    pid: 410, bundlePath: "/Users/Shared/Google Chrome.app", bundleID: "com.google.Chrome")
+  let apps = FakeRunningApps([other])
+  let store = apps.store(guide: .empty)
+  store.apply(DemoSnapshots.tight)
+  store.toggle(store.rows[0].id)
+  #expect(store.quitTarget(for: store.rows[0]) == nil)
+  store.askToQuit(other)  // as a late click on a Quit that showed for it would
+  store.confirmButtonInView = true
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  #expect(store.quitFlow.state == .idle && other.terminations == 0)
+}

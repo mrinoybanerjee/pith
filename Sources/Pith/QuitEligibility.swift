@@ -40,8 +40,9 @@ enum QuitEligibility {
   /// The process that Quit acts on for `app`, when Pith may quit it: the row's own app, never a
   /// helper or another app that the row holds, such as one started from Terminal (R90 and R100).
   /// It is the one regular or accessory app whose bundle, symlinks resolved, is the row's;
-  /// otherwise the one regular app with the row's bundle ID, such as Chromium's main process
-  /// running from its code-sign clone. Two of either is no target: Pith cannot tell which.
+  /// otherwise the one regular app with the row's bundle ID that runs from a Chromium code-sign
+  /// clone (R125). Another installation with the same bundle ID is no target, and two of either
+  /// is none: Pith cannot tell which.
   @MainActor static func target(
     for app: AppUsage, in apps: RunningApps, uid: UInt32, guide: Guide
   ) -> (any QuitTarget)? {
@@ -55,6 +56,7 @@ enum QuitEligibility {
     let byID = candidates.filter {
       $0.target.activationPolicy == .regular && $0.target.bundleIdentifier != nil
         && $0.target.bundleIdentifier == app.bundleID
+        && $0.path.map(AppGrouper.isCodeSignClone) == true
     }
     let matches = byPath.isEmpty ? byID : byPath
     guard matches.count == 1, let path = matches[0].path,

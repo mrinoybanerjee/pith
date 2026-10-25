@@ -15,6 +15,10 @@ import Testing
   return (CGRect(x: screen.midX, y: screen.maxY, width: 22, height: 24), screen)
 }
 
+/// Sets AppKit up as the app's `main.swift` does, before a test makes a status item or a window
+/// (R124, R127).
+@MainActor func startAppKit() { _ = NSApplication.shared }
+
 /// SwiftUI builds its accessibility tree only for an assistive client, which sets this.
 @MainActor func enableAccessibilityTree() {
   _ = NSApplication.shared.perform(
@@ -39,6 +43,7 @@ import Testing
   _ snapshot: Snapshot, appearance: NSAppearance.Name = .aqua, store: Store? = nil,
   test: String = #function
 ) throws -> (PanelController, Store) {
+  startAppKit()
   enableAccessibilityTree()
   let store = try store ?? testStore(guide: Guide.bundled())
   let controller = PanelController(
@@ -68,6 +73,7 @@ import Testing
 
 /// Any view, laid out in a window, for checks of the test helpers themselves.
 @MainActor func hostView(_ view: some View) -> NSWindow {
+  startAppKit()
   enableAccessibilityTree()
   let window = NSWindow(
     contentRect: NSRect(x: 0, y: 0, width: 360, height: 200), styleMask: [.titled],

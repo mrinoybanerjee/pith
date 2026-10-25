@@ -103,7 +103,8 @@ import SwiftUI
       repeat { try await nextDragCheck() } while mouseIsDown()
       try Task.checkCancellation()
       guard store.pinned, let visible = ownVisibleFrame else { return }
-      panel.setFrame(PanelGeometry.clamp(panel.frame, to: visible), display: true)
+      // The screen it landed on may be shorter: refit the height first (R126).
+      panel.setFrame(fitted(in: visible), display: true)
       defaults.pinnedFrame = panel.frame
     }
   }
@@ -157,19 +158,21 @@ import SwiftUI
     if panel.isVisible { resize() }
   }
 
-  /// Sets the content's height, keeping the top edge: under the status item when attached, the
-  /// top-left corner when pinned. The frame stays 8 pt inside its screen's visible frame. The new
-  /// size lays out again, which changes nothing more.
+  /// Sets the content's height when it changed, keeping the top edge: under the status item when
+  /// attached, the top-left corner when pinned. The new size lays out again, which changes nothing
+  /// more.
   private func resize() {
-    guard let visible = ownVisibleFrame else { return }
+    guard let visible = ownVisibleFrame, panel.frame.height != height(in: visible) else { return }
+    panel.setFrame(fitted(in: visible), display: true)
+  }
+
+  /// The panel's frame refit for `visible`: the height for that screen (R120), the top-left corner
+  /// kept, then 8 pt inside it.
+  private func fitted(in visible: CGRect) -> CGRect {
     let height = height(in: visible)
-    guard panel.frame.height != height else { return }
     let frame = panel.frame
-    panel.setFrame(
-      PanelGeometry.clamp(
-        CGRect(x: frame.minX, y: frame.maxY - height, width: Self.width, height: height),
-        to: visible),
-      display: true)
+    return PanelGeometry.clamp(
+      CGRect(x: frame.minX, y: frame.maxY - height, width: Self.width, height: height), to: visible)
   }
 
   /// The visible frame of the panel's own screen. A panel dragged fully off screen has no screen of
