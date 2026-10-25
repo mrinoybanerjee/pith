@@ -16,6 +16,15 @@ private func entry(_ match: GuideMatch, _ title: String) -> GuideEntry {
   #expect(g.entries.filter { $0.kind == .helper }.allSatisfy { !$0.quittable })  // R84
 }
 
+/// The app reads guide.json from its own Contents/Resources, so it passes `.main`.
+@Test func bundledReadsTheGivenBundle() throws {
+  let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: dir) }
+  try JSONEncoder().encode(Guide.bundled().entries).write(to: dir.appending(path: "guide.json"))
+  #expect(try Guide.bundled(in: #require(Bundle(url: dir))) == Guide.bundled())
+}
+
 @Test func guideCoversCommonProcesses() throws {
   let g = try Guide.bundled()
   #expect(g.entries.count >= 150)

@@ -6,6 +6,8 @@
 	<string>Pith</string>
 	<key>CFBundleExecutable</key>
 	<string>Pith</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.mrinoy.pith</string>
 	<key>CFBundleInfoDictionaryVersion</key>

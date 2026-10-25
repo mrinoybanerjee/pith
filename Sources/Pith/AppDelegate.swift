@@ -1,5 +1,6 @@
 import AppKit
 import PithCore
+import os
 
 /// Builds the app at launch (spec 5.1): the store, the engine and its clock, the lifecycle, the
 /// panel and the status item.
@@ -10,7 +11,7 @@ import PithCore
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     let defaults = UserDefaults.standard
-    let guide = try! Guide.bundled()
+    let guide = try! Guide.bundled(in: .main)
     let nowNs = { @Sendable in clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
     let details = SystemDetails(guide: guide, nowNs: nowNs)
     let store = Store(
@@ -33,5 +34,9 @@ import PithCore
     }
     follow({ [store] in store.status }, then: { [weak self] in self?.statusItem.show(status: $0) })
     lifecycle.start()
+    // One line per launch, so an install can confirm the bundled guide and the login item. The
+    // store reads the login item only when the panel opens, so this asks macOS itself.
+    Logger(subsystem: "com.mrinoy.pith", category: "startup").notice(
+      "guide \(guide.entries.count) entries, launch at login \(LoginItem.main.isEnabled())")
   }
 }

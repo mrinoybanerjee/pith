@@ -5,6 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+bash Tests/Scripts/InstallDryRunTests.sh
+
 # Without Xcode, SwiftPM 6.2 finds Testing.framework in the Command Line Tools but passes
 # -I instead of -F (UserToolchain.deriveSwiftTestingPath), so `import Testing` fails and
 # the test bundle cannot load the framework. Add both paths there; Xcode needs neither.
