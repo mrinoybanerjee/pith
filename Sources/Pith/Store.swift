@@ -213,18 +213,24 @@ enum SystemDetailsState: Equatable {
       stopWatching()
     case .done: stopWatching()
     case .waiting where state != shown:
-      if exitWatch == nil { watchExit(of: target) }
+      if exitWatch == nil { watchExit() }
       forceOffer = Task { [weak self, runningApps] in
         try await runningApps.forceOfferDelay()
         // A timer that ends as the flow starts over does not tick.
         try Task.checkCancellation()
-        self?.sendQuit(.tick)
+        guard let self else { return }
+        sendQuit(.tick)
+        // 5 s have passed on the flow's own clock, so it offers Force Quit or found the app gone.
+        if case .waiting = quitFlow.state {
+          assertionFailure("the quit flow still waits after 5 s")
+        }
       }
     case .confirming, .waiting, .offerForce, .confirmingForce: break
     }
   }
 
-  private func watchExit(of target: any QuitTarget) {
+  /// Watches for the exit of the flow's own process, `flowTarget`.
+  private func watchExit() {
     exitWatch = runningApps.exits.addObserver(
       forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
     ) { [weak self] note in

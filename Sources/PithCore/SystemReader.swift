@@ -96,7 +96,8 @@ public final class SystemReader: SystemTotalsReading {
         defer { s.ticks = ticks }
         guard let previous = s.ticks else { return .firstSample }
         let busy = cpuBusyFraction(previous: previous, current: ticks)
-        return busy.isNaN ? .unavailable("no ticks elapsed") : .value(busy)
+        // No ticks between two reads that came too close together: the next read has them.
+        return busy.isNaN ? .firstSample : .value(busy)
       }
     }
     let storage = cachedStorage()

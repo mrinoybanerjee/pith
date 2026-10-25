@@ -44,6 +44,7 @@ import Testing
     store: store, defaults: testDefaults(test),
     // Stands in for the lifecycle, which reads at once when the panel opens.
     onChange: { visible, _, _ in if visible { store.apply(snapshot) } })
+  controller.uptimeNs = { 0 }  // the clicks come before the readings (R121)
   controller.panel.appearance = NSAppearance(named: appearance)
   controller.toggle(under: try anchor())
   #expect(controller.panel.isVisible)

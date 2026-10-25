@@ -73,6 +73,7 @@ extension NativeInteractionTests {
       store: store, defaults: testDefaults(),
       // The lifecycle's open reading lands a moment after the click.
       onChange: { visible, _, _ in if visible { Task { store.apply(DemoSnapshots.tight) } } })
+    controller.uptimeNs = { 0 }  // the clicks come before the readings (R121)
     let w = controller.panel
     var resizesWhileShown = 0
     let observer = NotificationCenter.default.addObserver(
@@ -114,6 +115,7 @@ extension NativeInteractionTests {
     let controller = PanelController(
       store: store, defaults: testDefaults(),
       onChange: { visible, _, _ in if visible { store.apply(reading.snapshot) } })
+    controller.uptimeNs = { 0 }  // the clicks come before the readings (R121)
     let w = controller.panel
     controller.toggle(under: try anchor())
     let first = try pixels(w)
@@ -138,6 +140,7 @@ extension NativeInteractionTests {
     let controller = PanelController(
       store: store, defaults: testDefaults(),
       onChange: { visible, pinned, occluded in reports.append("\(visible) \(pinned) \(occluded)") })
+    controller.uptimeNs = { 0 }  // the click comes before the reading (R121)
     let note = Notification(name: NSWindow.didChangeOcclusionStateNotification)
     reports = []  // the closed panel's own report when it starts
     controller.toggle(under: try anchor())
@@ -270,21 +273,28 @@ extension NativeInteractionTests {
     #expect(!labels.contains { $0.hasSuffix("/s") })
   }
 
-  /// R110: a missing value says whether the next reading has it. Google Chrome's first CPU sample
-  /// reads "not available yet". The accounting mismatch of "macOS system" and a failed CPU read
-  /// read "not available", and their tooltip says, in plain words, that Pith couldn't measure them.
+  /// R110 and R122: a missing value says whether the next reading has it. Google Chrome's first CPU
+  /// sample reads "not available yet". Claude's CPU mismatch, the accounting mismatch of "macOS
+  /// system", and failed memory, CPU and storage reads read "not available", and their tooltip says,
+  /// in plain words, that Pith couldn't measure them.
   @Test func aMissingValueSaysWhetherTheNextReadingHasIt() async throws {
     defer { clearDefaults() }
     let calm = DemoSnapshots.calm
     let t = calm.totals
     let chrome = remake(calm, firstTick: true).apps[0]
+    let c = calm.apps[1]
+    let claude = AppUsage(
+      id: c.id, name: c.name, bundlePath: c.bundlePath, bundleID: c.bundleID, pids: c.pids,
+      processCount: c.processCount, memory: c.memory, cpu: .unavailable("accounting mismatch"),
+      diskBytesPerSecond: c.diskBytesPerSecond, inside: c.inside)
     let missing = Snapshot(
       takenAtNs: calm.takenAtNs, mode: .open,
       totals: SystemTotals(
-        memoryUsed: t.memoryUsed, memoryTotal: t.memoryTotal, pressure: t.pressure,
-        swapUsed: t.swapUsed, cpuBusy: .unavailable("host_processor_info failed: 4"),
-        storageFree: t.storageFree, storageTotal: t.storageTotal),
-      apps: [chrome] + calm.apps.dropFirst(), system: .unavailable("accounting mismatch"),
+        memoryUsed: .unavailable("host_statistics64 failed: 5"), memoryTotal: t.memoryTotal,
+        pressure: t.pressure, swapUsed: t.swapUsed,
+        cpuBusy: .unavailable("host_processor_info failed: 4"),
+        storageFree: .unavailable("volume unmounted"), storageTotal: t.storageTotal),
+      apps: [chrome, claude] + calm.apps.dropFirst(2), system: .unavailable("accounting mismatch"),
       grouping: .full)
     let (w, store) = try hostPanelWithStore(missing)
     let plain = "Pith couldn't measure this right now."
@@ -293,6 +303,11 @@ extension NativeInteractionTests {
       axNodes(in: w).first { $0.identifier == "pith.value" && $0.spoken == "not available" })
     #expect(systemValue.help == plain)
     #expect(try axNode("CPU, not available", in: w).help == plain)
+    let tiles = axNodes(in: w).filter { node in
+      ["Memory, ", "Storage, "].contains { node.spoken?.hasPrefix($0) == true }
+    }
+    #expect(tiles.map { $0.spoken } == ["Memory, not available, Plenty", "Storage, not available"])
+    #expect(tiles.allSatisfy { $0.help == plain })
     store.metric = .cpu
     #expect(
       try await eventually(w) {
@@ -301,6 +316,91 @@ extension NativeInteractionTests {
     let chromeValue = try #require(
       axNodes(in: w).first { $0.identifier == "pith.value" && $0.spoken == "not available yet" })
     #expect((chromeValue.help ?? "").isEmpty)
+    #expect(axLabels(in: w).contains("Claude, CPU not available, 9 processes"))
+    let claudeValue = try #require(
+      axNodes(in: w).first { $0.identifier == "pith.value" && $0.spoken == "not available" })
+    #expect(claudeValue.help == plain)
+  }
+
+  /// R120: on a screen whose visible frame is 540 pt tall, the panel is at most 524 pt tall, so it
+  /// lies 8 pt inside the frame, with its header controls in view and its list scrolling. That holds
+  /// at open with 560 pt or more of content, at a resize when a row opens, and for a pinned open.
+  @Test func thePanelFitsAShortScreen() async throws {
+    defer { clearDefaults() }
+    enableAccessibilityTree()
+    let screen = try #require(NSScreen.main).visibleFrame
+    let short = CGRect(x: screen.minX, y: screen.maxY - 540, width: screen.width, height: 540)
+    let extra = (0..<3).map { index in
+      let path = "/Applications/Example \(index).app"
+      return AppUsage(
+        id: path, name: "Example \(index)", bundlePath: path, bundleID: nil,
+        pids: [Int32(6000 + index)], processCount: 1, memory: UInt64(300 - index) << 20,
+        cpu: .value(0.001), diskBytesPerSecond: .value(0), inside: [])
+    }
+    let eightRows = remake(DemoSnapshots.tight, apps: DemoSnapshots.tight.apps + extra)
+    let store = testStore(guide: try Guide.bundled())
+    let reading = NextReading(eightRows)
+    let controller = PanelController(
+      store: store, defaults: testDefaults(),
+      onChange: { visible, _, _ in if visible { store.apply(reading.snapshot) } })
+    controller.uptimeNs = { 0 }  // the clicks come before the readings (R121)
+    controller.ownScreenFrame = { _ in short }
+    let w = controller.panel
+    let item = CGRect(x: short.midX, y: short.maxY, width: 22, height: 24)
+    func fits(_ when: String) throws {
+      #expect(short.insetBy(dx: 8, dy: 8).contains(w.frame), "\(when): \(w.frame)")
+      #expect(w.frame.height == 524, "\(when): \(w.frame)")
+      for control in ["Pin", "Settings"] {
+        #expect(w.frame.contains(try axNode(control, in: w).frame), "\(when): \(control)")
+      }
+      let list = try #require(scrollView(in: w.contentView!))
+      #expect(
+        try #require(list.documentView).frame.height > list.contentView.bounds.height,
+        "\(when): the list scrolls")
+    }
+    controller.toggle(under: (item, short))
+    #expect(w.isVisible)
+    try fits("at open")
+    controller.toggle(under: (item, short))  // closes it
+    reading.snapshot = DemoSnapshots.tight  // 521 pt, under the cap
+    controller.toggle(under: (item, short))
+    #expect(w.isVisible && w.frame.height == 521)
+    store.toggle(store.rows[0].id)  // Google Chrome opens, so the content grows past 560 pt
+    #expect(try await eventually(w) { w.frame.height > 521 })
+    try fits("after a resize")
+    controller.toggle(under: (item, short))
+    reading.snapshot = eightRows
+    store.pinned = true
+    controller.toggle(under: (item, short))
+    #expect(try await eventually(w) { w.isVisible && w.isMovableByWindowBackground })
+    try fits("pinned")
+  }
+
+  /// R121: a panel opens only on a reading taken after its click. A reading that started for an
+  /// open the user then closed, and lands after the next click, does not open it; the next reading
+  /// does.
+  @Test func anOpenShowsOnlyOnAReadingTakenAfterItsClick() throws {
+    defer { clearDefaults() }
+    let store = testStore(guide: try Guide.bundled())
+    var now: UInt64 = 10 * seconds
+    let controller = PanelController(
+      store: store, defaults: testDefaults(), onChange: { _, _, _ in })
+    controller.uptimeNs = { now }
+    let w = controller.panel
+    let calm = DemoSnapshots.calm
+    func reading(takenAt ns: UInt64) -> Snapshot {
+      Snapshot(
+        takenAtNs: ns, mode: .open, totals: calm.totals, apps: calm.apps, system: calm.system,
+        grouping: .full)
+    }
+    controller.toggle(under: try anchor())  // a reading starts at 15 s
+    controller.toggle(under: try anchor())  // closes it while that reading is in flight
+    now = 20 * seconds
+    controller.toggle(under: try anchor())  // opens again; another reading starts at 25 s
+    store.apply(reading(takenAt: 15 * seconds))
+    #expect(!w.isVisible)
+    store.apply(reading(takenAt: 25 * seconds))
+    #expect(w.isVisible)
   }
 
   /// R118: each open draws one panel view tree, and no earlier one lives on to watch the store.
@@ -315,6 +415,7 @@ extension NativeInteractionTests {
     let controller = PanelController(
       store: store, defaults: testDefaults(),
       onChange: { visible, _, _ in if visible { store.apply(reading.snapshot) } })
+    controller.uptimeNs = { 0 }  // the clicks come before the readings (R121)
     let w = controller.panel
     var lists: [WeakView] = []
     for open in 1...5 {
@@ -375,6 +476,7 @@ extension NativeInteractionTests {
     let controller = PanelController(
       store: store, defaults: testDefaults(),
       onChange: { visible, _, _ in if visible { Task { store.apply(reading.snapshot) } } })
+    controller.uptimeNs = { 0 }  // the clicks come before the readings (R121)
     let w = controller.panel
     controller.toggle(under: try anchor())
     #expect(try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[0...1]) })
@@ -729,6 +831,9 @@ extension NativeInteractionTests {
     #expect(axNodes(in: inherited).flatMap(\.fontSizes) == [12])
   }
 }
+
+/// One second, in nanoseconds.
+private let seconds: UInt64 = 1_000_000_000
 
 /// The first confirm for the mockups' Google Chrome, as VoiceOver reads it (spec 4.5).
 private let quitSentence = "Quit Google Chrome? It can ask you to save first."

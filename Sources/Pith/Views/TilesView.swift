@@ -46,9 +46,8 @@ struct TilesView: View {
         let total = ByteFormat.memory(total)
         // The unit is said once when both share it. Only the space before "of" may break.
         let own = total.hasSuffix(" " + unit) ? "" : " " + unit
-        return (number, "\(own) of \(total)".noBreaks(after: 1))
-      },
-      missing: .missing(totals?.memoryUsed),
+        return .shown(number: number, unit: "\(own) of \(total)".noBreaks(after: 1))
+      } ?? missing(totals?.memoryUsed),
       fraction: memory.map { Double($0.used) / Double($0.total) },
       words: [word] + [swap].compactMap { $0 }, tint: tint)
   }
@@ -63,8 +62,9 @@ struct TilesView: View {
       return Text(percent < 30 ? "Light" : percent <= 70 ? "Moderate" : "Busy")
     }
     return Tile(
-      caption: "CPU", value: shown, missing: .missing(totals?.cpuBusy), fraction: busy,
-      words: word.map { [$0] } ?? [], tint: nil)
+      caption: "CPU",
+      value: shown.map { TileValue.shown(number: $0, unit: $1) } ?? missing(totals?.cpuBusy),
+      fraction: busy, words: word.map { [$0] } ?? [], tint: nil)
   }
 
   /// "112 GB free", then "of 228 GB"; the meter is the used share.
@@ -76,12 +76,15 @@ struct TilesView: View {
       caption: "Storage",
       value: space.map { free, _ in
         let (number, unit) = split(ByteFormat.storage(free))
-        return (number, " \(unit) free".noBreaks(after: 1))
-      },
-      missing: .missing(
-        totals.map { $0.storageFree.value == nil ? $0.storageFree : $0.storageTotal }),
+        return .shown(number: number, unit: " \(unit) free".noBreaks(after: 1))
+      } ?? missing(totals.map { $0.storageFree.value == nil ? $0.storageFree : $0.storageTotal }),
       fraction: space.map { free, total in Double(total - free) / Double(total) },
       words: space.map { [Text("of \(ByteFormat.storage($1))")] } ?? [], tint: nil)
+  }
+
+  /// A tile's value while its reading has none; built only then. No reading yet is not yet.
+  private func missing<Value>(_ reading: Reading<Value>?) -> TileValue {
+    .missing(reading.map(RowValue.missing) ?? .notYet)
   }
 
   /// "15.1 GB" is ("15.1", "GB") and "38%" is ("38", "%").
@@ -91,13 +94,16 @@ struct TilesView: View {
   }
 }
 
+/// A tile's number and its unit, or what it shows when the reading has no value.
+private enum TileValue {
+  case shown(number: String, unit: String)
+  case missing(RowValue)
+}
+
 /// Its spacing is the mockup's margins plus the leading that the mockup's CSS line height adds.
 private struct Tile: View {
   let caption: String
-  /// The number and its unit, or nil when the reading is not available.
-  let value: (number: String, unit: String)?
-  /// What the value says while it is nil.
-  let missing: RowValue
+  let value: TileValue
   let fraction: Double?
   /// One line each.
   let words: [Text]
@@ -110,13 +116,13 @@ private struct Tile: View {
         .font(.panel(.body, weight: .medium))
         .foregroundStyle(.secondary)
       Group {
-        if let value {
-          let number = Text(value.number).font(
-            .panel(.value, weight: .semibold).monospacedDigit())
-          let unit = Text(value.unit).font(.panel(.body, weight: .medium).monospacedDigit())
+        switch value {
+        case .shown(let number, let unit):
+          let number = Text(number).font(.panel(.value, weight: .semibold).monospacedDigit())
+          let unit = Text(unit).font(.panel(.body, weight: .medium).monospacedDigit())
             .foregroundStyle(.secondary)
           Text("\(number)\(unit)")
-        } else {
+        case .missing(let missing):
           Text(missing.text).font(.panel(.value, weight: .semibold))
             .accessibilityLabel(missing.label)
             .help(missing.help ?? "")

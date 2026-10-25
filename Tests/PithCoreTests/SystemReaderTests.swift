@@ -110,3 +110,15 @@ import os
   #expect(r.read().cpuBusy == .unavailable("first sample"))  // not 0.5 against the old baseline
   #expect(r.read().cpuBusy == .value(0.25))  // against the recovery sample
 }
+
+/// R122: two reads so close together that no tick elapsed have no busy share yet. That is a first
+/// sample, which the panel reads as "not available yet"; the next read has it.
+@Test func readsWithNoTicksBetweenThemAreAFirstSample() {
+  let same = CPUTicks(user: 10, system: 0, idle: 30, nice: 0)
+  let r = SystemReader(
+    sampleTicks: scriptedTicks(
+      .value([same]), .value([same]), .value([CPUTicks(user: 11, system: 0, idle: 33, nice: 0)])))
+  #expect(r.read().cpuBusy.isFirstSample)
+  #expect(r.read().cpuBusy.isFirstSample)
+  #expect(r.read().cpuBusy == .value(0.25))
+}
