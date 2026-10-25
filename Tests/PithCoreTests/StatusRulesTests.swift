@@ -11,6 +11,8 @@ private func app(_ name: String, memory: UInt64, processes: Int, cpu: Reading<Do
 private let chrome = app(
   "Google Chrome", memory: UInt64(6.4 * Double(1 << 30)), processes: 41, cpu: .value(0.05))
 private let xcode = app("Xcode", memory: 3 << 30, processes: 6, cpu: .value(0.62))
+private let notes = app("Notes", memory: 180 << 20, processes: 1, cpu: .value(0.045))
+private let mail = app("Mail", memory: 900 << 20, processes: 3, cpu: .unavailable("first sample"))
 
 /// A calm open-mode snapshot: Chrome has the most memory and Xcode the most CPU.
 private func snapshot(
@@ -63,7 +65,6 @@ private func busyRules() -> StatusRules {
 
 @Test func oneProcessIsSingular() {
   var r = StatusRules(amberOnCPU: true)
-  let notes = app("Notes", memory: 180 << 20, processes: 1, cpu: .value(0.01))
   #expect(
     r.evaluate(snapshot(.warning, apps: [notes]), nowNs: 0).sentence
       == "Notes uses the most: 180 MB across 1 process.")
@@ -112,7 +113,8 @@ private func busyRules() -> StatusRules {
 @Test func cpuClearsOnlyAfterSixtySecondsBelowSeventy() {
   var r = busyRules()  // already tight from CPU
   #expect(r.evaluate(cpu(0.75), nowNs: 120_000_000_000).dot == .tight)  // 0.70–0.80 holds
-  #expect(r.evaluate(cpu(0.5), nowNs: 130_000_000_000).dot == .tight)
+  #expect(r.evaluate(cpu(0.5), nowNs: 130_000_000_000).dot == .tight)  // the run starts at 130 s
+  #expect(r.evaluate(cpu(0.5), nowNs: 189_000_000_000).dot == .tight)
   #expect(r.evaluate(cpu(0.5), nowNs: 190_000_000_000).dot == .calm)
 }
 
@@ -159,15 +161,36 @@ private func busyRules() -> StatusRules {
 }
 
 @Test func cpuIgnoredWhenSettingOff() {
-  var r = StatusRules(amberOnCPU: false)
-  #expect(r.evaluate(cpu(0.99), nowNs: 999_000_000_000).dot == .calm)
+  var off = StatusRules(amberOnCPU: false)
+  var on = StatusRules(amberOnCPU: true)
+  _ = off.evaluate(cpu(0.99), nowNs: 0)
+  _ = on.evaluate(cpu(0.99), nowNs: 0)
+  #expect(off.evaluate(cpu(0.99), nowNs: 60_000_000_000).dot == .calm)
+  #expect(on.evaluate(cpu(0.99), nowNs: 60_000_000_000).dot == .tight)  // the same run, setting on
+}
+
+@Test func resettingTheCPUTimerRestartsTheRun() {
+  var r = StatusRules(amberOnCPU: true)
+  _ = r.evaluate(cpu(0.85), nowNs: 0)
+  r.resetCPUTimer()
+  #expect(r.evaluate(cpu(0.85), nowNs: 60_000_000_000).dot == .calm)  // the run restarted at 60 s
+  #expect(r.evaluate(cpu(0.85), nowNs: 120_000_000_000).dot == .tight)
+}
+
+@Test func resettingTheCPUTimerKeepsTheBusyState() {
+  var r = busyRules()
+  r.resetCPUTimer()
+  #expect(r.evaluate(cpu(0.85), nowNs: 61_000_000_000).dot == .tight)
+  r.resetCPUTimer()
+  _ = r.evaluate(cpu(0.5), nowNs: 70_000_000_000)
+  r.resetCPUTimer()  // the clearing run restarts too
+  #expect(r.evaluate(cpu(0.5), nowNs: 130_000_000_000).dot == .tight)
+  #expect(r.evaluate(cpu(0.5), nowNs: 190_000_000_000).dot == .calm)
 }
 
 @Test func cpuSentenceNamesTheTopAppByCPUWithARate() {
   var r = StatusRules(amberOnCPU: true)
-  let notes = app("Notes", memory: 180 << 20, processes: 1, cpu: .value(0.045))
-  let unrated = app("Mail", memory: 900 << 20, processes: 3, cpu: .unavailable("first sample"))
-  let apps = [unrated, notes]
+  let apps = [mail, notes]
   _ = r.evaluate(snapshot(cpu: .value(0.85), apps: apps), nowNs: 0)
   #expect(
     r.evaluate(snapshot(cpu: .value(0.85), apps: apps), nowNs: 60_000_000_000).sentence
@@ -199,15 +222,45 @@ private func busyRules() -> StatusRules {
       == "Google Chrome uses the most: 6.4 GB across 41 processes.")
 }
 
-@Test func withoutAnyAppTheSentencesAreGeneric() {
+@Test func rememberedAppsRefreshOnEveryOpenSnapshot() {
+  var r = StatusRules(amberOnCPU: true)
+  _ = r.evaluate(snapshot(.warning, apps: [chrome]), nowNs: 0)
+  _ = r.evaluate(snapshot(.warning, apps: [notes]), nowNs: 1_000_000_000)
+  #expect(
+    r.evaluate(snapshot(.warning, apps: []), nowNs: 2_000_000_000).sentence
+      == "Notes uses the most: 180 MB across 1 process.")
+}
+
+@Test func withoutAnyAppMemoryIsShort() {
   var r = StatusRules(amberOnCPU: true)
   #expect(
     r.evaluate(snapshot(.warning, apps: []), nowNs: 0)
-      == Status(
-        dot: .tight, title: "Memory is tight", sentence: "Plenty of memory and CPU to spare."))
-  var busy = StatusRules(amberOnCPU: true)
-  _ = busy.evaluate(snapshot(cpu: .value(0.85), apps: []), nowNs: 0)
+      == Status(dot: .tight, title: "Memory is tight", sentence: "Your Mac is short of memory."))
   #expect(
-    busy.evaluate(snapshot(cpu: .value(0.85), apps: []), nowNs: 60_000_000_000)
-      == Status(dot: .tight, title: "Your Mac is busy", sentence: "Your Mac is working hard."))
+    r.evaluate(snapshot(.critical, apps: []), nowNs: 0)
+      == Status(
+        dot: .critical, title: "Memory is very tight", sentence: "Your Mac is short of memory."))
+}
+
+@Test func busyCPUWithoutRatesUsesTheRememberedTopCPUApp() {
+  var r = StatusRules(amberOnCPU: true)
+  _ = r.evaluate(cpu(0.85), nowNs: 0)  // Xcode has the top CPU share
+  #expect(
+    r.evaluate(snapshot(cpu: .value(0.85), apps: [mail]), nowNs: 60_000_000_000).sentence
+      == "Xcode is using 62% of the CPU.")
+  #expect(
+    r.evaluate(snapshot(cpu: .value(0.85), apps: []), nowNs: 61_000_000_000).sentence
+      == "Xcode is using 62% of the CPU.")
+}
+
+@Test func busyCPUWithoutAnyRateStatesTheTotal() {
+  var r = StatusRules(amberOnCPU: true)
+  _ = r.evaluate(snapshot(cpu: .value(0.92), apps: [mail]), nowNs: 0)
+  #expect(
+    r.evaluate(snapshot(cpu: .value(0.92), apps: [mail]), nowNs: 60_000_000_000)
+      == Status(dot: .tight, title: "Your Mac is busy", sentence: "CPU is at 92%."))
+  // The state holds while the reading is missing, and so does the number.
+  #expect(
+    r.evaluate(snapshot(cpu: .unavailable("first tick"), apps: []), nowNs: 61_000_000_000).sentence
+      == "CPU is at 92%.")
 }

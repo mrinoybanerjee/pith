@@ -5,26 +5,44 @@ public struct Status: Equatable, Sendable {
   public let dot: DotState
   public let title: String
   public let sentence: String
+
+  public init(dot: DotState, title: String, sentence: String) {
+    self.dot = dot
+    self.title = title
+    self.sentence = sentence
+  }
 }
 
-/// Turns each snapshot into a `Status` (spec 4.1 and 7.3). It remembers the CPU run and the last
+/// Turns each snapshot into a `Status` (spec 4.1 and 7.3). It remembers the CPU run and the top
 /// apps it saw, so the app's store owns one value and calls `evaluate` on every tick.
 public struct StatusRules: Sendable {
   private static let sustainNs: UInt64 = 60_000_000_000
-  private static let calmSentence = "Plenty of memory and CPU to spare."
 
   private let amberOnCPU: Bool
   private var cpuBusy = false
+  /// The last available CPU reading. It is set before `cpuBusy` can turn on.
+  private var lastCPU = 0.0
   /// When the readings that would flip `cpuBusy` began, or nil when the run is broken.
   private var flipRunStartNs: UInt64?
-  /// The apps of the last snapshot that had any. A closed snapshot has none.
-  private var lastApps: [AppUsage] = []
+  /// The top app by memory of the last snapshot that had apps. A closed snapshot has none.
+  private var topMemoryApp: AppUsage?
+  /// The top app by CPU of the last snapshot in which any app had a CPU value.
+  private var topCPUApp: AppUsage?
 
   public init(amberOnCPU: Bool) { self.amberOnCPU = amberOnCPU }
 
+  /// Breaks the CPU run and keeps the busy state. Call it when the clock resumes after a gap.
+  public mutating func resetCPUTimer() { flipRunStartNs = nil }
+
   public mutating func evaluate(_ snapshot: Snapshot, nowNs: UInt64) -> Status {
     let totals = snapshot.totals
-    if !snapshot.apps.isEmpty { lastApps = snapshot.apps }
+    if let top = snapshot.apps.first { topMemoryApp = top }
+    // Apps without a rate rank below any rate.
+    if let top = snapshot.apps.max(by: { ($0.cpu.value ?? -1) < ($1.cpu.value ?? -1) }),
+      top.cpu.value != nil
+    {
+      topCPUApp = top
+    }
     if amberOnCPU, let cpu = totals.cpuBusy.value { trackCPU(cpu, nowNs: nowNs) }
     if totals.pressure == .critical {
       return Status(dot: .critical, title: "Memory is very tight", sentence: memorySentence)
@@ -39,12 +57,14 @@ public struct StatusRules: Sendable {
     if let sentence = lowStorageSentence(totals, below: 10) {
       return Status(dot: .tight, title: "Storage is getting full", sentence: sentence)
     }
-    return Status(dot: .calm, title: "All calm", sentence: Self.calmSentence)
+    return Status(
+      dot: .calm, title: "All calm", sentence: "Plenty of memory and CPU to spare.")
   }
 
   /// `cpuBusy` turns on after 60 s at 0.80 or more and off after 60 s under 0.70. A reading
   /// that is not on the far side of the current state's threshold breaks the run.
   private mutating func trackCPU(_ cpu: Double, nowNs: UInt64) {
+    lastCPU = cpu
     guard cpuBusy ? cpu < 0.70 : cpu >= 0.80 else {
       flipRunStartNs = nil
       return
@@ -67,16 +87,15 @@ public struct StatusRules: Sendable {
   }
 
   private var memorySentence: String {
-    guard let top = lastApps.first else { return Self.calmSentence }
+    guard let top = topMemoryApp else { return "Your Mac is short of memory." }
     let processes = top.processCount == 1 ? "1 process" : "\(top.processCount) processes"
     return "\(top.name) uses the most: \(ByteFormat.memory(top.memory)) across \(processes)."
   }
 
-  /// Names the app with the largest available CPU share.
   private var cpuSentence: String {
-    guard let top = lastApps.max(by: { ($0.cpu.value ?? -1) < ($1.cpu.value ?? -1) }),
-      let cpu = top.cpu.value
-    else { return "Your Mac is working hard." }
+    guard let top = topCPUApp, let cpu = top.cpu.value else {
+      return "CPU is at \(PercentFormat.total(lastCPU))."
+    }
     return "\(top.name) is using \(PercentFormat.app(cpu)) of the CPU."
   }
 }
