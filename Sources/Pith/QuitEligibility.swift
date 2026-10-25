@@ -75,15 +75,19 @@ struct RunningApps {
       return NSWorkspace.shared.runningApplications.filter { pids.contains($0.processIdentifier) }
     },
     ownerUID: { ProcessProbe.live.bsdInfo($0)?.uid },
-    nextCheck: { try await Task.sleep(for: .seconds(1)) },
+    exits: NSWorkspace.shared.notificationCenter,
+    // The suspending clock, as the flow's uptime clock, stops while the Mac sleeps.
+    forceOfferDelay: { try await Task.sleep(for: .seconds(5), clock: .suspending) },
     quitPith: { NSApplication.shared.terminate(nil) })
 
   /// The apps that macOS runs among these PIDs. Live, it reads `runningApplications` once, as
   /// every PID of a row is a candidate (R100); its instances are kept by `NSWorkspace`.
   let running: @MainActor @Sendable ([Int32]) -> [any QuitTarget]
   let ownerUID: @MainActor @Sendable (Int32) -> UInt32?
-  /// Returns at the next check of an app that is quitting, 1 s on (R97).
-  let nextCheck: @MainActor @Sendable () async throws -> Void
+  /// Posts `didTerminateApplicationNotification` when an app exits (R111).
+  let exits: NotificationCenter
+  /// Returns once, 5 s after a quit, when Force Quit is offered (R111).
+  let forceOfferDelay: @MainActor @Sendable () async throws -> Void
   /// Quits Pith itself (R91).
   let quitPith: @MainActor @Sendable () -> Void
 }

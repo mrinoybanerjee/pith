@@ -67,6 +67,7 @@ struct RowLayout<Icon: View, Name: View>: View {
           .font(.panel(.body, weight: .medium).monospacedDigit())
           .foregroundStyle(value.amount == nil ? .secondary : .primary)
           .accessibilityLabel(value.label)
+          .help(value.help ?? "")
           .accessibilityIdentifier("pith.value")
         if let processes {
           Text("\(processes) processes")
@@ -93,17 +94,28 @@ struct RowLayout<Icon: View, Name: View>: View {
   }
 }
 
-/// A row's value for one metric: what it shows, what VoiceOver says, and its length on the rows'
-/// shared bar scale, nil when there is no number.
+/// A row's value for one metric: what it shows, what VoiceOver says, its tooltip, and its length on
+/// the rows' shared bar scale, nil when there is no number.
 struct RowValue {
   /// A first sample: the next reading has it.
   static let notYet = RowValue(text: "—", label: "not available yet", amount: nil)
+  /// Any other missing reading, such as an accounting mismatch or a failed read. Its reason stays
+  /// in the log; the user reads one plain sentence (R110).
+  static let unavailable = RowValue(
+    text: "—", label: "not available", amount: nil, help: "Pith couldn't measure this right now.")
   /// A value that Pith never measures, such as disk activity for "macOS system".
   static let notMeasured = RowValue(text: "not measured", label: "not measured", amount: nil)
 
   let text: String
   let label: String
   let amount: Double?
+  var help: String?
+
+  /// What a reading shows while it has no value: "not available yet" for a first sample, and
+  /// "not available" for anything else (R110). No reading at all is not yet.
+  static func missing<Value>(_ reading: Reading<Value>?) -> RowValue {
+    reading?.isFirstSample == false ? .unavailable : .notYet
+  }
 
   /// `disk` is nil when the row has no disk reading at all.
   static func of(_ metric: Metric, memory: UInt64, cpu: Reading<Double>, disk: Reading<Double>?)
@@ -111,9 +123,9 @@ struct RowValue {
   {
     switch metric {
     case .memory: known(ByteFormat.memory(memory), Double(memory))
-    case .cpu: cpu.value.map { known(PercentFormat.app($0), $0) } ?? .notYet
+    case .cpu: cpu.value.map { known(PercentFormat.app($0), $0) } ?? missing(cpu)
     case .disk:
-      disk.map { $0.value.map { known(ByteFormat.rate($0), $0) } ?? .notYet } ?? .notMeasured
+      disk.map { $0.value.map { known(ByteFormat.rate($0), $0) } ?? missing($0) } ?? .notMeasured
     }
   }
 
@@ -136,13 +148,13 @@ func rowSentence(_ name: String, _ value: RowValue, _ metric: Metric, processes:
   return ([name, reading] + [count].compactMap { $0 }).joined(separator: ", ")
 }
 
-/// Each app's own icon, read once and kept while its row shows (spec 6.1). A process outside any
-/// app shows the icon of a command-line tool, and an app whose bundle is gone the generic one
-/// (R69).
+/// Each app's own icon, read once and kept while its row shows (spec 6.1); the store prunes the
+/// rest at each open snapshot (R112). A process outside any app shows the icon of a command-line
+/// tool, and an app whose bundle is gone the generic one (R69).
 @MainActor enum AppIcons {
   private static let tool = NSWorkspace.shared.icon(for: .unixExecutable)
   private static let app = NSWorkspace.shared.icon(for: .applicationBundle)
-  private static var icons: [String: NSImage] = [:]
+  private(set) static var icons: [String: NSImage] = [:]
 
   static func icon(forFile path: String?) -> NSImage {
     guard let path else { return tool }

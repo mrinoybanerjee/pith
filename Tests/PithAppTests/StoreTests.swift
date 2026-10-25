@@ -119,21 +119,27 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   #expect(first.terminations == 1 && first.forcedTerminations == 0)
 }
 
-/// R95: when the app ends while Force Quit is offered, the next check finds it gone. The flow is
-/// done, the offer goes, and nothing is forced.
-@MainActor @Test func anAppThatEndsWhileForceQuitIsOfferedIsDone() async throws {
-  let chrome = fakeChrome()
-  let apps = FakeRunningApps([chrome])
-  let store = try askToQuitChrome(apps)
-  apps.passTheConfirmGuard()
-  store.confirmQuit()
-  await settle()
-  apps.nowNs += 5_000_000_000
-  await apps.checks.fire()
-  #expect(store.quitFlow.state == .offerForce)
-  chrome.isTerminated = true
-  await apps.checks.fire()
-  #expect(store.quitFlow.state == .done && chrome.forcedTerminations == 0)
+/// R111: macOS's exit notice for the flow's own process ends the flow, while the app quits and
+/// while Force Quit is offered, and nothing is forced. A notice for another app changes nothing.
+@MainActor @Test func theAppsExitNoticeEndsTheFlow() async throws {
+  for offered in [false, true] {
+    let chrome = fakeChrome()
+    let apps = FakeRunningApps([chrome])
+    let store = try askToQuitChrome(apps)
+    apps.passTheConfirmGuard()
+    store.confirmQuit()
+    await settle()
+    if offered {
+      apps.nowNs += 5_000_000_000
+      await apps.timer.fire()
+      #expect(store.quitFlow.state == .offerForce)
+    }
+    let state = store.quitFlow.state
+    await apps.exit(fakeChrome())  // another instance, with the same PID
+    #expect(store.quitFlow.state == state)
+    await apps.exit(chrome)
+    #expect(store.quitFlow.state == .done && chrome.forcedTerminations == 0, "offered: \(offered)")
+  }
 }
 
 /// R95: a new process with the PID of the one the user asked to quit cannot take its place. At
@@ -151,40 +157,43 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   #expect(asked.terminations == 0 && reused.terminations == 0)
 }
 
-/// R95 and R97: the flow checks the app once per check while it quits, while Force Quit is
-/// offered and while it is asked. The checks stop when the flow is done and when the panel closes:
-/// a check that went on would begin another wait.
-@MainActor @Test func theQuitChecksRunOnlyWhileTheAppQuits() async throws {
+/// R111 and spec 10: nothing polls. An app that ignores Quit, on a covered panel for 60 s, wakes
+/// Pith once, at the 5 s offer. No timer runs while the offer or its confirm shows.
+@MainActor @Test func aQuitThatTheAppIgnoresWakesPithOnce() async throws {
   let chrome = fakeChrome()
   let apps = FakeRunningApps([chrome])
-  var store = try askToQuitChrome(apps)
-  #expect(apps.checks.waits == 0)  // asking to quit does not check
+  let store = try askToQuitChrome(apps)
+  #expect(apps.timer.waits == 0)  // asking to quit starts no timer
   apps.passTheConfirmGuard()
   store.confirmQuit()
+  store.panelCovered = true
   await settle()
-  #expect(apps.checks.waits == 1)
-  await apps.checks.fire()
-  #expect(apps.checks.waits == 2 && store.quitFlow.state == .waiting(sinceNs: 400_000_000))
-  apps.nowNs += 5_000_000_000
-  await apps.checks.fire()
-  #expect(apps.checks.waits == 3 && store.quitFlow.state == .offerForce)
+  #expect(apps.timer.waits == 1)
+  apps.nowNs += 60_000_000_000
+  await apps.timer.fire()
+  #expect(store.quitFlow.state == .offerForce)
+  await apps.timer.fire()
   store.offerForceQuit()
-  await apps.checks.fire()
-  #expect(apps.checks.waits == 4 && store.quitFlow.state == .confirmingForce)
-  store.panelClosed()
-  await apps.checks.fire()
-  #expect(apps.checks.waits == 4 && store.quitFlow.state == .idle)
+  await apps.timer.fire()
+  #expect(store.quitFlow.state == .confirmingForce && apps.timer.waits == 1)
+  #expect(apps.timer.waiting == 0)
+}
 
-  let waits = apps.checks.waits
-  store = try askToQuitChrome(apps)
+/// R111: starting over removes the exit watch, and a late timer or exit notice changes nothing.
+@MainActor @Test func aLateTimerOrExitNoticeAfterAResetChangesNothing() async throws {
+  let chrome = fakeChrome()
+  let apps = FakeRunningApps([chrome])
+  let store = try askToQuitChrome(apps)
   apps.passTheConfirmGuard()
   store.confirmQuit()
   await settle()
-  chrome.isTerminated = true
-  await apps.checks.fire()
-  #expect(store.quitFlow.state == .done && apps.checks.waits == waits + 1)
-  await apps.checks.fire()
-  #expect(apps.checks.waits == waits + 1)
+  #expect(apps.timer.waiting == 1 && apps.exits.observers == 1)
+  store.panelClosed()
+  #expect(apps.exits.observers == 0)
+  apps.nowNs += 5_000_000_000
+  await apps.timer.fire()
+  await apps.exit(chrome)
+  #expect(store.quitFlow.state == .idle && chrome.forcedTerminations == 0)
 }
 
 /// R93 and R99: the default button of each confirm, Quit and Force Quit, does nothing for 0.4 s
@@ -204,7 +213,7 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   #expect(chrome.terminations == 1)
   await settle()
   apps.nowNs += 5_000_000_000
-  await apps.checks.fire()
+  await apps.timer.fire()
   store.offerForceQuit()
   store.cancelQuit()
   #expect(store.quitFlow.state == .offerForce)
@@ -217,7 +226,6 @@ private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   store.confirmQuit()
   #expect(chrome.forcedTerminations == 1)
   store.panelClosed()
-  await apps.checks.fire()
 }
 
 /// R101: `confirmQuit()` is the one gate for a click, Space, Return and VoiceOver. It does

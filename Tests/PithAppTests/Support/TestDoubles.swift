@@ -29,8 +29,8 @@ extension LoginItem {
 /// No app is running, so no row offers Quit, and Quit Pith does nothing.
 extension RunningApps {
   static let stub = RunningApps(
-    running: { _ in [] }, ownerUID: { _ in nil },
-    nextCheck: { try await Task.sleep(for: .seconds(1)) }, quitPith: {})
+    running: { _ in [] }, ownerUID: { _ in nil }, exits: NotificationCenter(),
+    forceOfferDelay: { try await Task.sleep(for: .seconds(5)) }, quitPith: {})
 }
 
 @MainActor func testStore(
@@ -77,12 +77,12 @@ extension RunningApps {
   }
 }
 
-/// The quit flow's 1 s check, run by hand (R97): `fire()` ends the pending wait, and `waits`
-/// counts the waits begun, one for each check that the flow asks for.
+/// A wait that the test ends by hand, such as the quit flow's 5 s timer (R111) or a pinned panel's
+/// drag check (R106): `fire()` ends each pending wait, `waits` counts the waits begun, each a
+/// wakeup of the app, and `waiting` those not ended yet.
 @MainActor final class ManualChecks {
   private(set) var waits = 0
   private var pending: [CheckedContinuation<Void, Never>] = []
-  /// The waits that have begun and not ended.
   var waiting: Int { pending.count }
 
   func wait() async {
@@ -90,12 +90,30 @@ extension RunningApps {
     await withCheckedContinuation { pending.append($0) }
   }
 
-  /// Ends the pending wait, then lets the flow's check run.
+  /// Ends the pending waits, then lets the app act on them.
   func fire() async {
     let ended = pending
     pending = []
     for continuation in ended { continuation.resume() }
     await settle()
+  }
+}
+
+/// A notification center that counts the block observers added and not yet removed.
+final class CountingCenter: NotificationCenter, @unchecked Sendable {
+  private(set) var observers = 0
+
+  override func addObserver(
+    forName name: NSNotification.Name?, object obj: Any?, queue: OperationQueue?,
+    using block: @escaping @Sendable (Notification) -> Void
+  ) -> any NSObjectProtocol {
+    observers += 1
+    return super.addObserver(forName: name, object: obj, queue: queue, using: block)
+  }
+
+  override func removeObserver(_ observer: Any) {
+    observers -= 1
+    super.removeObserver(observer)
   }
 }
 
@@ -105,19 +123,20 @@ extension RunningApps {
   var down = false
 }
 
-/// Lets the main actor's pending tasks run, such as a check loop that has just started.
+/// Lets the main actor's pending tasks run, such as a timer that has just started.
 @MainActor func settle() async {
   for _ in 0..<10 { await Task.yield() }
 }
 
 /// The apps that a test runs, by PID, which the test adds, ends and replaces, owned by the user
-/// unless `owners` says otherwise. The time is the test's, and so are the 1 s checks. Nothing real
-/// is ever quit.
+/// unless `owners` says otherwise. The time is the test's, and so are the 5 s timer and the exit
+/// notices. Nothing real is ever quit.
 @MainActor final class FakeRunningApps {
   var apps: [pid_t: FakeApp]
   var owners: [pid_t: UInt32] = [:]
   var nowNs: UInt64 = 0
-  let checks = ManualChecks()
+  let timer = ManualChecks()
+  let exits = CountingCenter()
   private(set) var pithQuits = 0
 
   init(_ apps: [FakeApp]) {
@@ -127,8 +146,17 @@ extension RunningApps {
   var runningApps: RunningApps {
     RunningApps(
       running: { pids in pids.compactMap { self.apps[$0] } },
-      ownerUID: { self.owners[$0] ?? getuid() },
-      nextCheck: { await self.checks.wait() }, quitPith: { self.pithQuits += 1 })
+      ownerUID: { self.owners[$0] ?? getuid() }, exits: exits,
+      forceOfferDelay: { await self.timer.wait() }, quitPith: { self.pithQuits += 1 })
+  }
+
+  /// `app` ends, and macOS says so, as `NSWorkspace` does.
+  func exit(_ app: FakeApp) async {
+    app.isTerminated = true
+    exits.post(
+      name: NSWorkspace.didTerminateApplicationNotification, object: nil,
+      userInfo: [NSWorkspace.applicationUserInfoKey: app])
+    await settle()
   }
 
   func store(guide: Guide) -> Store {

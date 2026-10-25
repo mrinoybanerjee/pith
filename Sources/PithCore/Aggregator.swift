@@ -35,7 +35,7 @@ public enum Aggregator {
     // A process that is new this tick has no CPU reading yet, so its CPU stays in the residual.
     let appCPU: Reading<Double> =
       baseline == nil
-      ? .unavailable("first sample") : .value(apps.compactMap(\.cpu.value).reduce(0, +))
+      ? .firstSample : .value(apps.compactMap(\.cpu.value).reduce(0, +))
     return Snapshot(
       takenAtNs: current.takenAtNs, mode: mode, totals: totals, apps: apps,
       system: residual(totals, appMemory: apps.reduce(0) { $0 + $1.memory }, appCPU: appCPU),
@@ -49,7 +49,7 @@ public enum Aggregator {
     _ cpuCount: Int, _ guide: Guide
   ) -> AppUsage {
     let identity = groups[members[0].key]!
-    var cpu = Reading<Double>.unavailable("first sample")
+    var cpu = Reading<Double>.firstSample
     var disk = cpu
     let continuing = members.compactMap { s in baseline?.samples[s.key].map { ($0, s) } }
     if let wallNs = baseline?.wallNs, !continuing.isEmpty {
