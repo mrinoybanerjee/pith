@@ -48,8 +48,14 @@ public struct AppGrouper: Sendable {
   }
 
   /// The outermost `*.app` directory on `path`, so a helper app inside an app resolves to it.
-  public static func enclosingAppPath(_ path: String) -> String? {
-    path.range(of: ".app/").map { String(path[..<$0.lowerBound]) + ".app" }
+  public static func enclosingAppPath(_ path: String) -> String? { appPaths(path).first }
+
+  /// Every app directory on `path`, outermost first: each `*.app`, and the `*.app.bundle` that a
+  /// Chromium browser runs its main process from (a temporary code-sign clone).
+  private static func appPaths(_ path: String) -> [String] {
+    path.split(separator: "/")
+      .filter { c in [".app", ".app.bundle"].contains { c.count > $0.count && c.hasSuffix($0) } }
+      .map { String(path[..<$0.endIndex]) }
   }
 
   /// The app of each process in `t`. Each `ProcessKey` is grouped once, and keys not in `t` leave
@@ -63,16 +69,38 @@ public struct AppGrouper: Sendable {
     return groups
   }
 
-  /// Spec 6.5 order: the responsible process's app, then the process's own app, then the first app
-  /// up to 5 parents up, following only processes in the table and stopping at launchd.
+  /// Spec 6.5, in order (the first that names an app wins):
+  /// 1. The responsible process's app: its innermost, as for any app responsible for itself.
+  ///    Skipped when that PID started after this process (reused) or the app is a Chromium clone,
+  ///    so Chrome's helpers keep the real app path from step 2.
+  /// 2. The process's own app: the innermost when it is responsible for itself, else the outermost.
+  /// 3. The outermost app of up to 5 parents, following only processes in the table and stopping
+  ///    at launchd.
+  /// Otherwise the process stands alone, named by its file name.
   private func group(_ s: ProcessSample, _ table: [Int32: ProcessSample]) -> AppIdentity {
-    let owner = responsible?(s.key.pid).flatMap { table[$0] }  // often `s`, checked again below
-    let chain = sequence(first: s) { $0.parent == 1 ? nil : table[$0.parent] }.prefix(6)
-    let candidates = [owner].compactMap { $0 } + chain
-    guard let app = candidates.lazy.compactMap({ Self.enclosingAppPath($0.path) }).first else {
-      return AppIdentity(id: "proc:\(s.name)", name: s.name, bundlePath: nil)
+    let responsiblePID = responsible?(s.key.pid)
+    if let owner = responsiblePID.flatMap({ table[$0] }), owner.key.startTime <= s.key.startTime,
+      let app = Self.appPaths(owner.path).last, !app.hasSuffix(".app.bundle")
+    {
+      return identity(app)!
     }
+    let own = Self.appPaths(s.path)
+    let parents = sequence(first: s) { $0.parent == 1 ? nil : table[$0.parent] }.dropFirst()
+    let apps =
+      [responsiblePID == s.key.pid ? own.last : own.first]
+      + parents.prefix(5).map { Self.enclosingAppPath($0.path) }
+    for case let app? in apps { if let found = identity(app) { return found } }
+    let file = FilePath(s.path).lastComponent?.string ?? s.name  // the kernel name when path is ""
+    return AppIdentity(id: "proc:\(file)", name: file, bundlePath: nil)
+  }
+
+  /// A Chromium clone joins its app by bundle ID, with no path. A clone whose bundle can't be read
+  /// is no app, so a temporary path never becomes an id.
+  private func identity(_ app: String) -> AppIdentity? {
     let info = bundleInfo(app)
+    guard !app.hasSuffix(".app.bundle") else {
+      return info.map { AppIdentity(id: $0.id, name: $0.name, bundlePath: nil) }
+    }
     return AppIdentity(
       id: info?.id ?? app, name: info?.name ?? FilePath(app).stem!, bundlePath: app)
   }

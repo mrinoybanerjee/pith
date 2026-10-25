@@ -18,7 +18,13 @@ enum Fixture {
 
   private static let bundles: [String: (id: String, name: String)] = [
     "/Applications/Google Chrome.app": ("com.google.Chrome", "Google Chrome"),
+    "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app.bundle": (
+      "com.google.Chrome", "Google Chrome"
+    ),
     "/Applications/Xcode.app": ("com.apple.dt.Xcode", "Xcode"),
+    "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app": (
+      "com.apple.iphonesimulator", "Simulator"
+    ),
     "/System/Applications/Utilities/Terminal.app": ("com.apple.Terminal", "Terminal"),
     "/Applications/Codex.app": ("com.example.Codex", "Codex"),
     "/Applications/Claude.app": ("com.example.Claude", "Claude"),
