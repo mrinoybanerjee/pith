@@ -12,12 +12,19 @@ public struct VMCounts: Sendable {
   public let `internal`: UInt64  // anonymous pages
   public let purgeable: UInt64
   public let wired: UInt64
-  public let compressor: UInt64
+  public let compressor: UInt64  // pages the compressor occupies
+  public let storedInCompressor: UInt64  // pages of data it holds, uncompressed
 }
 
 /// Activity Monitor's "Memory Used": app memory (anonymous minus purgeable), wired and compressed.
 public func memoryUsed(_ c: VMCounts, pageSize: UInt64) -> UInt64 {
   (c.internal + c.wired + c.compressor - c.purgeable) * pageSize
+}
+
+/// Memory used as footprints count it: a compressed page at its full size (R133). The "macOS
+/// system" residual is this less the user's footprints (spec 6.6).
+public func footprintTotal(_ c: VMCounts, pageSize: UInt64) -> UInt64 {
+  (c.internal + c.wired + c.storedInCompressor - c.purgeable) * pageSize
 }
 
 /// Cumulative scheduler ticks of one core. The counters are 32-bit and wrap.
@@ -101,8 +108,9 @@ public final class SystemReader: SystemTotalsReading {
       }
     }
     let storage = cachedStorage()
+    let memory = Self.readMemory()
     return SystemTotals(
-      memoryUsed: Self.readMemoryUsed(),
+      memoryUsed: memory.used, footprintTotal: memory.footprintTotal,
       memoryTotal: ProcessInfo.processInfo.physicalMemory,
       pressure: Pressure.fromKernel(),
       swapUsed: Self.readSwapUsed(),
@@ -121,11 +129,13 @@ public final class SystemReader: SystemTotalsReading {
     }
   }
 
-  private static func readMemoryUsed() -> Reading<UInt64> {
+  /// Memory used and the footprint total, from one kernel read.
+  private static func readMemory() -> (used: Reading<UInt64>, footprintTotal: Reading<UInt64>) {
     var pageSize: vm_size_t = 0
     let pageStatus = host_page_size(host, &pageSize)
     guard pageStatus == KERN_SUCCESS else {
-      return .unavailable("host_page_size failed: \(pageStatus)")
+      let failed = Reading<UInt64>.unavailable("host_page_size failed: \(pageStatus)")
+      return (failed, failed)
     }
     var stats = vm_statistics64()
     var count = mach_msg_type_number_t(
@@ -135,11 +145,18 @@ public final class SystemReader: SystemTotalsReading {
         host_statistics64(host, HOST_VM_INFO64, $0, &count)
       }
     }
-    guard status == KERN_SUCCESS else { return .unavailable("host_statistics64 failed: \(status)") }
+    guard status == KERN_SUCCESS else {
+      let failed = Reading<UInt64>.unavailable("host_statistics64 failed: \(status)")
+      return (failed, failed)
+    }
     let counts = VMCounts(
       internal: UInt64(stats.internal_page_count), purgeable: UInt64(stats.purgeable_count),
-      wired: UInt64(stats.wire_count), compressor: UInt64(stats.compressor_page_count))
-    return .value(memoryUsed(counts, pageSize: UInt64(pageSize)))
+      wired: UInt64(stats.wire_count), compressor: UInt64(stats.compressor_page_count),
+      storedInCompressor: stats.total_uncompressed_pages_in_compressor)
+    return (
+      .value(memoryUsed(counts, pageSize: UInt64(pageSize))),
+      .value(footprintTotal(counts, pageSize: UInt64(pageSize)))
+    )
   }
 
   private static func readSwapUsed() -> Reading<UInt64> {

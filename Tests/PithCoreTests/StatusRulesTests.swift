@@ -23,7 +23,8 @@ private func snapshot(
   Snapshot(
     takenAtNs: 0, mode: apps.isEmpty ? .closed : .open,
     totals: SystemTotals(
-      memoryUsed: .value(6 << 30), memoryTotal: 16 << 30, pressure: pressure, swapUsed: .value(0),
+      memoryUsed: .value(6 << 30), footprintTotal: .value(6 << 30), memoryTotal: 16 << 30,
+      pressure: pressure, swapUsed: .value(0),
       cpuBusy: cpu, storageFree: free, storageTotal: total),
     apps: apps, system: .unavailable("test"), grouping: .full)
 }

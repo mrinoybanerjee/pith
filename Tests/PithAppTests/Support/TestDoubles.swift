@@ -242,8 +242,9 @@ func remake(
   return Snapshot(
     takenAtNs: snapshot.takenAtNs, mode: snapshot.mode,
     totals: SystemTotals(
-      memoryUsed: t.memoryUsed, memoryTotal: t.memoryTotal, pressure: t.pressure,
-      swapUsed: t.swapUsed, cpuBusy: firstTick ? rate : t.cpuBusy, storageFree: t.storageFree,
+      memoryUsed: t.memoryUsed, footprintTotal: t.footprintTotal, memoryTotal: t.memoryTotal,
+      pressure: t.pressure, swapUsed: t.swapUsed, cpuBusy: firstTick ? rate : t.cpuBusy,
+      storageFree: t.storageFree,
       storageTotal: t.storageTotal),
     apps: (apps ?? snapshot.apps).map { a in
       guard firstTick else { return a }

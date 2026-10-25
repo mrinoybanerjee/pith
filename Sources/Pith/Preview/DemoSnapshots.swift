@@ -58,7 +58,8 @@ enum DemoSnapshots {
     Snapshot(
       takenAtNs: 1_000_000_000, mode: .open,
       totals: SystemTotals(
-        memoryUsed: .value(used), memoryTotal: 16 << 30, pressure: .value(pressure),
+        memoryUsed: .value(used), footprintTotal: .value(apps.reduce(system) { $0 + $1.memory }),
+        memoryTotal: 16 << 30, pressure: .value(pressure),
         swapUsed: .value(swap), cpuBusy: .value(cpu), storageFree: .value(112_000_000_000),
         storageTotal: .value(228_000_000_000)),
       apps: apps, system: .value(SystemResidual(memory: system, cpu: .value(0.04))),

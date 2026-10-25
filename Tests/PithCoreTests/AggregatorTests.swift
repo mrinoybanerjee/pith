@@ -15,21 +15,29 @@ private func helper(_ pattern: String, _ title: String) -> GuideEntry {
 /// Aggregates `current` against `previous`, grouped by `AppGrouper` in `.limited` mode.
 private func snap(
   previous: ProcessTable?, current: ProcessTable?, cores: Int = 10,
-  memoryUsed: Reading<UInt64> = .value(16 << 30), cpuBusy: Reading<Double> = .value(0.5),
+  memoryUsed: Reading<UInt64> = .value(16 << 30),
+  footprintTotal: Reading<UInt64> = .value(16 << 30),
+  cpuBusy: Reading<Double> = .value(0.5),
   mode: Mode = .open, nowNs: UInt64 = 9_000_000_000
 ) -> Snapshot {
   var grouper = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
   return Aggregator.snapshot(
     previous: previous, current: current, groups: current.map { grouper.assign($0) } ?? [:],
     totals: SystemTotals(
-      memoryUsed: memoryUsed, memoryTotal: 16 << 30, pressure: .value(.normal), swapUsed: .value(0),
+      memoryUsed: memoryUsed, footprintTotal: footprintTotal, memoryTotal: 16 << 30,
+      pressure: .value(.normal), swapUsed: .value(0),
       cpuBusy: cpuBusy, storageFree: .unavailable("unused"), storageTotal: .unavailable("unused")),
     cpuCount: cores, guide: guide, grouping: grouper.quality, mode: mode, nowNs: nowNs)
 }
 
 /// The first tick of a fixture table: memory only.
-private func snap(fixture: String, memoryUsed: Reading<UInt64> = .value(16 << 30)) -> Snapshot {
-  snap(previous: nil, current: Fixture.table(fixture), memoryUsed: memoryUsed)
+private func snap(
+  fixture: String, memoryUsed: Reading<UInt64> = .value(16 << 30),
+  footprintTotal: Reading<UInt64> = .value(16 << 30)
+) -> Snapshot {
+  snap(
+    previous: nil, current: Fixture.table(fixture), memoryUsed: memoryUsed,
+    footprintTotal: footprintTotal)
 }
 
 /// A process of `/Applications/<app>.app` with 64 MB; its kernel name is `file` cut to 16 bytes.
@@ -128,21 +136,31 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   #expect(s.apps[0].inside == [HelperGroup(label: "node", count: 5, memory: 5 * 64 << 20)])
 }
 
-@Test func residualIsTotalMinusApps() {
-  let s = snap(fixture: "chrome-usage", memoryUsed: .value(2 << 30))
+@Test func residualIsFootprintTotalMinusApps() {
+  let s = snap(fixture: "chrome-usage", footprintTotal: .value(2 << 30))
   #expect(s.system.value?.memory == (2 << 30) - 5 * (100 << 20))
 }
 
-@Test func negativeResidualIsVisibleMismatch() {
-  #expect(
-    snap(fixture: "chrome-usage", memoryUsed: .value(1)).system
-      == .unavailable("accounting mismatch"))
+@Test func compressedMemoryLeavesAPositiveResidual() {  // R133
+  // The apps' 500 MB pass the 300 MB used, as their footprints count each compressed page at its
+  // full size. The footprint total counts the compressor's pages that way too: 600 MB.
+  let s = snap(
+    fixture: "chrome-usage", memoryUsed: .value(300 << 20), footprintTotal: .value(600 << 20))
+  #expect(s.system.value?.memory == 100 << 20)
 }
 
-@Test func unavailableMemoryUsedHasNoResidual() {  // never a residual of 0 or a mismatch
+@Test func appsOverTheFootprintTotalAreAVisibleMismatch() {  // R133
   #expect(
-    snap(fixture: "chrome-usage", memoryUsed: .unavailable("host_statistics64 failed: 5")).system
-      == .unavailable("memory unavailable"))
+    snap(fixture: "chrome-usage", memoryUsed: .value(300 << 20), footprintTotal: .value(400 << 20))
+      .system == .unavailable("accounting mismatch"))
+}
+
+@Test func unavailableMemoryHasNoResidual() {  // never a residual of 0 or a mismatch
+  #expect(
+    snap(
+      fixture: "chrome-usage", memoryUsed: .unavailable("host_statistics64 failed: 5"),
+      footprintTotal: .unavailable("host_statistics64 failed: 5")
+    ).system == .unavailable("memory unavailable"))
 }
 
 @Test func closedModeHasNoApps() {
@@ -250,7 +268,7 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
         process(300, cpu: 2_500_000_000),
         process(400, app: "Slack", cpu: 1_250_000_000, memory: 128 << 20),
       ], at: 1_000_000_000),
-    memoryUsed: .value(1 << 30))
+    footprintTotal: .value(1 << 30))
   #expect(s.system == .value(SystemResidual(memory: (1 << 30) - (192 << 20), cpu: .value(0.125))))
 }
 
@@ -271,15 +289,21 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   #expect(s.apps[0].diskBytesPerSecond == .unavailable("first sample"))
 }
 
-@Test func cpuDiffsAcrossAnExec() {  // the same task runs a new executable, and its counters go on
-  let s = snap(
-    previous: table([process(300)], at: 0),
-    current: table([process(300, executable: 1, cpu: 2_000_000_000)], at: 1_000_000_000))
-  #expect(s.apps[0].cpu == .value(0.2))
+@Test func anExecThatLowersTheCPUTimeStartsAFreshBaseline() {  // R132
+  // Seen on macOS 26.6.2 (MTLAssetUpgraderD): an exec keeps the PID and start time, and the new
+  // executable's CPU time was lower. It counts as a new process: no rate this tick, and no trap.
+  let before = table(
+    [process(300, executable: 1, cpu: 2_000_000), process(301, app: "Maps")], at: 1_000_000_000)
+  let after = table(
+    [process(300, executable: 2, cpu: 1_000_000), process(301, app: "Maps", cpu: 100_000_000)],
+    at: 2_000_000_000)
+  let s = snap(previous: before, current: after)
+  #expect(s.apps.first { $0.name == "Notes" }?.cpu == .unavailable("first sample"))
+  #expect(s.apps.first { $0.name == "Maps" }?.cpu == .value(0.01))  // 0.1 s of 1 s on 10 cores
 }
 
 @Test func zeroMemoryResidualIsAValue() {
   #expect(
-    snap(fixture: "chrome-usage", memoryUsed: .value(5 * 100 << 20)).system
+    snap(fixture: "chrome-usage", footprintTotal: .value(5 * 100 << 20)).system
       == .value(SystemResidual(memory: 0, cpu: .unavailable("first sample"))))
 }

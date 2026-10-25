@@ -9,10 +9,11 @@ actor Counter {
   func bump() { value += 1 }
 }
 
-/// Fixed whole-machine totals: 16 GB used of 16 GB, half the CPU busy.
+/// Fixed whole-machine totals: 16 GB used of 16 GB, nothing compressed, half the CPU busy.
 struct FakeSystem: SystemTotalsReading {
   static let totals = SystemTotals(
-    memoryUsed: .value(16 << 30), memoryTotal: 16 << 30, pressure: .value(.normal),
+    memoryUsed: .value(16 << 30), footprintTotal: .value(16 << 30), memoryTotal: 16 << 30,
+    pressure: .value(.normal),
     swapUsed: .value(0), cpuBusy: .value(0.5), storageFree: .unavailable("fake"),
     storageTotal: .unavailable("fake"))
 

@@ -80,7 +80,8 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
   Snapshot(
     takenAtNs: ns, mode: mode,
     totals: SystemTotals(
-      memoryUsed: .value(6 << 30), memoryTotal: 16 << 30, pressure: .value(.normal),
+      memoryUsed: .value(6 << 30), footprintTotal: .value(6 << 30), memoryTotal: 16 << 30,
+      pressure: .value(.normal),
       swapUsed: .value(0), cpuBusy: cpu, storageFree: .unavailable("test"),
       storageTotal: .unavailable("test")),
     apps: [], system: .unavailable("test"), grouping: .full)

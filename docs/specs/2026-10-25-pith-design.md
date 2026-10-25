@@ -270,7 +270,7 @@ Rules:
 
 ### 6.6 "macOS system" residual
 
-- Memory residual = memory used − Σ footprint of the user's own processes.
+- Memory residual = (internal − purgeable + wired + pages stored in the compressor) × page size − Σ footprint of the user's own processes. Footprints count a compressed page at its full size, so the residual uses the compressor's uncompressed count (`total_uncompressed_pages_in_compressor`), not `compressor_page_count` (R133). The Memory tile keeps memory used (6.4).
 - CPU residual = total busy − Σ the user's process CPU.
 - If a residual is negative, it is shown as "—" with the reason "accounting mismatch". Debug builds log the inputs. The accuracy test (step 2) fails on any negative residual.
 
