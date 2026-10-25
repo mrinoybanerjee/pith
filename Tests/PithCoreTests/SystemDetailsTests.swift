@@ -116,7 +116,8 @@ func unparseableRowThrows(row: String) {
 }
 
 @Test func breakdownTopFourPlusOther() async throws {
-  let guide = try Guide.bundled()
+  // Without launchd's entry, so the fourth item is a process that the guide does not know.
+  let guide = Guide(entries: try Guide.bundled().entries.filter { $0.match != .name("launchd") })
   let d = SystemDetails(guide: guide, run: { _ in twoSamples }, ownUID: 501, nowNs: { 0 })
   let b = try await d.measure()
   #expect(
@@ -125,7 +126,7 @@ func unparseableRowThrows(row: String) {
   #expect(
     b.items[0].explanation
       == guide.entry(name: "mds_stores", bundleID: nil, path: nil)?.explanation)
-  #expect(b.items[3].explanation == nil)  // launchd has no guide entry
+  #expect(b.items[3].explanation == nil)
   #expect(b.other == (5120 + 4096) << 10)  // cloudd and x86helperd fall into "Other system work"
 }
 

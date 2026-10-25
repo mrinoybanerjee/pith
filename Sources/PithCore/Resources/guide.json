@@ -1,14 +1,18 @@
 [
   {
-    "match": { "name": "mds_stores" },
+    "match": {
+      "name": "mds_stores"
+    },
     "title": "Spotlight indexing",
     "explanation": "Builds the search index after files change. Normal for a few minutes after big copies or updates.",
     "kind": "system",
     "quittable": false,
-    "source": "man:mds(8)"
+    "source": "file:/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mds_stores"
   },
   {
-    "match": { "name": "WindowServer" },
+    "match": {
+      "name": "WindowServer"
+    },
     "title": "Window server",
     "explanation": "Manages the windows on your screen, combines them into one picture and routes your clicks and key presses to the right app.",
     "kind": "system",
@@ -16,7 +20,9 @@
     "source": "man:WindowServer(8)"
   },
   {
-    "match": { "name": "photoanalysisd" },
+    "match": {
+      "name": "photoanalysisd"
+    },
     "title": "Photos analysis",
     "explanation": "Analyzes your photo library in the background for Memories, People, and search by scene or object.",
     "kind": "system",
@@ -24,7 +30,9 @@
     "source": "man:photoanalysisd(8)"
   },
   {
-    "match": { "name": "kernel_task" },
+    "match": {
+      "name": "kernel_task"
+    },
     "title": "CPU heat management",
     "explanation": "Helps manage CPU temperature by making the CPU less available to busy processes. It reacts to heat and does not cause it.",
     "kind": "system",
@@ -32,7 +40,9 @@
     "source": "https://support.apple.com/en-us/102172"
   },
   {
-    "match": { "name": "backupd" },
+    "match": {
+      "name": "backupd"
+    },
     "title": "Time Machine backup",
     "explanation": "Creates Time Machine backups and manages their history.",
     "kind": "system",
@@ -40,7 +50,9 @@
     "source": "man:backupd(8)"
   },
   {
-    "match": { "name": "mdworker_shared" },
+    "match": {
+      "name": "mdworker_shared"
+    },
     "title": "Spotlight file scanning",
     "explanation": "Scans and indexes files for Spotlight when a disk is mounted or a file changes.",
     "kind": "system",
@@ -48,7 +60,9 @@
     "source": "man:mdworker(8)"
   },
   {
-    "match": { "name": "softwareupdated" },
+    "match": {
+      "name": "softwareupdated"
+    },
     "title": "Software updates",
     "explanation": "The main part of macOS that runs software updates.",
     "kind": "system",
@@ -56,15 +70,19 @@
     "source": "man:softwareupdated(8)"
   },
   {
-    "match": { "name": "cloudd" },
-    "title": "iCloud (CloudKit)",
+    "match": {
+      "name": "cloudd"
+    },
+    "title": "iCloud app data",
     "explanation": "Supports CloudKit, the feature that lets apps store their data in iCloud.",
     "kind": "system",
     "quittable": false,
     "source": "man:cloudd(8)"
   },
   {
-    "match": { "name": "bird" },
+    "match": {
+      "name": "bird"
+    },
     "title": "iCloud documents",
     "explanation": "Supports Documents in the Cloud, the feature that stores your documents in iCloud.",
     "kind": "system",
@@ -72,7 +90,9 @@
     "source": "man:bird(8)"
   },
   {
-    "match": { "name": "nsurlsessiond" },
+    "match": {
+      "name": "nsurlsessiond"
+    },
     "title": "Background network tasks",
     "explanation": "Performs network tasks for apps that set them to run in the background.",
     "kind": "system",
@@ -80,73 +100,1773 @@
     "source": "man:nsurlsessiond(8)"
   },
   {
-    "match": { "helperPattern": "Helper (Renderer)" },
+    "match": {
+      "helperPattern": "Helper (Renderer)"
+    },
     "title": "Tabs and sites",
-    "explanation": "Draws the pages, tabs and windows of the app. Each open tab or site often runs in its own.",
+    "explanation": "Draws the pages, tabs and windows of the app. Each open tab or site often runs in its own process.",
     "kind": "helper",
-    "quittable": false
+    "quittable": false,
+    "source": null
   },
   {
-    "match": { "helperPattern": "Helper (GPU)" },
+    "match": {
+      "helperPattern": "Helper (GPU)"
+    },
     "title": "Graphics",
     "explanation": "Draws the app's graphics and video with the graphics chip. An app usually has one.",
     "kind": "helper",
-    "quittable": false
+    "quittable": false,
+    "source": null
   },
   {
-    "match": { "helperPattern": "Helper (Plugin)" },
+    "match": {
+      "helperPattern": "Helper (Plugin)"
+    },
     "title": "Extensions",
     "explanation": "Runs the app's extensions and plug-ins apart from the main app.",
     "kind": "helper",
-    "quittable": false
+    "quittable": false,
+    "source": null
   },
   {
-    "match": { "helperPattern": "Helper" },
+    "match": {
+      "helperPattern": "Helper"
+    },
     "title": "Helpers",
-    "explanation": "Does background jobs for the app. Its memory and CPU count toward the app.",
+    "explanation": "Runs background jobs for the app. Its memory and CPU count toward the app.",
     "kind": "helper",
-    "quittable": false
+    "quittable": false,
+    "source": null
   },
   {
-    "match": { "bundleID": "com.google.Chrome" },
+    "match": {
+      "bundleID": "com.google.Chrome"
+    },
     "title": "Google Chrome",
     "explanation": "Google's web browser. Tabs, extensions and graphics run as separate helper processes that count toward Chrome.",
     "kind": "app",
-    "quittable": true
+    "quittable": true,
+    "source": null
   },
   {
-    "match": { "bundleID": "com.apple.Safari" },
+    "match": {
+      "bundleID": "com.apple.Safari"
+    },
     "title": "Safari",
     "explanation": "Apple's web browser. Web pages and tabs run as separate processes that count toward Safari.",
     "kind": "app",
-    "quittable": true
+    "quittable": true,
+    "source": null
   },
   {
-    "match": { "bundleID": "com.tinyspeck.slackmacgap" },
+    "match": {
+      "bundleID": "com.tinyspeck.slackmacgap"
+    },
     "title": "Slack",
     "explanation": "Team chat app. It is built like a web browser, so it runs several helper processes and can use a lot of memory.",
     "kind": "app",
-    "quittable": true
+    "quittable": true,
+    "source": null
   },
   {
-    "match": { "bundleID": "com.apple.dt.Xcode" },
+    "match": {
+      "bundleID": "com.apple.dt.Xcode"
+    },
     "title": "Xcode",
     "explanation": "Apple's app for building software. Builds, indexing and previews can use a lot of memory and CPU.",
     "kind": "app",
-    "quittable": true
+    "quittable": true,
+    "source": null
   },
   {
-    "match": { "bundleID": "com.anthropic.claudefordesktop" },
+    "match": {
+      "bundleID": "com.anthropic.claudefordesktop"
+    },
     "title": "Claude",
     "explanation": "The Claude chat app. It is built like a web browser, so it runs several helper processes.",
     "kind": "app",
-    "quittable": true
+    "quittable": true,
+    "source": null
   },
   {
-    "match": { "bundleID": "com.apple.finder" },
+    "match": {
+      "bundleID": "com.apple.finder"
+    },
     "title": "Finder",
     "explanation": "Shows your files and folders and draws the desktop. macOS restarts it at once if it quits.",
     "kind": "app",
-    "quittable": false
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "name": "mds"
+    },
+    "title": "Spotlight search",
+    "explanation": "The core of Spotlight. It answers searches from Spotlight and apps, and sends new or changed files to be indexed.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:mds(8)"
+  },
+  {
+    "match": {
+      "name": "mdworker"
+    },
+    "title": "Spotlight file scanning",
+    "explanation": "Scans and indexes files for Spotlight when a disk is mounted or a file changes.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:mdworker(8)"
+  },
+  {
+    "match": {
+      "name": "Spotlight"
+    },
+    "title": "Spotlight search window",
+    "explanation": "Shows the Spotlight window when you press Command-Space. It finds apps, files, email, messages and more.",
+    "kind": "system",
+    "quittable": false,
+    "source": "https://support.apple.com/guide/mac-help/find-what-you-need-with-spotlight-mchlp1008/mac"
+  },
+  {
+    "match": {
+      "name": "fileproviderd"
+    },
+    "title": "File provider sync",
+    "explanation": "Connects apps that supply files, such as cloud storage apps, to macOS. It lists their files and looks up file details.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:fileproviderd(8)"
+  },
+  {
+    "match": {
+      "name": "syncdefaultsd"
+    },
+    "title": "iCloud settings sync",
+    "explanation": "Stores small pieces of app data in iCloud, such as settings, so they stay the same on all your devices.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:syncdefaultsd(8)"
+  },
+  {
+    "match": {
+      "name": "cloudphotod"
+    },
+    "title": "iCloud Photos",
+    "explanation": "Runs all iCloud Photos activity, such as uploads and downloads. Busy after you add many photos.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:cloudphotod(8)"
+  },
+  {
+    "match": {
+      "name": "apsd"
+    },
+    "title": "Push notifications",
+    "explanation": "Keeps a connection to Apple's push service, so apps and macOS get notifications and updates as soon as they are sent.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:apsd(8)"
+  },
+  {
+    "match": {
+      "name": "photolibraryd"
+    },
+    "title": "Photos library",
+    "explanation": "Handles all requests to your Photos library, from the Photos app and from other apps.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:photolibraryd(8)"
+  },
+  {
+    "match": {
+      "name": "trustd"
+    },
+    "title": "Certificate checks",
+    "explanation": "Checks security certificates, for example of websites and servers, to decide if they can be trusted. It does this for all apps.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:trustd(8)"
+  },
+  {
+    "match": {
+      "name": "syspolicyd"
+    },
+    "title": "Security policy",
+    "explanation": "Decides if software may be installed, loaded or run on your Mac. Other parts of macOS ask it before they allow an action.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:syspolicyd(8)"
+  },
+  {
+    "match": {
+      "name": "amfid"
+    },
+    "title": "Code integrity checks",
+    "explanation": "Checks the integrity of the programs that run on your Mac.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:amfid(8)"
+  },
+  {
+    "match": {
+      "name": "xprotectd"
+    },
+    "title": "Malware protection",
+    "explanation": "Part of XProtect, which finds and blocks known malware before it runs.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:xprotectd(8)"
+  },
+  {
+    "match": {
+      "name": "securityd"
+    },
+    "title": "Keychain security",
+    "explanation": "Handles keychain access and encryption tasks. It keeps private keys away from apps and checks who may use each item.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:securityd(1)"
+  },
+  {
+    "match": {
+      "name": "secd"
+    },
+    "title": "Keychain access",
+    "explanation": "Controls who can read and change the items in your keychain, such as saved passwords.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:secd(8)"
+  },
+  {
+    "match": {
+      "name": "secinitd"
+    },
+    "title": "App security setup",
+    "explanation": "Sets up the security rules for each program when it starts.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:secinitd(8)"
+  },
+  {
+    "match": {
+      "name": "sandboxd"
+    },
+    "title": "App sandbox",
+    "explanation": "Supports the sandbox, which limits what apps can reach. It records when an app tries to go past its limits.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:sandboxd(8)"
+  },
+  {
+    "match": {
+      "name": "coreauthd"
+    },
+    "title": "Identity prompts",
+    "explanation": "Shows the prompts that ask you to confirm it is you, and keeps track of those approvals.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:coreauthd(8)"
+  },
+  {
+    "match": {
+      "name": "biometrickitd"
+    },
+    "title": "Touch ID",
+    "explanation": "Supports biometric checks, such as Touch ID fingerprint checks on Macs that have it.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:biometrickitd(8)"
+  },
+  {
+    "match": {
+      "name": "ctkd"
+    },
+    "title": "Smart cards",
+    "explanation": "Runs smart card support. It loads card drivers and keeps card sessions open.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:ctkd(8)"
+  },
+  {
+    "match": {
+      "name": "opendirectoryd"
+    },
+    "title": "User accounts",
+    "explanation": "Looks up user accounts and checks passwords, on your Mac or on a directory server at work or school.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:opendirectoryd(8)"
+  },
+  {
+    "match": {
+      "name": "socketfilterfw"
+    },
+    "title": "Firewall",
+    "explanation": "Runs the macOS firewall when it is turned on. It allows or blocks incoming connections for each app.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:socketfilterfw(8)"
+  },
+  {
+    "match": {
+      "name": "kernelmanagerd"
+    },
+    "title": "Driver loader",
+    "explanation": "Loads drivers (kernel extensions) into the core of macOS and starts driver extensions, when they are needed.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:kernelmanagerd(8)"
+  },
+  {
+    "match": {
+      "name": "mDNSResponder"
+    },
+    "title": "Network name lookup",
+    "explanation": "Turns names, such as website addresses, into network addresses. It also finds devices such as printers on your local network.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:mDNSResponder(8)"
+  },
+  {
+    "match": {
+      "name": "configd"
+    },
+    "title": "System setup tracker",
+    "explanation": "Keeps track of the current system setup, such as the network, and tells apps when it changes.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:configd(8)"
+  },
+  {
+    "match": {
+      "name": "airportd"
+    },
+    "title": "Wi-Fi",
+    "explanation": "Manages your Mac's Wi-Fi hardware.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:airportd(8)"
+  },
+  {
+    "match": {
+      "name": "WiFiAgent"
+    },
+    "title": "Wi-Fi helper",
+    "explanation": "Does Wi-Fi tasks for the logged-in user, on behalf of the main Wi-Fi process.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:WiFiAgent(8)"
+  },
+  {
+    "match": {
+      "name": "wifip2pd"
+    },
+    "title": "Direct Wi-Fi links",
+    "explanation": "Sets up direct Wi-Fi links between your Mac and nearby devices, without a Wi-Fi network in between.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:wifip2pd(8)"
+  },
+  {
+    "match": {
+      "name": "neagent"
+    },
+    "title": "Network add-ons",
+    "explanation": "Runs network add-ons from apps, such as VPNs and content filters.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:neagent(8)"
+  },
+  {
+    "match": {
+      "name": "nesessionmanager"
+    },
+    "title": "VPN sessions",
+    "explanation": "Starts and stops VPN and content filter sessions, and sets up their network rules.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:nesessionmanager(8)"
+  },
+  {
+    "match": {
+      "name": "rapportd"
+    },
+    "title": "Device-to-device link",
+    "explanation": "Lets your Apple devices talk to each other, for features such as phone call handoff.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:rapportd(8)"
+  },
+  {
+    "match": {
+      "name": "sharingd"
+    },
+    "title": "AirDrop and Handoff",
+    "explanation": "Runs AirDrop, Handoff, Instant Hotspot and connections to shared computers. Busy while you send or receive files with AirDrop.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:sharingd(8)"
+  },
+  {
+    "match": {
+      "name": "usbmuxd"
+    },
+    "title": "iPhone and iPad link",
+    "explanation": "Handles the connection between your Mac and an iPhone or iPad, over USB or Wi-Fi.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:usbmuxd(8)"
+  },
+  {
+    "match": {
+      "name": "screensharingd"
+    },
+    "title": "Screen Sharing",
+    "explanation": "Accepts Screen Sharing connections from other computers. It runs only when Screen Sharing or Remote Management is on.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:screensharingd(8)"
+  },
+  {
+    "match": {
+      "name": "coreaudiod"
+    },
+    "title": "Sound",
+    "explanation": "Part of Core Audio, the macOS sound system. It handles sound for apps, speakers, headphones and microphones.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:coreaudiod(8)"
+  },
+  {
+    "match": {
+      "name": "audiomxd"
+    },
+    "title": "Audio routing",
+    "explanation": "Decides where sound plays, together with nearby Apple devices such as iPhone and iPad.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:audiomxd(1)"
+  },
+  {
+    "match": {
+      "name": "bluetoothd"
+    },
+    "title": "Bluetooth",
+    "explanation": "Runs Bluetooth, which connects your Mac to devices such as keyboards, mice, trackpads, game controllers and headphones.",
+    "kind": "system",
+    "quittable": false,
+    "source": "file:/usr/sbin/bluetoothd"
+  },
+  {
+    "match": {
+      "name": "BTLEServerAgent"
+    },
+    "title": "Bluetooth Low Energy",
+    "explanation": "Handles Bluetooth Low Energy features. This is the power-saving kind of Bluetooth that many small accessories use.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:BTLEServerAgent(1)"
+  },
+  {
+    "match": {
+      "name": "Dock"
+    },
+    "title": "Dock",
+    "explanation": "Shows the Dock, where you open apps and switch between them.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:Dock(8)"
+  },
+  {
+    "match": {
+      "name": "ControlCenter"
+    },
+    "title": "Control Center",
+    "explanation": "Shows Control Center and the system controls in the menu bar, such as Wi-Fi, sound and battery.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:ControlCenter(8)"
+  },
+  {
+    "match": {
+      "name": "SystemUIServer"
+    },
+    "title": "Menu bar items",
+    "explanation": "Shows status items on the right side of the menu bar.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:SystemUIServer(8)"
+  },
+  {
+    "match": {
+      "name": "loginwindow"
+    },
+    "title": "Login window",
+    "explanation": "Shows the login window. It also keeps running while you are logged in.",
+    "kind": "system",
+    "quittable": false,
+    "source": "file:/System/Library/CoreServices/loginwindow.app"
+  },
+  {
+    "match": {
+      "name": "corebrightnessd"
+    },
+    "title": "Night Shift",
+    "explanation": "Manages Night Shift, which makes the screen colors warmer at night.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:corebrightnessd(8)"
+  },
+  {
+    "match": {
+      "name": "fontd"
+    },
+    "title": "Fonts",
+    "explanation": "Makes the fonts on your Mac available to apps.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:fontd(8)"
+  },
+  {
+    "match": {
+      "name": "iconservicesd"
+    },
+    "title": "Icon storage",
+    "explanation": "Manages the shared store of app and file icons, so icons show up quickly.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:iconservicesd(1)"
+  },
+  {
+    "match": {
+      "name": "screencaptureui"
+    },
+    "title": "Screenshot tools",
+    "explanation": "Shows the controls and previews when you take a screenshot or record the screen.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:screencaptureui(8)"
+  },
+  {
+    "match": {
+      "name": "hidd"
+    },
+    "title": "Input devices",
+    "explanation": "Handles input devices, such as keyboards, mice and trackpads.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:hidd(8)"
+  },
+  {
+    "match": {
+      "name": "universalaccessd"
+    },
+    "title": "Accessibility",
+    "explanation": "Runs accessibility services, the features that make your Mac easier to see, hear and use.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:universalaccessd(8)"
+  },
+  {
+    "match": {
+      "name": "UniversalControl"
+    },
+    "title": "Universal Control",
+    "explanation": "Lets you use one keyboard and mouse across your Mac and a nearby iPad or Mac.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:UniversalControl(8)"
+  },
+  {
+    "match": {
+      "name": "pboard"
+    },
+    "title": "Clipboard",
+    "explanation": "Runs the clipboard, which holds what you copy and paste.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:pboard(8)"
+  },
+  {
+    "match": {
+      "name": "KernelEventAgent"
+    },
+    "title": "System alerts",
+    "explanation": "Shows alerts from the core of macOS, such as a full disk or a file server that stopped responding.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:KernelEventAgent(8)"
+  },
+  {
+    "match": {
+      "name": "installd"
+    },
+    "title": "Software installer",
+    "explanation": "Installs software packages. Busy while an app or update installs.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:installd(8)"
+  },
+  {
+    "match": {
+      "name": "system_installd"
+    },
+    "title": "System installer",
+    "explanation": "Installs software packages for the system. Busy while an update installs.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:system_installd(8)"
+  },
+  {
+    "match": {
+      "name": "appstoreagent"
+    },
+    "title": "App Store helper",
+    "explanation": "Does background work for the App Store, such as app downloads and updates.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:appstoreagent(8)"
+  },
+  {
+    "match": {
+      "name": "backupd-helper"
+    },
+    "title": "Time Machine scheduler",
+    "explanation": "Decides when to start Time Machine backups and starts them.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:backupd-helper(8)"
+  },
+  {
+    "match": {
+      "name": "assistantd"
+    },
+    "title": "Siri",
+    "explanation": "Runs Siri features in the background.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:assistantd(8)"
+  },
+  {
+    "match": {
+      "name": "siriactionsd"
+    },
+    "title": "Shortcuts",
+    "explanation": "Runs and syncs the shortcuts you make in the Shortcuts app.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:siriactionsd(1)"
+  },
+  {
+    "match": {
+      "name": "linkd"
+    },
+    "title": "App actions",
+    "explanation": "Lets Siri and Shortcuts use the actions that apps offer.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:linkd(1)"
+  },
+  {
+    "match": {
+      "name": "suggestd"
+    },
+    "title": "Suggestions",
+    "explanation": "Reads content from Mail, Messages and other apps on your Mac to suggest contacts, events and words as you type.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:suggestd(8)"
+  },
+  {
+    "match": {
+      "name": "modelmanagerd"
+    },
+    "title": "AI models",
+    "explanation": "Manages the AI models built into macOS and runs them when a feature needs one.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:modelmanagerd(8)"
+  },
+  {
+    "match": {
+      "name": "usernoted"
+    },
+    "title": "Notifications",
+    "explanation": "Delivers notifications from apps and macOS to Notification Center.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:usernoted(8)"
+  },
+  {
+    "match": {
+      "name": "notifyd"
+    },
+    "title": "System messages",
+    "explanation": "Passes short status messages between programs in macOS.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:notifyd(8)"
+  },
+  {
+    "match": {
+      "name": "distnoted"
+    },
+    "title": "App messages",
+    "explanation": "Passes notices between apps and programs, so they can react to changes.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:distnoted(8)"
+  },
+  {
+    "match": {
+      "name": "locationd"
+    },
+    "title": "Location Services",
+    "explanation": "Finds your Mac's location and controls which apps, widgets and system services may use it.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:locationd(8)"
+  },
+  {
+    "match": {
+      "name": "routined"
+    },
+    "title": "Significant places",
+    "explanation": "Learns the places you often visit, to predict future visits.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:routined(8)"
+  },
+  {
+    "match": {
+      "name": "logd"
+    },
+    "title": "System log",
+    "explanation": "Collects and stores the log messages that apps and macOS write.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:logd(8)"
+  },
+  {
+    "match": {
+      "name": "syslogd"
+    },
+    "title": "Older system log",
+    "explanation": "Receives and saves log messages sent with older logging methods.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:syslogd(8)"
+  },
+  {
+    "match": {
+      "name": "diagnosticd"
+    },
+    "title": "Live log feed",
+    "explanation": "Sends live log data to Console and the log command. Uses more CPU while one of them shows a live log.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:diagnosticd(8)"
+  },
+  {
+    "match": {
+      "name": "ReportCrash"
+    },
+    "title": "Crash reports",
+    "explanation": "Saves a crash report when an app or process crashes. It starts on its own after each crash.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:ReportCrash(8)"
+  },
+  {
+    "match": {
+      "name": "spindump"
+    },
+    "title": "Hang reports",
+    "explanation": "Makes a report when you force quit an app that stopped responding.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:spindump(8)"
+  },
+  {
+    "match": {
+      "name": "analyticsd"
+    },
+    "title": "Analytics",
+    "explanation": "Collects diagnostics and usage data on your Mac, only if you chose to share it.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:analyticsd(1)"
+  },
+  {
+    "match": {
+      "name": "SubmitDiagInfo"
+    },
+    "title": "Diagnostics upload",
+    "explanation": "Sends recent diagnostic data to Apple if you chose to share it, and deletes old data that is no longer needed.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:SubmitDiagInfo(8)"
+  },
+  {
+    "match": {
+      "name": "sysmond"
+    },
+    "title": "System monitor",
+    "explanation": "Collects process data for system monitor tools.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:sysmond(8)"
+  },
+  {
+    "match": {
+      "name": "launchd"
+    },
+    "title": "Process launcher",
+    "explanation": "The first process on your Mac. It starts and manages other processes and services, for the system and for each user.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:launchd(8)"
+  },
+  {
+    "match": {
+      "name": "xpcproxy"
+    },
+    "title": "Service starter",
+    "explanation": "Prepares the setup for a helper service and then becomes that service. You see it only for a moment.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:xpcproxy(8)"
+  },
+  {
+    "match": {
+      "name": "UserEventAgent"
+    },
+    "title": "System event handler",
+    "explanation": "Handles system events with plug-ins built into macOS.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:UserEventAgent(8)"
+  },
+  {
+    "match": {
+      "name": "runningboardd"
+    },
+    "title": "App state manager",
+    "explanation": "Keeps apps and processes in the right state, such as running or paused, while they have work to finish.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:runningboardd(8)"
+  },
+  {
+    "match": {
+      "name": "pkd"
+    },
+    "title": "Plug-in manager",
+    "explanation": "Manages and supervises the plug-ins and extensions that apps add to macOS.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:pkd(8)"
+  },
+  {
+    "match": {
+      "name": "launchservicesd"
+    },
+    "title": "Running apps tracker",
+    "explanation": "Keeps track of the apps that are running on your Mac.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:launchservicesd(1)"
+  },
+  {
+    "match": {
+      "name": "cfprefsd"
+    },
+    "title": "Settings storage",
+    "explanation": "Reads and saves the settings of apps and macOS for every program that asks.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:cfprefsd(8)"
+  },
+  {
+    "match": {
+      "name": "appleeventsd"
+    },
+    "title": "App automation",
+    "explanation": "Passes Apple events between apps. Scripts and automation tools use them to control apps.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:appleeventsd(8)"
+  },
+  {
+    "match": {
+      "name": "deleted"
+    },
+    "title": "Free space manager",
+    "explanation": "Watches free disk space. When space runs low, it asks apps to remove data that can be deleted, such as caches.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:deleted(8)"
+  },
+  {
+    "match": {
+      "name": "apfsd"
+    },
+    "title": "Disk housekeeping",
+    "explanation": "Looks after your Mac's disks. It handles disk encryption, keeps files in order and does other housekeeping.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:apfsd(8)"
+  },
+  {
+    "match": {
+      "name": "diskarbitrationd"
+    },
+    "title": "Disk manager",
+    "explanation": "Notices when disks appear, tells apps about them, and makes them ready to use.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:diskarbitrationd(8)"
+  },
+  {
+    "match": {
+      "name": "revisiond"
+    },
+    "title": "Document versions",
+    "explanation": "Stores earlier versions of your documents, so apps can show and restore them.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:revisiond(8)"
+  },
+  {
+    "match": {
+      "name": "sharedfilelistd"
+    },
+    "title": "Recent items",
+    "explanation": "Keeps lists of recent and favorite files, apps and disks, such as Recent Items and part of the Finder sidebar.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:sharedfilelistd(8)"
+  },
+  {
+    "match": {
+      "name": "powerd"
+    },
+    "title": "Power management",
+    "explanation": "Manages energy settings, such as when your Mac and display go to sleep.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:powerd(1)"
+  },
+  {
+    "match": {
+      "name": "watchdogd"
+    },
+    "title": "System health check",
+    "explanation": "Checks that macOS keeps working. If the system stops making progress, it can restart it to recover.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:watchdogd(8)"
+  },
+  {
+    "match": {
+      "name": "timed"
+    },
+    "title": "Clock sync",
+    "explanation": "Keeps your Mac's clock correct by comparing it with time servers.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:timed(8)"
+  },
+  {
+    "match": {
+      "name": "findmydeviced"
+    },
+    "title": "Find My Mac",
+    "explanation": "Runs Find My Mac.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:findmydeviced(8)"
+  },
+  {
+    "match": {
+      "name": "contactsd"
+    },
+    "title": "Contacts",
+    "explanation": "Manages your contacts database for apps and does maintenance on it in the background.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:contactsd(8)"
+  },
+  {
+    "match": {
+      "name": "calaccessd"
+    },
+    "title": "Calendar data",
+    "explanation": "Controls access to your calendar data and posts calendar alerts.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:calaccessd(8)"
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.notificationcenterui"
+    },
+    "title": "Notification Center",
+    "explanation": "Shows notifications on your screen and in Notification Center.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:NotificationCenter(8)"
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.mail"
+    },
+    "title": "Mail",
+    "explanation": "Apple's email app. It can be busy for a while after you add an account, while it downloads your mail.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.MobileSMS"
+    },
+    "title": "Messages",
+    "explanation": "Apple's app for iMessage and text messages. It can be busy while it downloads old messages from iCloud.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.FaceTime"
+    },
+    "title": "FaceTime",
+    "explanation": "Apple's app for video and audio calls. Calls use the camera, microphone and network, so CPU use rises during a call.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.Photos"
+    },
+    "title": "Photos",
+    "explanation": "Apple's photo library app. Imports and edits can use a lot of memory. Library analysis runs in separate processes.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.Music"
+    },
+    "title": "Music",
+    "explanation": "Apple's app for your music library and Apple Music. Downloads and library sync use the network and disk.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.TV"
+    },
+    "title": "TV",
+    "explanation": "Apple's app for TV shows and movies. Video playback uses the graphics chip.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.Notes"
+    },
+    "title": "Notes",
+    "explanation": "Apple's notes app. It syncs your notes with iCloud and your other accounts.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.iCal"
+    },
+    "title": "Calendar",
+    "explanation": "Apple's calendar app. It syncs your events with your accounts.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.Maps"
+    },
+    "title": "Maps",
+    "explanation": "Apple's map app. Map views, especially 3D views, use the graphics chip and the network.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.Preview"
+    },
+    "title": "Preview",
+    "explanation": "Apple's app to view and mark up PDFs and images. Large PDFs and many open images use more memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.Terminal"
+    },
+    "title": "Terminal",
+    "explanation": "Apple's command-line app. Programs that you start in it count toward Terminal.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.ActivityMonitor"
+    },
+    "title": "Activity Monitor",
+    "explanation": "Apple's app that shows what each process uses.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.systempreferences"
+    },
+    "title": "System Settings",
+    "explanation": "The app where you change the settings of your Mac.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.AppStore"
+    },
+    "title": "App Store",
+    "explanation": "Apple's store for apps. Downloads and updates use the network and disk.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.iWork.Pages"
+    },
+    "title": "Pages",
+    "explanation": "Apple's app for documents and page layouts.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.iWork.Numbers"
+    },
+    "title": "Numbers",
+    "explanation": "Apple's spreadsheet app. Very large sheets and charts use more memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.iWork.Keynote"
+    },
+    "title": "Keynote",
+    "explanation": "Apple's presentation app. Videos and effects in slides use the graphics chip.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.iphonesimulator"
+    },
+    "title": "Simulator",
+    "explanation": "Runs simulated iPhones, iPads and other devices to test apps. Each running device adds its own processes and memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.FinalCut"
+    },
+    "title": "Final Cut Pro",
+    "explanation": "Apple's video editor. Rendering and exporting video can use most of the CPU and graphics chip for a long time.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.Console"
+    },
+    "title": "Console",
+    "explanation": "Apple's app to view logs and reports. A live log stream makes the system log work harder while it is open.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.apple.ScreenContinuity"
+    },
+    "title": "iPhone Mirroring",
+    "explanation": "Shows and controls your iPhone on your Mac. It streams the iPhone screen, so it uses the network and graphics.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.brave.Browser"
+    },
+    "title": "Brave",
+    "explanation": "Brave's web browser. Tabs, extensions and graphics run as separate helper processes that count toward Brave.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "org.mozilla.firefox"
+    },
+    "title": "Firefox",
+    "explanation": "Mozilla's web browser. Tabs, add-ons and media run in separate processes that count toward Firefox.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.microsoft.edgemac"
+    },
+    "title": "Microsoft Edge",
+    "explanation": "Microsoft's web browser. Tabs, extensions and graphics run as separate helper processes that count toward Edge.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "company.thebrowser.Browser"
+    },
+    "title": "Arc",
+    "explanation": "The Browser Company's web browser. Tabs, extensions and graphics run as separate helper processes that count toward Arc.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.operasoftware.Opera"
+    },
+    "title": "Opera",
+    "explanation": "Opera's web browser. Tabs, extensions and graphics run as separate helper processes that count toward Opera.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.hnc.Discord"
+    },
+    "title": "Discord",
+    "explanation": "Chat app for voice, video and text. It is built like a web browser, so it runs several helper processes.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.microsoft.teams2"
+    },
+    "title": "Microsoft Teams",
+    "explanation": "Microsoft's app for chat and meetings. Video calls and screen sharing use a lot of CPU and memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "us.zoom.xos"
+    },
+    "title": "Zoom",
+    "explanation": "Video meeting app. Calls with video, effects or screen sharing use a lot of CPU and graphics.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "net.whatsapp.WhatsApp"
+    },
+    "title": "WhatsApp",
+    "explanation": "Chat and calling app. Calls and media downloads use more CPU and network.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "ru.keepcoder.Telegram"
+    },
+    "title": "Telegram",
+    "explanation": "Chat app. Media downloads and large chats can use more memory and network.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "org.whispersystems.signal-desktop"
+    },
+    "title": "Signal",
+    "explanation": "Private chat and calling app. It is built like a web browser, so it runs several helper processes.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.microsoft.VSCode"
+    },
+    "title": "Visual Studio Code",
+    "explanation": "Microsoft's code editor. It is built like a web browser. Extensions run in separate helper processes and can use a lot of CPU.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.todesktop.230313mzl4w4u92"
+    },
+    "title": "Cursor",
+    "explanation": "AI code editor based on Visual Studio Code. Extensions and code indexing run in helper processes that count toward Cursor.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "dev.zed.Zed"
+    },
+    "title": "Zed",
+    "explanation": "A fast code editor. Language tools for your projects run as separate processes and can use a lot of memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.jetbrains.intellij"
+    },
+    "title": "IntelliJ IDEA",
+    "explanation": "JetBrains' app for building software in Java and Kotlin. Indexing a project after you open it can use a lot of CPU and memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.jetbrains.pycharm"
+    },
+    "title": "PyCharm",
+    "explanation": "JetBrains' app for building software in Python. Indexing a project after you open it can use a lot of CPU and memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.google.android.studio"
+    },
+    "title": "Android Studio",
+    "explanation": "Google's app for building Android apps. Builds, indexing and the Android emulator can use a lot of CPU and memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.googlecode.iterm2"
+    },
+    "title": "iTerm2",
+    "explanation": "A command-line app. Programs that you start in it count toward iTerm2.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "dev.warp.Warp-Stable"
+    },
+    "title": "Warp",
+    "explanation": "A command-line app with AI features. Programs that you start in it count toward Warp.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.mitchellh.ghostty"
+    },
+    "title": "Ghostty",
+    "explanation": "A command-line app. Programs that you start in it count toward Ghostty.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.openai.codex"
+    },
+    "title": "ChatGPT",
+    "explanation": "OpenAI's ChatGPT app. It runs several helper processes that count toward ChatGPT.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.electron.ollama"
+    },
+    "title": "Ollama",
+    "explanation": "Runs AI models on your Mac. A model uses a lot of memory, and CPU or graphics, while it answers.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "notion.id"
+    },
+    "title": "Notion",
+    "explanation": "Notes and workspace app. It is built like a web browser, so it runs several helper processes.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "md.obsidian"
+    },
+    "title": "Obsidian",
+    "explanation": "Notes app that keeps your notes as plain files. It is built like a web browser, so it runs several helper processes.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.figma.Desktop"
+    },
+    "title": "Figma",
+    "explanation": "Design app. Large design files use a lot of memory and graphics.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.microsoft.Word"
+    },
+    "title": "Microsoft Word",
+    "explanation": "Microsoft's word processor.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.microsoft.Excel"
+    },
+    "title": "Microsoft Excel",
+    "explanation": "Microsoft's spreadsheet app. Large sheets and many formulas use more CPU and memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.microsoft.Powerpoint"
+    },
+    "title": "Microsoft PowerPoint",
+    "explanation": "Microsoft's presentation app.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.microsoft.Outlook"
+    },
+    "title": "Microsoft Outlook",
+    "explanation": "Microsoft's email and calendar app. It can be busy while it downloads and syncs mail.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.1password.1password"
+    },
+    "title": "1Password",
+    "explanation": "Password manager app. It is built like a web browser, so it runs several helper processes.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.getdropbox.dropbox"
+    },
+    "title": "Dropbox",
+    "explanation": "Syncs files with Dropbox. Busy while many files upload or download.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.google.drivefs"
+    },
+    "title": "Google Drive",
+    "explanation": "Syncs files with Google Drive. Busy while many files upload or download.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.microsoft.OneDrive"
+    },
+    "title": "OneDrive",
+    "explanation": "Syncs files with Microsoft OneDrive. Busy while many files upload or download.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.spotify.client"
+    },
+    "title": "Spotify",
+    "explanation": "Music app. It is built like a web browser, so it runs several helper processes.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.docker.docker"
+    },
+    "title": "Docker Desktop",
+    "explanation": "Runs software containers for developers in a hidden Linux system. That system holds its memory for as long as Docker runs.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "Helper (Alerts)"
+    },
+    "title": "Notifications",
+    "explanation": "Shows the app's notifications.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "(Renderer)"
+    },
+    "title": "Windows and pages",
+    "explanation": "Draws the app's windows and pages. Apps built like a web browser run one or more of these.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "crashpad_handler"
+    },
+    "title": "Crash reporter",
+    "explanation": "Watches the app and saves a crash report if the app crashes.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "com.apple.WebKit.WebContent"
+    },
+    "title": "Web pages",
+    "explanation": "Shows the content of a web page or tab. Busy pages, videos and many open tabs use more memory.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "com.apple.WebKit.Networking"
+    },
+    "title": "Web network",
+    "explanation": "Loads web pages and files from the network for the app.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "com.apple.WebKit.GPU"
+    },
+    "title": "Web graphics",
+    "explanation": "Draws web graphics and plays video and audio for the app's web pages.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "plugin-container"
+    },
+    "title": "Tabs and add-ons",
+    "explanation": "Runs Firefox tabs, add-ons, graphics and media in separate processes.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "SourceKitService"
+    },
+    "title": "Code completion",
+    "explanation": "Gives Xcode code completion, highlighting and quick help for Swift. Busy after you open a large project.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "XCBBuildService"
+    },
+    "title": "Builds",
+    "explanation": "Runs builds for Xcode. Busy while a build runs.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "SWBBuildService"
+    },
+    "title": "Builds",
+    "explanation": "Runs builds for Xcode. Busy while a build runs.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "swift-frontend"
+    },
+    "title": "Swift compiler",
+    "explanation": "Compiles Swift code during builds and previews. Many copies can run at the same time during a build.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "lldb-rpc-server"
+    },
+    "title": "Debugger",
+    "explanation": "Runs the debugger while you debug an app from Xcode.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "XCPreviewAgent"
+    },
+    "title": "Previews",
+    "explanation": "Runs live previews of your app's screens in Xcode.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "launchd_sim"
+    },
+    "title": "Simulated device",
+    "explanation": "Starts and runs the parts of a simulated device. Each running simulator has one.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "helperPattern": "CoreSimulatorService"
+    },
+    "title": "Simulator service",
+    "explanation": "Manages the simulated devices for Xcode and Simulator.",
+    "kind": "helper",
+    "quittable": false,
+    "source": null
+  },
+  {
+    "match": {
+      "name": "mediaanalysisd"
+    },
+    "title": "Media analysis",
+    "explanation": "Part of macOS. Analyzes photos and videos on this Mac in the background, for example for search in Photos.",
+    "kind": "system",
+    "quittable": false,
+    "source": "file:/System/Library/PrivateFrameworks/MediaAnalysis.framework/Versions/A/mediaanalysisd"
+  },
+  {
+    "match": {
+      "bundleID": "com.openai.chat"
+    },
+    "title": "ChatGPT Classic",
+    "explanation": "OpenAI's ChatGPT app. It runs several helper processes that count toward ChatGPT.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.jetbrains.intellij.ce"
+    },
+    "title": "IntelliJ IDEA CE",
+    "explanation": "JetBrains' app for building software in Java and Kotlin. Indexing a project after you open it can use a lot of CPU and memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
+  },
+  {
+    "match": {
+      "bundleID": "com.jetbrains.pycharm.ce"
+    },
+    "title": "PyCharm CE",
+    "explanation": "JetBrains' app for building software in Python. Indexing a project after you open it can use a lot of CPU and memory.",
+    "kind": "app",
+    "quittable": true,
+    "source": null
   }
 ]
