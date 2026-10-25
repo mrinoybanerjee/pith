@@ -2,6 +2,9 @@ public enum DotState: Sendable, Equatable { case calm, tight, critical }
 
 /// The dot, the title and the sentence at the top of the panel.
 public struct Status: Equatable, Sendable {
+  public static let calm = Status(
+    dot: .calm, title: "All calm", sentence: "Plenty of memory and CPU to spare.")
+
   public let dot: DotState
   public let title: String
   public let sentence: String
@@ -58,8 +61,7 @@ public struct StatusRules: Sendable {
     if let sentence = lowStorageSentence(totals, below: 10) {
       return Status(dot: .tight, title: "Storage is getting full", sentence: sentence)
     }
-    return Status(
-      dot: .calm, title: "All calm", sentence: "Plenty of memory and CPU to spare.")
+    return .calm
   }
 
   /// `cpuBusy` turns on after 60 s at 0.80 or more and off after 60 s under 0.70. A reading

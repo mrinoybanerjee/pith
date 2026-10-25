@@ -16,7 +16,7 @@ import PithCore
       system: reader, processes: LibprocProcessTable(), grouper: .live(),
       guide: try! Guide.bundled(), cpuCount: ProcessInfo.processInfo.activeProcessorCount)
     // The clock keeps `onTick` until it is released, so `onTick` must not hold its owners.
-    let clock = Clock { [weak self] in Task { await self?.lifecycle.tick() } }
+    let clock = Clock { [weak self] in Task { @MainActor in self?.lifecycle.tick() } }
     lifecycle = Lifecycle(
       clock: clock, engine: engine, store: store, reader: reader, defaults: defaults,
       loginItem: Settings.setLoginItem)
@@ -26,7 +26,7 @@ import PithCore
       guard let self else { return }
       panel.toggle(under: statusItem.anchor)
     }
-    follow({ [store] in store.status }, then: { [weak self] in self?.statusItem.show($0) })
+    follow({ [store] in store.status }, then: { [weak self] in self?.statusItem.show(status: $0) })
     lifecycle.start()
   }
 }

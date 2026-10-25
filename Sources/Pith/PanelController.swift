@@ -70,7 +70,9 @@ import SwiftUI
       ]
     }
     panel.makeKeyAndOrderFront(nil)
-    report()
+    // Just ordered front, so not covered: a pinned panel opens in the open mode and ticks at once.
+    // `windowDidChangeOcclusionState` reports any later change.
+    onChange(true, store.pinned, false)
   }
 
   func windowDidMove(_ notification: Notification) {

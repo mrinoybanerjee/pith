@@ -10,26 +10,50 @@ import PithCore
 
 extension Clock: Ticker {}
 
+/// The engine's calls, so a test can hold and record them. `Engine` is the real one.
+protocol Sampler: Sendable {
+  func tick(mode: Mode) async -> Snapshot
+  func resetBaseline() async
+}
+
+extension Engine: Sampler {}
+
+/// Why the clock is paused (spec 9).
+enum PauseReason { case sleep, screensSleep, locked }
+
 /// Runs the sampling loop (spec 5.3 and 9):
 /// - the clock's speed follows the panel, the refresh setting, Low Power Mode and the thermal state;
-/// - sleep, screen lock and display sleep pause the clock, and each wake starts a fresh baseline;
-/// - a pressure change ticks at once, and a volume mount or unmount re-reads storage;
+/// - sleep, screen lock and display sleep pause the clock; it resumes on a fresh baseline when none
+///   of them is left;
+/// - readings run one at a time, never while paused, and a pressure change takes one at once;
+/// - a volume mount or unmount re-reads storage;
 /// - the settings stay saved, and the login item follows them.
 @MainActor final class Lifecycle {
   private let clock: any Ticker
-  private let engine: Engine
+  private let engine: any Sampler
   private let store: Store
   private let reader: SystemReader
   private let defaults: UserDefaults
+  private let workspaceCenter: NotificationCenter
+  private let distributedCenter: NotificationCenter
   private let loginItem: (Bool) -> Void
   private var mode = Mode.closed
-  /// Set by the last sleep or lock, cleared by the last wake.
+  private var pauseReasons: Set<PauseReason> = []
+  /// From a pause until the clock resumes, which is after the wake's reset. No reading runs.
   private var paused = false
+  /// A reading is running; `pending` asks for one more when it ends.
+  private var ticking = false
+  private var pending = false
   private var pressure: PressureMonitor?
   private var observers: [any NSObjectProtocol] = []
 
+  /// Tests pass fresh notification centers: the screen lock notifications on the real distributed
+  /// center reach every process in the login session.
   init(
-    clock: any Ticker, engine: Engine, store: Store, reader: SystemReader, defaults: UserDefaults,
+    clock: any Ticker, engine: any Sampler, store: Store, reader: SystemReader,
+    defaults: UserDefaults,
+    workspaceCenter: NotificationCenter = NSWorkspace.shared.notificationCenter,
+    distributedCenter: NotificationCenter = DistributedNotificationCenter.default(),
     loginItem: @escaping (Bool) -> Void
   ) {
     self.clock = clock
@@ -37,24 +61,26 @@ extension Clock: Ticker {}
     self.store = store
     self.reader = reader
     self.defaults = defaults
+    self.workspaceCenter = workspaceCenter
+    self.distributedCenter = distributedCenter
     self.loginItem = loginItem
   }
 
   /// Follows the settings and the system, and takes the first reading.
   func start() {
     follow({ [store] in store.settings }, then: { [weak self] in self?.apply($0) })
-    pressure = PressureMonitor { [weak self] _ in Task { await self?.tick() } }
-    let workspace = NSWorkspace.shared.notificationCenter
-    let distributed = DistributedNotificationCenter.default()
+    pressure = PressureMonitor { [weak self] _ in Task { @MainActor in self?.tick() } }
+    let workspace = workspaceCenter
+    let distributed = distributedCenter
     let local = NotificationCenter.default
     let events:
       [(NotificationCenter, Notification.Name, @MainActor @Sendable (Lifecycle) -> Void)] = [
-        (workspace, NSWorkspace.willSleepNotification, { $0.pause() }),
-        (workspace, NSWorkspace.screensDidSleepNotification, { $0.pause() }),
-        (distributed, Notification.Name("com.apple.screenIsLocked"), { $0.pause() }),
-        (workspace, NSWorkspace.didWakeNotification, { $0.wake() }),
-        (workspace, NSWorkspace.screensDidWakeNotification, { $0.wake() }),
-        (distributed, Notification.Name("com.apple.screenIsUnlocked"), { $0.wake() }),
+        (workspace, NSWorkspace.willSleepNotification, { $0.pause(.sleep) }),
+        (workspace, NSWorkspace.screensDidSleepNotification, { $0.pause(.screensSleep) }),
+        (distributed, Notification.Name("com.apple.screenIsLocked"), { $0.pause(.locked) }),
+        (workspace, NSWorkspace.didWakeNotification, { $0.wake(.sleep) }),
+        (workspace, NSWorkspace.screensDidWakeNotification, { $0.wake(.screensSleep) }),
+        (distributed, Notification.Name("com.apple.screenIsUnlocked"), { $0.wake(.locked) }),
         (local, .NSProcessInfoPowerStateDidChange, { $0.configure() }),
         (local, ProcessInfo.thermalStateDidChangeNotification, { $0.configure() }),
         (workspace, NSWorkspace.didMountNotification, { $0.invalidateStorage() }),
@@ -66,7 +92,7 @@ extension Clock: Ticker {}
           MainActor.assumeIsolated { if let self { action(self) } }
         })
     }
-    Task { await tick() }
+    tick()
   }
 
   /// Called whenever the panel's visibility, pin or occlusion changes. Opening shows the last
@@ -76,12 +102,28 @@ extension Clock: Ticker {}
     guard newMode != mode else { return }
     mode = newMode
     configure()
-    if mode == .open { Task { await tick() } }
+    if mode == .open { tick() }
   }
 
-  /// One reading in the current mode. The engine works on its own executor; only `apply` runs on
-  /// the main actor.
-  func tick() async { store.apply(await engine.tick(mode: mode)) }
+  /// Asks for a reading. Every trigger calls this on the main actor. While paused it does nothing.
+  /// Readings run one at a time, so they apply in the order they were asked for; requests during a
+  /// reading give one more when it ends, in the mode of that moment (ruling R61). The engine works
+  /// on its own executor; only `apply` runs on the main actor.
+  func tick() {
+    guard !paused else { return }
+    guard !ticking else {
+      pending = true
+      return
+    }
+    ticking = true
+    Task {
+      repeat {
+        pending = false
+        store.apply(await engine.tick(mode: mode))
+      } while pending && !paused
+      ticking = false
+    }
+  }
 
   private func apply(_ settings: Settings) {
     settings.save(defaults)
@@ -98,19 +140,24 @@ extension Clock: Ticker {}
     clock.configure(seconds: interval.seconds, leeway: interval.leeway)
   }
 
-  private func pause() {
+  private func pause(_ reason: PauseReason) {
+    pauseReasons.insert(reason)
     paused = true
     clock.pause()
   }
 
-  /// No reading spans the gap (rulings R45 and R57). The clock resumes only after the baseline is
-  /// reset, and not if a later sleep or lock paused it again.
-  private func wake() {
-    paused = false
-    store.resetCPUTimer()
+  /// No reading spans the gap (rulings R45, R57 and R62). When the last reason goes, the baseline
+  /// and the CPU timer are reset, then the clock resumes and reads at once, unless a reason came
+  /// back during the reset.
+  private func wake(_ reason: PauseReason) {
+    guard pauseReasons.remove(reason) != nil, pauseReasons.isEmpty else { return }
     Task {
       await engine.resetBaseline()
-      if !paused { clock.resume() }
+      store.resetCPUTimer()
+      guard pauseReasons.isEmpty else { return }
+      paused = false
+      clock.resume()
+      tick()
     }
   }
 

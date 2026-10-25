@@ -8,7 +8,7 @@ import PithCore
     .calm: dot(fill: nil), .tight: dot(fill: .systemOrange), .critical: dot(fill: .systemRed),
   ]
 
-  private let item = NSStatusBar.system.statusItem(withLength: 22)
+  let item = NSStatusBar.system.statusItem(withLength: 22)
   private let onClick: () -> Void
   private var dot: DotState?
   private(set) var imageChanges = 0
@@ -30,7 +30,7 @@ import PithCore
     item.button!.action = #selector(clicked)
   }
 
-  func show(_ status: Status) {
+  func show(status: Status) {
     show(status.dot)
     item.button!.setAccessibilityLabel("Pith: \(status.title)")
   }

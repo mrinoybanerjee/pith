@@ -13,3 +13,12 @@ import Testing
     PanelGeometry.clamp(CGRect(x: -500, y: -40, width: 360, height: 520), to: visible).minX
       == visible.minX + 8)
 }
+
+@Test func panelIsCenteredUnderAnItemMidScreen() {
+  let visible = CGRect(x: 0, y: 0, width: 1512, height: 944)  // the menu bar is above it
+  let item = CGRect(x: 745, y: 944, width: 22, height: 24)
+  let f = PanelGeometry.attachedFrame(
+    itemFrame: item, panelSize: CGSize(width: 360, height: 520), visibleFrame: visible)
+  #expect(f.midX == item.midX)
+  #expect(f.maxY == item.minY - 8)  // its top edge hangs 8 pt under the item
+}

@@ -13,7 +13,7 @@ enum SystemDetailsState {
 @MainActor @Observable final class Store {
   var snapshot: Snapshot?
   /// Calm until the first tick, a moment after launch.
-  var status = Status(dot: .calm, title: "All calm", sentence: "Plenty of memory and CPU to spare.")
+  var status = Status.calm
   var metric = Metric.memory
   var expandedAppID: String?
   var systemDetails = SystemDetailsState.idle
