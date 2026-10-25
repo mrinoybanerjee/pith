@@ -115,14 +115,13 @@ public struct AppGrouper: Sendable {
   }
 
   /// An app's id is its path. A Chromium clone runs from a temporary path, so it has no path and
-  /// its id is "clone:" and its bundle ID until `assign` joins it to its installation. A clone
-  /// whose bundle can't be read is no app.
+  /// its id is "clone:" and its `.app.bundle` path until `assign` joins it to its installation.
+  /// So clones of two installations stay apart. A clone whose bundle can't be read is no app.
   private func identity(_ app: String) -> AppIdentity? {
     let info = bundleInfo(app)
     guard !app.hasSuffix(".app.bundle") else {
       return info.map {
-        AppIdentity(
-          id: "clone:\($0.bundleID)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID)
+        AppIdentity(id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID)
       }
     }
     return AppIdentity(

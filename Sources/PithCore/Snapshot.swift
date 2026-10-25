@@ -92,8 +92,8 @@ public struct SystemTotals: Sendable, Equatable, Codable {
 public struct AppIdentity: Sendable, Equatable {
   /// A bundled app's `.app` path, so separate installations of one app stay apart. A Chromium
   /// clone takes the id of the one installation in the same table with its bundle ID, else it is
-  /// "clone:" and the bundle ID. Any other process is "proc:" and its executable's file name (the
-  /// kernel name only when `path` is "").
+  /// "clone:" and the path of its `.app.bundle`. Any other process is "proc:" and its executable's
+  /// file name (the kernel name only when `path` is "").
   public let id: String
   public let name: String
   public let bundlePath: String?
@@ -122,8 +122,8 @@ public struct HelperGroup: Sendable, Equatable, Codable {
 public struct AppUsage: Sendable, Equatable, Codable, Identifiable {
   /// A bundled app's `.app` path, so separate installations of one app stay apart. A Chromium
   /// clone takes the id of the one installation in the same table with its bundle ID, else it is
-  /// "clone:" and the bundle ID. Any other process is "proc:" and its executable's file name (the
-  /// kernel name only when `path` is "").
+  /// "clone:" and the path of its `.app.bundle`. Any other process is "proc:" and its executable's
+  /// file name (the kernel name only when `path` is "").
   public let id: String
   public let name: String
   public let bundlePath: String?

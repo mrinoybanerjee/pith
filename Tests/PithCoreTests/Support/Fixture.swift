@@ -27,6 +27,9 @@ enum Fixture {
     "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app.bundle": (
       "com.google.Chrome", "Google Chrome"
     ),
+    "/private/var/folders/xx/T/code_sign_clone.DeF456/Google Chrome.app.bundle": (
+      "com.google.Chrome", "Google Chrome"
+    ),
     "/Applications/Xcode.app": ("com.apple.dt.Xcode", "Xcode"),
     "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app": (
       "com.apple.iphonesimulator", "Simulator"

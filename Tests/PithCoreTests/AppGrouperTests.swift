@@ -9,6 +9,7 @@ import os
 /// main process). A PID that is not listed gets nil.
 private let responsibleFor: [String: [Int32: Int32]] = [
   "chrome": [100: 100, 101: 100, 102: 100, 103: 100, 104: 100, 105: 100],
+  "clone-two-installs": [100: 100, 101: 100, 102: 102, 103: 103],
   "xcode": [200: 200, 201: 200, 202: 200, 203: 200],
   "node-under-terminal-and-codex": [200: 200, 202: 200, 201: 200, 300: 300, 301: 300],
   "orphan": [502: 590, 501: 590, 503: 503],  // 590: a root SSH session, not in the table
@@ -27,6 +28,12 @@ private func grouped(_ fixture: String, limited: Bool = false) -> [ProcessKey: A
 }
 
 private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1_000) }
+
+/// The code-sign clones that Chrome main processes run from in the fixtures.
+private let clonePaths = [
+  "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app.bundle",
+  "/private/var/folders/xx/T/code_sign_clone.DeF456/Google Chrome.app.bundle",
+]
 
 @Test func helpersFoldIntoOutermostApp() {
   #expect(
@@ -59,7 +66,7 @@ private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1
 
 @Test func cloneJoinsOnlyASingleInstallation() {  // R52
   let clone = AppIdentity(
-    id: "clone:com.google.Chrome", name: "Google Chrome", bundlePath: nil,
+    id: "clone:\(clonePaths[0])", name: "Google Chrome", bundlePath: nil,
     bundleID: "com.google.Chrome")
   let chrome = Fixture.table("chrome")
   let alone = ProcessTable(samples: [chrome.samples[0]], takenAtNs: 0, vanished: 0)
@@ -71,6 +78,23 @@ private func key(_ pid: Int32) -> ProcessKey { ProcessKey(pid: pid, startTime: 1
   let two = a.assign(Fixture.table("clone-two-installs"))  // Chrome in two places
   #expect(two[key(100)] == clone)
   #expect(two[key(102)]?.id == "/Volumes/Demo/Google Chrome.app")
+}
+
+@Test func clonesOfTwoInstallationsStayApart() {  // R53: each keeps the path of its own clone
+  let g = grouped("clone-two-installs")
+  #expect([g[key(100)]?.id, g[key(103)]?.id] == clonePaths.map { "clone:\($0)" })
+}
+
+@Test func helperOfAnUnjoinedCloneKeepsItsInstallation() {  // step 1 skips the clone owner
+  #expect(grouped("clone-two-installs")[key(101)]?.id == "/Applications/Google Chrome.app")
+}
+
+@Test func cloneJoinsNoInstallationOfAnotherApp() {  // Notes is the only installation in the table
+  let clone = Fixture.table("chrome").samples[0]
+  let notes = Fixture.table("same-name").samples[0]
+  var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
+  let g = a.assign(ProcessTable(samples: [clone, notes], takenAtNs: 0, vanished: 0))
+  #expect(g[clone.key]?.id == "clone:\(clonePaths[0])")
 }
 
 @Test func xcodeXPCServicesFoldIntoXcode() {
