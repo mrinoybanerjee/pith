@@ -237,3 +237,18 @@ private let clonePaths = [
         bundlePath: "/System/Library/CoreServices/Finder.app", bundleID: "com.apple.finder",
         executable: "Finder"))
 }
+
+/// R125: a code-sign clone is a `code_sign_clone.<suffix>` folder, then an `<App>.app.bundle` in it.
+@Test func aCodeSignCloneNeedsBothItsFolderAndItsBundle() {
+  let clone = "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app.bundle"
+  #expect(AppGrouper.isCodeSignClone(clone))
+  #expect(AppGrouper.isCodeSignClone(clone + "/Contents/MacOS/Google Chrome"))
+  for other in [
+    "/Applications/Google Chrome.app", "/Users/Shared/Example.app.bundle",
+    "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app",
+    "/private/var/folders/xx/T/code_sign_clone./Google Chrome.app.bundle",
+    "/private/var/folders/xx/T/code_sign_clone.AbC123/x/Google Chrome.app.bundle",
+  ] {
+    #expect(!AppGrouper.isCodeSignClone(other), "\(other)")
+  }
+}

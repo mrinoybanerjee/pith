@@ -53,6 +53,17 @@ public struct AppGrouper: Sendable {
       })
   }
 
+  /// Whether `path` lies in a Chromium code-sign clone: a `code_sign_clone.<suffix>` folder, then
+  /// an `<App>.app.bundle` inside it, where a Chromium browser runs its main process (R125). The
+  /// one rule for a clone, here and when Quit picks the row's own app.
+  public static func isCodeSignClone(_ path: String) -> Bool {
+    let parts = path.split(separator: "/")
+    return zip(parts, parts.dropFirst()).contains { folder, app in
+      folder.count > "code_sign_clone.".count && folder.hasPrefix("code_sign_clone.")
+        && app.count > ".app.bundle".count && app.hasSuffix(".app.bundle")
+    }
+  }
+
   /// The outermost `*.app` directory on `path`, so a helper app inside an app resolves to it.
   public static func enclosingAppPath(_ path: String) -> String? { appPaths(path).first }
 
@@ -107,7 +118,7 @@ public struct AppGrouper: Sendable {
   private func group(_ s: ProcessSample, _ table: [Int32: ProcessSample]) -> AppIdentity {
     let responsiblePID = responsible?(s.key.pid)
     if let owner = responsiblePID.flatMap({ table[$0] }), owner.key.startTime <= s.key.startTime,
-      let app = Self.appPaths(owner.path).last, !app.hasSuffix(".app.bundle")
+      let app = Self.appPaths(owner.path).last, !Self.isCodeSignClone(app)
     {
       return identity(app)!
     }
@@ -126,7 +137,7 @@ public struct AppGrouper: Sendable {
   /// So clones of two installations stay apart. A clone whose bundle can't be read is no app.
   private func identity(_ app: String) -> AppIdentity? {
     let info = bundleInfo(app)
-    guard !app.hasSuffix(".app.bundle") else {
+    guard !Self.isCodeSignClone(app) else {
       return info.map {
         AppIdentity(
           id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID,
