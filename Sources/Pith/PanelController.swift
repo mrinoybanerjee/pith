@@ -50,7 +50,7 @@ import SwiftUI
     self.store = store
     self.defaults = defaults
     self.onChange = onChange
-    hosting = PanelHostingView(rootView: PanelView(store: store, open: 0))
+    hosting = PanelHostingView(rootView: PanelView(store: store, open: nil))
     super.init()
     panel.isFloatingPanel = true
     panel.hidesOnDeactivate = false
@@ -202,6 +202,10 @@ import SwiftUI
     opening = false
     dragCheck?.cancel()
     panel.orderOut(nil)
+    // A closed panel holds no view. One left in place would see the next open's reading, and an
+    // animated row change would keep it alive and watching the store after `show()` replaces it
+    // (R118).
+    hosting.rootView = PanelView(store: store, open: nil)
     removeMonitors()
     store.panelClosed()
     report()

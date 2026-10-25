@@ -303,6 +303,35 @@ extension NativeInteractionTests {
     #expect((chromeValue.help ?? "").isEmpty)
   }
 
+  /// R118: each open draws one panel view tree, and no earlier one lives on to watch the store.
+  /// Before, the last open's tree saw the next open's reading; an animated row change then kept it
+  /// alive, watching, after `show()` replaced it. The opens alternate two readings whose rows come
+  /// in other orders, which animates the rows. Each tree has its own list, a scroll view, so a
+  /// weak tally of the lists counts the trees: one after each of 5 opens, and none once closed.
+  @Test func onlyOnePanelViewTreeLivesAcrossOpens() async throws {
+    defer { clearDefaults() }
+    let store = testStore()
+    let reading = NextReading(DemoSnapshots.calm)
+    let controller = PanelController(
+      store: store, defaults: testDefaults(),
+      onChange: { visible, _, _ in if visible { store.apply(reading.snapshot) } })
+    let w = controller.panel
+    var lists: [WeakView] = []
+    for open in 1...5 {
+      reading.snapshot = open.isMultiple(of: 2) ? DemoSnapshots.tight : DemoSnapshots.calm
+      controller.toggle(under: try anchor())
+      await settle()
+      for list in scrollViews(in: w.contentView!) where !lists.contains(where: { $0.view === list })
+      {
+        lists.append(WeakView(list))
+      }
+      #expect(lists.count(where: { $0.view != nil }) == 1, "open \(open)")
+      controller.toggle(under: try anchor())  // closes it
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(try await eventually(w) { lists.allSatisfy { $0.view == nil } })
+  }
+
   /// R112: the store itself prunes the icon cache at each open snapshot, so no view has to be
   /// there to do it. Opened with apps A and B, whose icons the rows drew, closed, then opened with
   /// C and D only: the cache holds C and D. This runs in its own process, as the cache is shared.
@@ -719,6 +748,18 @@ private let quitSentence = "Quit Google Chrome? It can ask you to save first."
 /// The list's scroll view.
 @MainActor private func scrollView(in view: NSView) -> NSScrollView? {
   view as? NSScrollView ?? view.subviews.lazy.compactMap(scrollView).first
+}
+
+/// Every scroll view in `view`.
+@MainActor private func scrollViews(in view: NSView) -> [NSScrollView] {
+  (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews)
+}
+
+/// A view that a test watches without keeping it alive.
+private final class WeakView {
+  weak var view: NSView?
+
+  init(_ view: NSView) { self.view = view }
 }
 
 /// Whether the button `label` shows whole in the list, not scrolled out of it. A button that is
