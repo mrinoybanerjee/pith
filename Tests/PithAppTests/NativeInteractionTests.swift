@@ -656,14 +656,16 @@ extension NativeInteractionTests {
     let screen = try #require(NSScreen.main)
     let inside = screen.visibleFrame.insetBy(dx: 8, dy: 8)
     let finder = try #require(store.rows.first { $0.name == "Finder" }).id
-    let h = w.frame.height
-    for frame in [
-      CGRect(x: screen.frame.minX - 200, y: 300, width: 360, height: h),
-      CGRect(x: 400, y: screen.frame.maxY + 50, width: 360, height: h),
-      CGRect(x: 400, y: screen.frame.maxY - h, width: 360, height: h),
-    ] {
-      w.setFrame(frame, display: false)
+    // Each frame keeps the panel's height, so only the toggle changes it: the row opens, closes
+    // and opens again.
+    for place in 0..<3 {
       let height = w.frame.height
+      let frame = [
+        CGRect(x: screen.frame.minX - 200, y: 300, width: 360, height: height),
+        CGRect(x: 400, y: screen.frame.maxY + 50, width: 360, height: height),
+        CGRect(x: 400, y: screen.frame.maxY - height, width: 360, height: height),
+      ][place]
+      w.setFrame(frame, display: false)
       store.toggle(finder)
       #expect(try await eventually(w) { w.frame.height != height }, "\(frame)")
       #expect(inside.contains(w.frame), "\(frame) became \(w.frame)")

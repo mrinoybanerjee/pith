@@ -101,6 +101,13 @@ private struct Confirm: View {
               "R139 geometry bounds(of: .scrollView) \(String(describing: proxy.bounds(of: .scrollView)))"
                 + " local \(proxy.frame(in: .local)) in scrollView \(proxy.frame(in: .scrollView))"
                 + " global \(proxy.frame(in: .global)) -> \(inView)")
+            print(
+              "R139 stack "
+                + Thread.callStackSymbols.dropFirst(2).prefix(40).map {
+                  String(
+                    ($0.split(separator: " ", omittingEmptySubsequences: true).dropFirst(3).first
+                      ?? "").prefix(60))
+                }.joined(separator: " < "))
             return inView
           } action: {
             print("R139 confirmButtonInView = \($0)")
