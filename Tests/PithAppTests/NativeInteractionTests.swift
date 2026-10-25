@@ -211,13 +211,16 @@ extension NativeInteractionTests {
   @Test func voiceOverHearsTheStateOfRowsAndControls() async throws {
     let (w, store) = try hostPanelWithStore(DemoSnapshots.tight)
     let chrome = "Google Chrome, 6.4 GB memory, 41 processes"
+    if (try? axNode(chrome, in: w).value) != "collapsed" { r139Dump(w, store, "F3 collapsed") }
     #expect(try axNode(chrome, in: w).value == "collapsed")
     #expect(try axNode("Memory", in: w).selected && !(try axNode("CPU", in: w).selected))
     #expect(axNodes(in: w).contains { $0.label == "Sort by" && $0.children.count == 3 })
     sendKey("↓", to: w)
     #expect(try await eventually(w) { (try? axNode(chrome, in: w).selected) == true })
     sendKey("↩", to: w)
-    #expect(try await eventually(w) { (try? axNode(chrome, in: w).value) == "expanded" })
+    let expanded = try await eventually(w) { (try? axNode(chrome, in: w).value) == "expanded" }
+    if !expanded { r139Dump(w, store, "F3 expanded") }
+    #expect(expanded)
     #expect(!(try axNode("Settings", in: w).selected))
     store.showingSettings = true
     #expect(try await eventually(w) { (try? axNode("Settings", in: w).selected) == true })
@@ -492,7 +495,9 @@ extension NativeInteractionTests {
     #expect(try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[2...3]) }, "reopened")
 
     store.apply(ab)
-    #expect(try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[0...1]) })
+    let kept = try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[0...1]) }
+    if !kept { r139Dump(w, store, "F2 icons") }
+    #expect(kept)
     store.showingSettings = true
     try await Task.sleep(for: .milliseconds(100))
     store.apply(cd)
@@ -1021,8 +1026,11 @@ extension NativeInteractionTests {
     apps.passTheConfirmGuard()
     store.moveSelection(-1)  // the last row, "macOS system"
     store.moveSelection(-10)  // the first row, Google Chrome
-    #expect(
-      try await eventually(w) { !showsInTheList("Quit", in: w) && !store.confirmButtonInView })
+    let away = try await eventually(w) {
+      !showsInTheList("Quit", in: w) && !store.confirmButtonInView
+    }
+    if !away { r139Dump(w, store, "F1 scrolled away") }
+    #expect(away)
     sendKey("↩", to: w)
     #expect(slack.terminations == 0 && store.quitFlow.state == .confirming)
     store.moveSelection(10)  // "macOS system"
@@ -1326,4 +1334,29 @@ private final class KeyRecorder: NSView {
   override var acceptsFirstResponder: Bool { true }
 
   override func keyDown(with event: NSEvent) { keyCodes.append(event.keyCode) }
+}
+
+/// R139: temporary CI diagnostics, printed only when a check fails.
+@MainActor private func r139Dump(_ w: NSWindow, _ store: Store, _ note: String) {
+  print("R139 \(note): panel \(w.frame) screen \(w.screen?.visibleFrame ?? .zero)")
+  if let list = scrollView(in: w.contentView!) {
+    print(
+      "R139 list \(list.convert(list.bounds, to: nil)) document \(list.documentView?.frame ?? .zero)"
+        + " clip \(list.contentView.bounds)")
+  }
+  print(
+    "R139 store selected \(store.selectedRowID ?? "-") expanded \(store.expandedAppID ?? "-")"
+      + " confirmInView \(store.confirmButtonInView) rows \(store.rows.map(\.id))"
+      + " icons \(AppIcons.icons.keys.sorted())")
+  func walk(_ n: AXNode, _ depth: Int) {
+    let selector = NSSelectorFromString("accessibilityValue")
+    let raw =
+      n.element.responds(to: selector) ? n.element.perform(selector)?.takeUnretainedValue() : nil
+    print(
+      "R139 " + String(repeating: "  ", count: depth)
+        + "\(n.role) label=\(n.label ?? "-") value=\(raw.map { "\(type(of: $0)): \($0)" } ?? "nil")"
+        + " selected=\(n.selected) frame=\(w.convertFromScreen(n.frame))")
+    for c in n.children { walk(c, depth + 1) }
+  }
+  walk(AXNode(w), 0)
 }
