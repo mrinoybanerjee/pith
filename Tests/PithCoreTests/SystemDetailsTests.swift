@@ -35,6 +35,12 @@ private func secondSample(columns: String = "PID COMMAND %CPU MEM UID", rows: [S
   #expect(throws: SystemDetailsError.self) { try TopParser.parse("garbage", excludingUID: 501) }
 }
 
+@Test func emptySecondSampleThrows() {
+  #expect(throws: SystemDetailsError.self) {
+    try TopParser.parse(secondSample(rows: []), excludingUID: 501)
+  }
+}
+
 @Test func oneSampleThrows() {
   let first = twoSamples.components(separatedBy: "\nProcesses:")[0]
   #expect(throws: SystemDetailsError.self) { try TopParser.parse(first, excludingUID: 501) }
@@ -142,6 +148,19 @@ func unparseableRowThrows(row: String) {
   #expect(await counter.value == 2)
 }
 
+@Test func parseFailureIsNotCached() async throws {
+  let counter = Counter()
+  let d = SystemDetails(
+    guide: try .bundled(),
+    run: { _ in
+      await counter.bump()
+      return await counter.value > 1 ? twoSamples : "garbage"
+    }, ownUID: 501, nowNs: { 0 })
+  await #expect(throws: SystemDetailsError.self) { try await d.measure() }
+  _ = try await d.measure()  // the same instant: the failure left nothing in the cache
+  #expect(await counter.value == 2)
+}
+
 @Test func concurrentMeasuresRunTopOnce() async throws {
   let counter = Counter()
   let d = SystemDetails(
@@ -183,4 +202,28 @@ func unparseableRowThrows(row: String) {
   }
   #expect(ContinuousClock.now - start >= .seconds(0.5))
   #expect(ContinuousClock.now - start < .seconds(10))
+}
+
+@Test func launchFailureIsFailed() async {
+  await #expect(throws: SystemDetailsError.self) {
+    try await SystemDetails.runProcess("/nonexistent/top", [], timeout: 1)
+  }
+}
+
+@Test func processThatIgnoresTermIsKilled() async throws {
+  let pidFile = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: pidFile) }
+  let start = ContinuousClock.now
+  await #expect(throws: SystemDetailsError.self) {
+    // `exec` keeps one process, which ignores SIGTERM and holds the output pipe open.
+    try await SystemDetails.runProcess(
+      "/bin/sh", ["-c", "echo $$ > '\(pidFile.path)'; trap '' TERM; exec sleep 30"], timeout: 0.5)
+  }
+  let elapsed = ContinuousClock.now - start
+  #expect(elapsed >= .seconds(1.4))  // SIGTERM at 0.5 s had no effect; SIGKILL came 1 s later
+  #expect(elapsed < .seconds(3))
+  let pid = try #require(
+    Int32(
+      String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+  #expect(kill(pid, 0) == -1 && errno == ESRCH)  // gone and reaped
 }

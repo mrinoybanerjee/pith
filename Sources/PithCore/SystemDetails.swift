@@ -40,7 +40,11 @@ public enum TopParser {
       try column("UID")
     )
 
-    return try sample[(headerIndex + 1)...].compactMap { line in
+    let body = sample[(headerIndex + 1)...]
+    guard !body.isEmpty else {
+      throw SystemDetailsError.failed("top printed no processes in its second sample")
+    }
+    return try body.compactMap { line in
       let cells = line.split(whereSeparator: \.isWhitespace)
       // The command can hold spaces. Columns before it count from the left, columns after it
       // from the right.
@@ -108,6 +112,9 @@ public actor SystemDetails {
     "-l", "2", "-s", "1", "-o", "mem", "-stats", "pid,command,cpu,mem,uid",
   ]
   private static let cacheNs: UInt64 = 10_000_000_000
+  #if DEBUG
+    private static let log = Logger(subsystem: "com.mrinoy.pith", category: "system-details")
+  #endif
 
   private let guide: Guide
   private let run: @Sendable ([String]) async throws -> String
@@ -140,7 +147,20 @@ public actor SystemDetails {
 
   private func fetch() async throws -> SystemBreakdown {
     defer { inFlight = nil }
-    let rows = try TopParser.parse(try await run(Self.topArguments), excludingUID: ownUID)
+    let output = try await run(Self.topArguments)
+    let rows: [SystemProcess]
+    do {
+      rows = try TopParser.parse(output, excludingUID: ownUID)
+    } catch {
+      #if DEBUG
+        Self.log.debug("top output that did not parse:\n\(output, privacy: .public)")
+      #endif
+      throw error
+    }
+    // "Top 4 by memory" relies on the order of top's own sort (-o mem).
+    assert(
+      zip(rows, rows.dropFirst()).allSatisfy { $0.memory >= $1.memory },
+      "top printed rows out of memory order")
     let items = rows.prefix(4).map { row in
       let entry = guide.entry(name: row.name, bundleID: nil, path: nil)
       return SystemItem(
@@ -153,47 +173,71 @@ public actor SystemDetails {
   }
 
   /// Runs `/usr/bin/top` with `arguments` and returns what it printed. Throws `.failed` when top
-  /// exits with a non-zero status, or when it is still running after `timeout` seconds and gets
-  /// terminated.
+  /// cannot start, exits with a non-zero status, or is still running after `timeout` seconds. Top
+  /// is then terminated, and killed if it is still running 1 s later.
   public static func runTop(_ arguments: [String], timeout: TimeInterval = 5) async throws
     -> String
+  {
+    try await runProcess("/usr/bin/top", arguments, timeout: timeout)
+  }
+
+  /// The body of `runTop`, with the program as a parameter so a test can run a stuck one.
+  static func runProcess(_ executable: String, _ arguments: [String], timeout: TimeInterval)
+    async throws -> String
   {
     try await withCheckedThrowingContinuation { continuation in
       // The read and the wait block, so they run on a Dispatch thread, not a Swift one.
       DispatchQueue.global().async {
-        continuation.resume(with: Result { try runTopBlocking(arguments, timeout: timeout) })
+        continuation.resume(
+          with: Result { try runProcessBlocking(executable, arguments, timeout: timeout) })
       }
     }
   }
 
-  private static func runTopBlocking(_ arguments: [String], timeout: TimeInterval) throws
-    -> String
-  {
+  private static func runProcessBlocking(
+    _ executable: String, _ arguments: [String], timeout: TimeInterval
+  ) throws -> String {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/top")
+    process.executableURL = URL(fileURLWithPath: executable)
     process.arguments = arguments
     let pipe = Pipe()
     process.standardOutput = pipe
     process.standardError = FileHandle.nullDevice
-    try process.run()
-    try pipe.fileHandleForWriting.close()  // else the read below never sees the end of the output
+    do { try process.run() } catch {
+      throw SystemDetailsError.failed("cannot start \(executable): \(error)")
+    }
 
     let timedOut = OSAllocatedUnfairLock(initialState: false)
-    let stop = DispatchWorkItem {
+    // The items hold the process weakly, so a normal run frees it and its pipe at once.
+    let stop = DispatchWorkItem { [weak process] in
+      guard let process else { return }
       timedOut.withLock { $0 = true }
       process.terminate()
+      // A process that ignores SIGTERM would hold the read below open for ever.
+      DispatchQueue.global().asyncAfter(deadline: .now() + 1) { [weak process] in
+        if let process, process.isRunning { kill(process.processIdentifier, SIGKILL) }
+      }
     }
     DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: stop)
-    // Reading while top runs keeps its output from filling the pipe and blocking it.
-    let output = try pipe.fileHandleForReading.readToEnd() ?? Data()
+    defer { stop.cancel() }
+
+    let output: Data
+    do {
+      try pipe.fileHandleForWriting.close()  // else the read below never sees the end of the output
+      // Reading while top runs keeps its output from filling the pipe and blocking it.
+      output = try pipe.fileHandleForReading.readToEnd() ?? Data()
+    } catch {
+      process.terminate()  // `stop` is still armed, so a child that ignores SIGTERM gets killed
+      process.waitUntilExit()
+      throw SystemDetailsError.failed("cannot read the output of \(executable): \(error)")
+    }
     process.waitUntilExit()
-    stop.cancel()
 
     guard process.terminationStatus == 0 else {
       throw SystemDetailsError.failed(
         timedOut.withLock { $0 }
-          ? "top did not finish in \(timeout) s"
-          : "top exited with status \(process.terminationStatus)")
+          ? "\(executable) did not finish in \(timeout) s"
+          : "\(executable) exited with status \(process.terminationStatus)")
     }
     return String(decoding: output, as: UTF8.self)
   }
