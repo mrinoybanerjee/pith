@@ -86,7 +86,6 @@ import SwiftUI
     self.anchor = anchor
     opening = true
     clickNs = uptimeNs()
-    store.readLoginItem()
     // The lifecycle takes an open reading at once. Not shown yet, so not covered either.
     onChange(true, store.pinned, false)
   }
@@ -151,6 +150,18 @@ import SwiftUI
       ]
     }
     panel.makeKeyAndOrderFront(nil)
+    // The run loop draws the panel at the end of this pass; this task runs in the next pass, after
+    // that first draw. Only then does it ask macOS about the login item, which takes up to 15 ms.
+    Task { self.store.readLoginItem() }
+  }
+
+  /// Lays out and draws the panel for `store` offscreen once, then lets the view go, so the first
+  /// click finds SwiftUI, the fonts and the row icons loaded (spec 10).
+  static func prepare(_ store: Store) {
+    let view = NSHostingView(rootView: PanelView(store: store, open: 0))
+    view.setFrameSize(CGSize(width: width, height: maxHeight))
+    view.layoutSubtreeIfNeeded()
+    view.cacheDisplay(in: view.bounds, to: view.bitmapImageRepForCachingDisplay(in: view.bounds)!)
   }
 
   /// Follows the content's height after each layout of the shown panel.

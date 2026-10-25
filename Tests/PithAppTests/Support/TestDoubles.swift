@@ -26,15 +26,8 @@ extension LoginItem {
   static let stub = LoginItem(isEnabled: { false }, set: { _ in })
 }
 
-/// No app is running, so no row offers Quit, and Quit Pith does nothing.
-extension RunningApps {
-  static let stub = RunningApps(
-    running: { _ in [] }, ownerUID: { _ in nil }, exits: NotificationCenter(),
-    forceOfferDelay: { try await Task.sleep(for: .seconds(5)) }, quitPith: {})
-}
-
 @MainActor func testStore(
-  guide: Guide = .empty, loginItem: LoginItem = .stub, runningApps: RunningApps = .stub,
+  guide: Guide = .empty, loginItem: LoginItem = .stub, runningApps: RunningApps = .none,
   nowNs: @escaping @MainActor @Sendable () -> UInt64 = { 0 },
   measure: @escaping @Sendable () async throws -> SystemBreakdown = {
     throw SystemDetailsError.failed("no top in tests")
@@ -191,12 +184,16 @@ extension AppUsage {
   var enabled: Bool
   var refuses = false
   private(set) var registrations = 0
+  private(set) var reads = 0
 
   init(enabled: Bool) { self.enabled = enabled }
 
   var loginItem: LoginItem {
     LoginItem(
-      isEnabled: { self.enabled },
+      isEnabled: {
+        self.reads += 1
+        return self.enabled
+      },
       set: { enabled in
         if self.refuses { throw SystemDetailsError.failed("synthetic refusal") }
         if enabled, !self.enabled { self.registrations += 1 }

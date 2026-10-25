@@ -82,6 +82,12 @@ struct RunningApps {
     forceOfferDelay: { try await Task.sleep(for: .seconds(5), clock: .suspending) },
     quitPith: { NSApplication.shared.terminate(nil) })
 
+  /// No app is running, so no row offers Quit, and Quit Pith does nothing: for tests, and for a
+  /// store whose rows must never quit a real app, such as made-up or offscreen ones.
+  static let none = RunningApps(
+    running: { _ in [] }, ownerUID: { _ in nil }, exits: NotificationCenter(),
+    forceOfferDelay: { try await Task.sleep(for: .seconds(5)) }, quitPith: {})
+
   /// The apps that macOS runs among these PIDs. Live, it reads `runningApplications` once, as
   /// every PID of a row is a candidate (R100); its instances are kept by `NSWorkspace`.
   let running: @MainActor @Sendable ([Int32]) -> [any QuitTarget]

@@ -42,6 +42,14 @@ public actor Engine {
       nowNs: table.takenAtNs)
   }
 
+  /// An open snapshot for the app to draw once before the first click (spec 10). It groups every
+  /// process, so the first open reading finds their apps already read: reading every app's bundle
+  /// takes about 40 ms (R21). It keeps no table, so the next open tick has no rates yet.
+  public func warmUp() -> Snapshot {
+    defer { previousTable = nil }
+    return tick(mode: .open)
+  }
+
   /// The next open tick has no previous table, so it shows no CPU or disk rates yet. The next system
   /// CPU reading is a first sample too, so none averages over the gap, for example after wake.
   public func resetBaseline() {

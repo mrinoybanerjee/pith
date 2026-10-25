@@ -799,6 +799,26 @@ extension NativeInteractionTests {
     #expect(second.insetBy(dx: 8, dy: 8).contains(w.frame), "ended at \(w.frame)")
   }
 
+  /// Spec 10: drawing the panel once before the first click loads the icons of the rows it shows.
+  @Test func preparingThePanelLoadsTheRowIcons() throws {
+    startAppKit()
+    let store = testStore(guide: try Guide.bundled())
+    store.apply(DemoSnapshots.calm)
+    #expect(Set(AppIcons.icons.keys) != Set(store.rows.compactMap(\.bundlePath)))
+    PanelController.prepare(store)
+    #expect(Set(AppIcons.icons.keys) == Set(store.rows.compactMap(\.bundlePath)))
+  }
+
+  /// Spec 10: the click does not wait for macOS's answer about the login item, which can take
+  /// 15 ms. The panel asks once it has drawn (R74).
+  @Test func theLoginItemIsReadAfterThePanelShows() async throws {
+    let item = FakeLoginItem(enabled: true)
+    let (w, store) = try hostPanelWithStore(
+      DemoSnapshots.calm, store: testStore(loginItem: item.loginItem))
+    #expect(w.isVisible && item.reads == 0)
+    #expect(try await eventually(w) { item.reads == 1 && store.launchesAtLogin })
+  }
+
   /// R74: Settings show whether Pith opens at login as macOS says, read when the panel opens. A
   /// refused change says so under the toggle and the toggle goes back; the next open clears it.
   @Test func aRefusedLoginItemChangeSaysSoUntilThePanelOpensAgain() async throws {
@@ -806,7 +826,7 @@ extension NativeInteractionTests {
     item.refuses = true
     let (w, store) = try hostPanelWithStore(
       DemoSnapshots.calm, store: testStore(loginItem: item.loginItem))
-    #expect(store.launchesAtLogin)
+    #expect(try await eventually(w) { store.launchesAtLogin })
     store.showingSettings = true
     store.setLaunchAtLogin(false)
     #expect(store.launchesAtLogin && store.loginItemFailed)
@@ -817,7 +837,7 @@ extension NativeInteractionTests {
     item.enabled = false  // the user turns it off in System Settings
     try clickStatusItem(of: w)
     store.showingSettings = true
-    #expect(!store.loginItemFailed && !store.launchesAtLogin)
+    #expect(try await eventually(w) { !store.loginItemFailed && !store.launchesAtLogin })
     #expect(
       try await eventually(w) {
         axInteractiveElements(in: w).first { $0.label == "Launch at login" }?.value == "0"

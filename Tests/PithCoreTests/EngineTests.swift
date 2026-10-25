@@ -1,5 +1,6 @@
 import Darwin
 import Testing
+import os
 
 @testable import PithCore
 
@@ -26,6 +27,25 @@ private func engine(_ processes: any ProcessTableReading) -> Engine {
   _ = await e.tick(mode: .open)
   _ = await e.tick(mode: .closed)
   #expect(log.reads == ["system", "table", "system"])
+}
+
+@Test func warmUpGroupsTheProcessesBeforeTheFirstOpen() async {  // R21, spec 10
+  // Reading every app's bundle at once takes about 40 ms, which the first open must not wait for.
+  let bundleReads = OSAllocatedUnfairLock(initialState: 0)
+  let grouper = AppGrouper(responsible: nil) { path in
+    bundleReads.withLock { $0 += 1 }
+    return Fixture.bundleInfo(path)
+  }
+  let e = Engine(
+    system: FakeSystem(), processes: SequenceTable(.chromeAt0, .chromeAt1s), grouper: grouper,
+    guide: .empty, cpuCount: 10)
+  let warm = await e.warmUp()
+  let warmed = bundleReads.withLock { $0 }
+  let s = await e.tick(mode: .open)
+  #expect(warm.mode == .open && warm.apps.map(\.name) == ["Google Chrome"])
+  #expect(warmed > 0 && bundleReads.withLock { $0 } == warmed)
+  // The warm-up keeps no table: the first open reading still has no rates.
+  #expect(s.apps[0].cpu == .unavailable("first sample"))
 }
 
 @Test func resetBaselineHidesStaleCPU() async {  // Review Focus 3

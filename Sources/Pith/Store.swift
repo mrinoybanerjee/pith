@@ -275,7 +275,7 @@ enum SystemDetailsState: Equatable {
     }
   }
 
-  /// When the panel opens: what macOS says now, and no old refusal (R74).
+  /// Once the panel shows: what macOS says now, and no old refusal (R74).
   func readLoginItem() {
     launchesAtLogin = loginItem.isEnabled()
     loginItemFailed = false

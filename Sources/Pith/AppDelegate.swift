@@ -34,6 +34,16 @@ import os
     }
     follow({ [store] in store.status }, then: { [weak self] in self?.statusItem.show(status: $0) })
     lifecycle.start()
+    // The first click must not wait for every app's bundle to be read, nor for SwiftUI, the fonts
+    // and the row icons to load (spec 10). So the panel draws one open snapshot offscreen, on a
+    // store of its own. The first reading reaches the engine before this.
+    Task {
+      let warm = Store(
+        settings: store.settings, guide: guide, loginItem: .main, runningApps: .none,
+        measureSystem: { throw SystemDetailsError.failed("not measured") }, nowNs: nowNs)
+      warm.apply(await engine.warmUp())
+      PanelController.prepare(warm)
+    }
     // One line per launch, so an install can confirm the bundled guide and the login item. The
     // store reads the login item only when the panel opens, so this asks macOS itself.
     Logger(subsystem: "com.mrinoy.pith", category: "startup").notice(
