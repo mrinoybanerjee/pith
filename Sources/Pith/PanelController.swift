@@ -145,18 +145,21 @@ import SwiftUI
 
   /// Spec 4.8: ↑ and ↓ move between the rows and Return opens or closes one, while the list
   /// shows; in Settings they go to the controls. ⌘1–⌘3 pick the metric by key, on any keyboard
-  /// layout. Escape closes the attached panel.
+  /// layout. Escape closes the attached panel. While a quit confirm shows, Return and Escape go to
+  /// its buttons (R80).
   private func handle(_ event: NSEvent) -> Bool {
     let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
     let list = !store.showingSettings
+    let confirming = list && [.confirming, .confirmingForce].contains(store.quitFlow.state)
     switch (modifiers, event.keyCode) {
     case ([.command], 18): store.metric = .memory
     case ([.command], 19): store.metric = .cpu
     case ([.command], 20): store.metric = .disk
     case ([], 126) where list: store.moveSelection(-1)
     case ([], 125) where list: store.moveSelection(1)
-    case ([], 36) where list, ([], 76) where list: store.toggleSelected()
-    case ([], 53) where !store.pinned: close()
+    case ([], 36) where list && !confirming, ([], 76) where list && !confirming:
+      store.toggleSelected()
+    case ([], 53) where !store.pinned && !confirming: close()
     default: return false
     }
     return true

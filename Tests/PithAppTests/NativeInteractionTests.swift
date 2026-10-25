@@ -38,15 +38,23 @@ extension NativeInteractionTests {
   }
 
   /// R75: a tool for the design check and the README images, so it is skipped, not passed, unless
-  /// asked for.
+  /// asked for. The last state is Google Chrome opened, asking to quit (spec 4.5).
   @MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["PITH_UI_SNAPSHOT_DIR"] != nil))
-  func captureDesignStatesWhenRequested() throws {
+  func captureDesignStatesWhenRequested() async throws {
+    defer { clearDefaults() }
     let dir = ProcessInfo.processInfo.environment["PITH_UI_SNAPSHOT_DIR"]!
-    for (name, snap) in [("calm", DemoSnapshots.calm), ("tight", DemoSnapshots.tight)] {
-      for scheme in [NSAppearance.Name.aqua, .darkAqua] {
+    for scheme in [NSAppearance.Name.aqua, .darkAqua] {
+      for (name, snap) in [("calm", DemoSnapshots.calm), ("tight", DemoSnapshots.tight)] {
         try writePNG(
           hostPanel(snap, appearance: scheme), to: "\(dir)/\(name)-\(scheme.rawValue).png")
       }
+      let apps = FakeRunningApps([chromeProcess])
+      let (w, store) = try hostPanelWithStore(
+        DemoSnapshots.tight, appearance: scheme, store: apps.store(guide: Guide.bundled()))
+      store.toggle(store.rows[0].id)
+      store.sendQuit(.tapQuit, pid: chromeProcess.pid)
+      #expect(try await eventually(w) { showsAboveTheFooter("Quit", in: w) })
+      try writePNG(w, to: "\(dir)/quit-confirm-\(scheme.rawValue).png")
     }
   }
 
@@ -65,7 +73,7 @@ extension NativeInteractionTests {
     var resizesWhileShown = 0
     let observer = NotificationCenter.default.addObserver(
       forName: NSWindow.didResizeNotification, object: w, queue: nil
-    ) { _ in MainActor.assumeIsolated { if w.isVisible { resizesWhileShown += 1 } } }
+    ) { _ in MainActor.assumeIsolated { if controller.panel.isVisible { resizesWhileShown += 1 } } }
     defer { NotificationCenter.default.removeObserver(observer) }
     let screen = try #require(NSScreen.main).visibleFrame
     controller.toggle(
@@ -474,6 +482,165 @@ extension NativeInteractionTests {
     #expect(minimumReadableFontSize(w, excludingIdentifier: "none") == 11.5)
     let inherited = hostView(VStack { Text("Inherited") }.font(.system(size: 12)))
     #expect(axNodes(in: inherited).flatMap(\.fontSizes) == [12])
+  }
+}
+
+/// The first confirm for the tight mockup's Google Chrome, as VoiceOver reads it (spec 4.5).
+private let quitSentence = "Quit Google Chrome? It can ask you to save first."
+
+/// Whether the button `label` shows whole above the footer, not scrolled out of the list.
+@MainActor private func showsAboveTheFooter(_ label: String, in w: NSWindow) -> Bool {
+  guard let button = axInteractiveElements(in: w).first(where: { $0.label == label }),
+    let footer = axNodes(in: w).first(where: { $0.identifier == "pith.footer" })
+  else { return false }
+  return w.convertFromScreen(button.frame).minY >= w.convertFromScreen(footer.frame).maxY
+}
+
+extension NativeInteractionTests {
+  /// The panel with the tight mockup's Google Chrome opened. Only Chrome runs as an app, and
+  /// Slack's process belongs to another user.
+  private func hostOpenedChrome(test: String = #function) async throws -> (
+    NSWindow, Store, FakeRunningApps
+  ) {
+    let slack = RunningAppInfo(
+      pid: 730, bundlePath: "/Applications/Slack.app", ownerUID: getuid() + 1)
+    let apps = FakeRunningApps([chromeProcess, slack])
+    let (w, store) = try hostPanelWithStore(
+      DemoSnapshots.tight, store: apps.store(guide: Guide.bundled()), test: test)
+    store.toggle(store.rows[0].id)
+    #expect(
+      try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == "Quit" } })
+    return (w, store, apps)
+  }
+
+  /// Spec 4.5 and R79–R80: Quit asks first, and VoiceOver reads the confirm as one sentence, then
+  /// Cancel and Quit. Return presses Quit, the default button: the app is asked to quit once, and
+  /// the row says so while it quits. When the app is gone, the flow is done.
+  @Test func quitAsksFirstThenReturnQuitsOnce() async throws {
+    defer { clearDefaults() }
+    let (w, store, apps) = try await hostOpenedChrome()
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    let spoken = axNodes(in: w).compactMap(\.spoken)
+    let sentence = try #require(spoken.firstIndex(of: quitSentence))
+    #expect(Array(spoken[(sentence + 1)...].prefix(2)) == ["Cancel", "Quit"])
+    // The opened row is taller than the list, so the list scrolls the confirm into view.
+    #expect(try await eventually(w) { showsAboveTheFooter("Quit", in: w) })
+    #expect(apps.terminated.isEmpty)
+    sendKey("↩", to: w)
+    #expect(try await eventually(w) { axLabels(in: w).contains("Quitting Google Chrome…") })
+    #expect(apps.terminated == [410] && store.expandedAppID == store.rows[0].id)
+    #expect(!axInteractiveElements(in: w).contains { $0.label == "Quit" })
+    apps.running = []
+    #expect(try await eventually(w) { store.quitFlow.state == .done })
+    #expect(apps.terminated == [410] && apps.forced.isEmpty)
+  }
+
+  /// R80: the first Escape cancels the confirm, and only the next one closes the panel. Cancel
+  /// does the same as the first Escape.
+  @Test func escapeCancelsTheConfirmBeforeItClosesThePanel() async throws {
+    defer { clearDefaults() }
+    let (w, store, apps) = try await hostOpenedChrome()
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    sendKey("⎋", to: w)
+    #expect(try await eventually(w) { !axLabels(in: w).contains(quitSentence) })
+    #expect(w.isVisible && store.quitFlow.state == .idle)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    try press("Cancel", in: w)
+    #expect(try await eventually(w) { store.quitFlow.state == .idle })
+    sendKey("⎋", to: w)
+    #expect(!w.isVisible && apps.terminated.isEmpty)
+  }
+
+  /// Spec 4.5 and R79: an app still running 5 s after Quit is offered Force Quit, which asks again;
+  /// only its confirm forces the quit.
+  @Test func anAppStillRunningAfterFiveSecondsIsOfferedForceQuit() async throws {
+    defer { clearDefaults() }
+    let (w, store, apps) = try await hostOpenedChrome()
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    try press("Quit", in: w)
+    apps.nowNs = 5_000_000_000
+    #expect(
+      try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == "Force Quit" } }
+    )
+    #expect(axLabels(in: w).contains("Quitting Google Chrome…"))
+    try press("Force Quit", in: w)
+    let force = "Force Quit Google Chrome? Unsaved changes will be lost."
+    #expect(try await eventually(w) { axLabels(in: w).contains(force) })
+    let spoken = axNodes(in: w).compactMap(\.spoken)
+    let sentence = try #require(spoken.firstIndex(of: force))
+    #expect(Array(spoken[(sentence + 1)...].prefix(2)) == ["Cancel", "Force Quit"])
+    #expect(apps.forced.isEmpty)
+    sendKey("↩", to: w)
+    #expect(try await eventually(w) { apps.forced == [410] })
+    #expect(store.quitFlow.state == .waiting(sinceNs: 5_000_000_000) && apps.terminated == [410])
+  }
+
+  /// Spec 4.5: Quit shows only for an app of the user's own that macOS runs as an app: not for
+  /// Finder, which the guide marks not quittable, not for another user's Slack, and not for
+  /// "macOS system".
+  @Test func onlyTheUsersOwnQuittableAppsShowQuit() async throws {
+    defer { clearDefaults() }
+    let (w, store, _) = try await hostOpenedChrome()
+    for id in [
+      try #require(store.rows.first { $0.name == "Slack" }).id, Store.systemRowID,
+    ] {
+      store.toggle(id)
+      #expect(try await eventually(w) { store.expandedAppID == id })
+      try await Task.sleep(for: .milliseconds(100))
+      w.contentView!.layoutSubtreeIfNeeded()
+      #expect(!axInteractiveElements(in: w).contains { $0.label == "Quit" }, "\(id)")
+    }
+    let apps = FakeRunningApps([
+      RunningAppInfo(pid: 340, bundlePath: "/Applications/Finder.app", ownerUID: getuid())
+    ])
+    let (calm, calmStore) = try hostPanelWithStore(
+      DemoSnapshots.calm, store: apps.store(guide: Guide.bundled()))
+    calmStore.toggle(try #require(calmStore.rows.first { $0.name == "Finder" }).id)
+    #expect(
+      try await eventually(calm) {
+        axLabels(in: calm).contains { $0.hasPrefix("Shows your files") }
+      })
+    #expect(!axInteractiveElements(in: calm).contains { $0.label == "Quit" })
+  }
+
+  /// Task 11 review: pressing a segment chooses it. VoiceOver hears the "Sort by" group with the
+  /// chosen segment selected.
+  @Test func pressingTheCPUSegmentSortsByCPU() async throws {
+    defer { clearDefaults() }
+    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
+    try press("CPU", in: w)
+    #expect(store.metric == .cpu)
+    #expect(
+      try await eventually(w) {
+        axNodes(in: w).contains {
+          $0.label == "Sort by"
+            && $0.children.map { "\($0.label ?? "none") \($0.selected)" }
+              == ["Memory false", "CPU true", "Disk false"]
+        }
+      })
+  }
+
+  /// Task 11 review: pressing "2 s" in Settings changes the refresh setting, and VoiceOver hears the
+  /// "Refresh while open" group with "2 s" selected.
+  @Test func pressingTwoSecondsInSettingsChangesTheRefresh() async throws {
+    defer { clearDefaults() }
+    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
+    store.showingSettings = true
+    #expect(try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == "2 s" } })
+    try press("2 s", in: w)
+    #expect(store.settings.refresh == .twoSeconds)
+    #expect(
+      try await eventually(w) {
+        axNodes(in: w).contains {
+          $0.label == "Refresh while open"
+            && $0.children.map { "\($0.label ?? "none") \($0.selected)" }
+              == ["1 s false", "2 s true"]
+        }
+      })
   }
 }
 

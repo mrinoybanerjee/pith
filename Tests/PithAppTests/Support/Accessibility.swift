@@ -18,7 +18,8 @@ import Testing
   /// In screen coordinates.
   let frame: CGRect
   /// The point sizes of the text runs. SwiftUI reports none for a heading, so a one-line heading's
-  /// size comes from its height; a button reports none, so a button with text keeps it as a child.
+  /// size comes from its height. A SwiftUI Button reports no font for its label, so buttons use
+  /// the `PanelType` sizes, which a unit test checks (R87).
   let fontSizes: [CGFloat]
   let children: [AXNode]
 

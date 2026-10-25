@@ -31,6 +31,10 @@ enum SystemDetailsState: Equatable {
   /// Settings take the place of the tiles and the list.
   var showingSettings = false
   private(set) var systemDetails = SystemDetailsState.idle
+  /// The opened row's quit flow (spec 4.5). It starts over when the row closes, another row opens,
+  /// the panel closes or the app leaves the list (R78), so no confirm outlives its row. A quit
+  /// already sent stays sent.
+  private(set) var quitFlow = QuitFlow()
   var pinned = false
   var settings: Settings {
     didSet {
@@ -44,20 +48,30 @@ enum SystemDetailsState: Equatable {
   /// macOS refused the last change to the login item.
   private(set) var loginItemFailed = false
   let guide: Guide
+  let runningApps: RunningApps
   /// Called after each open snapshot is applied. The panel shows on the first one after a click.
   @ObservationIgnored var appliedOpenSnapshot: () -> Void = {}
   @ObservationIgnored private var rules: StatusRules
   @ObservationIgnored private let loginItem: LoginItem
   @ObservationIgnored private let measureSystem: @Sendable () async throws -> SystemBreakdown
+  /// The time that the quit flow's 5 s are counted in.
+  @ObservationIgnored private let nowNs: @MainActor @Sendable () -> UInt64
+  /// Sends `.tick` to the quit flow once per second while it waits (R78).
+  @ObservationIgnored private var quitTicks: Task<Void, any Error>? {
+    didSet { oldValue?.cancel() }
+  }
 
   init(
-    settings: Settings, guide: Guide, loginItem: LoginItem,
-    measureSystem: @escaping @Sendable () async throws -> SystemBreakdown
+    settings: Settings, guide: Guide, loginItem: LoginItem, runningApps: RunningApps,
+    measureSystem: @escaping @Sendable () async throws -> SystemBreakdown,
+    nowNs: @escaping @MainActor @Sendable () -> UInt64
   ) {
     self.settings = settings
     self.guide = guide
     self.loginItem = loginItem
+    self.runningApps = runningApps
     self.measureSystem = measureSystem
+    self.nowNs = nowNs
     rules = StatusRules(amberOnCPU: settings.amberOnCPU)
   }
 
@@ -69,6 +83,7 @@ enum SystemDetailsState: Equatable {
     guard snapshot.mode == .open else { return }
     self.snapshot = snapshot
     rows = RowOrder.stable(previous: rows.map(\.id), apps: snapshot.apps, metric: metric)
+    if !rows.contains(where: { $0.id == expandedAppID }) { resetQuit() }
     appliedOpenSnapshot()
   }
 
@@ -78,6 +93,7 @@ enum SystemDetailsState: Equatable {
   /// Opens the row `id` and closes any other, or closes it (spec 4.3). Opening "macOS system"
   /// measures it (spec 4.4).
   func toggle(_ id: String) {
+    resetQuit()
     expandedAppID = expandedAppID == id ? nil : id
     if expandedAppID == Self.systemRowID { openSystemDetails() }
   }
@@ -96,9 +112,38 @@ enum SystemDetailsState: Equatable {
 
   /// A closed panel opens fresh, so an opened "macOS system" is measured again.
   func panelClosed() {
+    resetQuit()
     expandedAppID = nil
     selectedRowID = nil
     showingSettings = false
+  }
+
+  /// Sends `event` to the opened row's quit flow, for the app whose own process is `pid`
+  /// (spec 4.5). While the flow waits for the app to quit, it ticks once per second (R78).
+  func sendQuit(_ event: QuitFlow.Event, pid: Int32) {
+    quitFlow.send(
+      event, nowNs: nowNs(), isRunning: { runningApps.isRunning(pid) },
+      terminate: { runningApps.terminate(pid) }, forceTerminate: { runningApps.forceTerminate(pid) }
+    )
+    switch quitFlow.state {
+    case .waiting:
+      if quitTicks == nil {
+        quitTicks = Task { [weak self] in
+          while true {
+            try await Task.sleep(for: .seconds(1))
+            guard let self else { return }
+            sendQuit(.tick, pid: pid)
+          }
+        }
+      }
+    default: quitTicks = nil
+    }
+  }
+
+  private func resetQuit() {
+    guard quitFlow.state != .idle else { return }
+    quitFlow = QuitFlow()
+    quitTicks = nil
   }
 
   /// Asks `top` what macOS itself uses, at most once per 10 s (spec 4.4 and 6.7). Retry calls it

@@ -36,62 +36,6 @@ struct PanelView: View {
   }
 }
 
-/// The panel's type sizes, all in one place (spec 4.2): SF Pro, 13 pt or more for anything the user
-/// must read. Only the decorative footer is smaller.
-enum PanelType: CGFloat, CaseIterable {
-  case title = 17
-  case value = 19
-  case body = 13
-  case footer = 11.5
-}
-
-extension Font {
-  static func panel(_ type: PanelType, weight: Font.Weight = .regular) -> Font {
-    .system(size: type.rawValue, weight: weight)
-  }
-}
-
-/// Memory · CPU · Disk and 1 s · 2 s, the panel's one segmented style (design section 1): a well
-/// with the chosen segment raised, each as wide as its name. The segments are buttons, so full
-/// keyboard access reaches them; VoiceOver reads a group named `label`, the chosen one selected.
-struct Segmented<Value: Hashable>: View {
-  let label: String
-  @Binding var selection: Value
-  let options: [(value: Value, title: String)]
-  @Environment(\.colorScheme) private var scheme
-
-  var body: some View {
-    HStack(spacing: 0) {
-      ForEach(options, id: \.value) { option in
-        let chosen = option.value == selection
-        Button {
-          selection = option.value
-        } label: {
-          Text(option.title)
-            .font(.panel(.body, weight: .medium))
-            .foregroundStyle(chosen ? .primary : .secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 2)
-            .background {
-              if chosen {
-                RoundedRectangle(cornerRadius: 5)
-                  .fill(.white.opacity(scheme == .dark ? 0.16 : 1))
-                  .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
-              }
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(chosen ? .isSelected : [])
-      }
-    }
-    .padding(2)
-    .background(.quinary, in: .rect(cornerRadius: 7))
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel(label)
-  }
-}
-
 /// A thin proportional bar of plain shapes (spec 4.2 and 9). An unknown value has no fill.
 struct Bar<Fill: ShapeStyle>: View {
   let fraction: Double?

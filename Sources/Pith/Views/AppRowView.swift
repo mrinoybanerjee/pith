@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// One app (spec 4.2 and 4.3). Clicking it opens it in place: "N processes" under the value, then
-/// the explanation and what is inside.
+/// the explanation, what is inside and Quit (spec 4.5).
 struct AppRowView: View {
   let store: Store
   let app: AppUsage
@@ -24,7 +24,14 @@ struct AppRowView: View {
         selected: store.selectedRowID == app.id, expanded: expanded,
         sentence: rowSentence(name, value, store.metric, processes: app.processCount)
       ) { store.toggle(app.id) }
-      if expanded { AppDetailView(explanation: entry?.explanation, inside: app.inside) }
+      if expanded {
+        let running = store.runningApps.find(app.pids)
+        let quittable = QuitEligibility.canQuit(
+          app, running: running, uid: getuid(), guide: store.guide)
+        AppDetailView(
+          store: store, name: name, explanation: entry?.explanation, inside: app.inside,
+          quitPID: quittable ? running?.pid : nil)
+      }
     }
   }
 }

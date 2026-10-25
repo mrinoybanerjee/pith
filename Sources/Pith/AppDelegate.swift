@@ -11,10 +11,11 @@ import PithCore
   func applicationDidFinishLaunching(_ notification: Notification) {
     let defaults = UserDefaults.standard
     let guide = try! Guide.bundled()
-    let details = SystemDetails(guide: guide, nowNs: { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) })
+    let nowNs = { @Sendable in clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
+    let details = SystemDetails(guide: guide, nowNs: nowNs)
     let store = Store(
-      settings: .load(defaults), guide: guide, loginItem: .main,
-      measureSystem: { try await details.measure() })
+      settings: .load(defaults), guide: guide, loginItem: .main, runningApps: .live,
+      measureSystem: { try await details.measure() }, nowNs: nowNs)
     let reader = SystemReader()
     let engine = Engine(
       system: reader, processes: LibprocProcessTable(), grouper: .live(), guide: guide,

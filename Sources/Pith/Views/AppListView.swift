@@ -53,6 +53,8 @@ struct AppListView: View {
         .onChange(of: store.selectedRowID) { _, id in if let id { proxy.scrollTo(id) } }
         .onChange(of: store.expandedAppID) { reveal(proxy) }
         .onChange(of: store.systemDetails) { reveal(proxy) }
+        // A confirm can grow an opened row past the list's bottom edge.
+        .onChange(of: store.quitFlow.state) { Task { proxy.scrollTo(AppDetailView.quitID) } }
         .onChange(of: order) { AppIcons.keep(Set(store.rows.compactMap(\.bundlePath))) }
       }
     }

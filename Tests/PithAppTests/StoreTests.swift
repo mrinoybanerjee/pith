@@ -52,3 +52,54 @@ import os
   #expect(PanelType.allCases.filter { $0 != .footer }.allSatisfy { $0.rawValue >= 13 })
   #expect(PanelType.footer.rawValue == 11.5)
 }
+
+/// R78: the opened row's quit flow starts over when the row closes, when another row opens, when
+/// the panel closes, and when the app leaves the list, so no confirm outlives its row. A quit
+/// already sent stays sent.
+@MainActor @Test func theQuitFlowStartsOverWithItsRow() {
+  let apps = FakeRunningApps([chromeProcess])
+  let store = apps.store(guide: .empty)
+  store.apply(DemoSnapshots.tight)
+  let chrome = store.rows[0].id
+  let ask = {
+    store.toggle(chrome)
+    store.sendQuit(.tapQuit, pid: 410)
+    #expect(store.quitFlow.state == .confirming)
+  }
+  ask()
+  store.toggle(store.rows[1].id)  // another row opens
+  #expect(store.quitFlow.state == .idle)
+  ask()
+  store.toggle(chrome)  // the row closes
+  #expect(store.quitFlow.state == .idle && store.expandedAppID == nil)
+  ask()
+  store.apply(remake(DemoSnapshots.tight, apps: Array(DemoSnapshots.tight.apps.dropFirst())))
+  #expect(store.quitFlow.state == .idle)
+  store.apply(DemoSnapshots.tight)
+  store.toggle(chrome)  // it was still open; this closes it
+  ask()
+  store.sendQuit(.confirm, pid: 410)
+  #expect(store.quitFlow.state == .waiting(sinceNs: 0) && apps.terminated == [410])
+  store.panelClosed()
+  #expect(store.quitFlow.state == .idle && apps.terminated == [410] && apps.forced.isEmpty)
+}
+
+/// R78: `.tick` comes once per second, only while the flow waits: it stops when Force Quit is
+/// offered and when the panel closes.
+@MainActor @Test func theQuitFlowTicksOnlyWhileItWaits() async throws {
+  let apps = FakeRunningApps([chromeProcess])
+  let store = apps.store(guide: .empty)
+  store.apply(DemoSnapshots.tight)
+  store.toggle(store.rows[0].id)
+  store.sendQuit(.tapQuit, pid: 410)
+  store.sendQuit(.confirm, pid: 410)
+  apps.nowNs = 5_000_000_000
+  try await Task.sleep(for: .milliseconds(2300))
+  #expect(store.quitFlow.state == .offerForce && apps.checks == 1)
+  store.sendQuit(.tapForce, pid: 410)
+  store.sendQuit(.confirmForce, pid: 410)
+  #expect(store.quitFlow.state == .waiting(sinceNs: 5_000_000_000) && apps.forced == [410])
+  store.panelClosed()
+  try await Task.sleep(for: .milliseconds(1300))
+  #expect(apps.checks == 1)
+}
