@@ -1,0 +1,8 @@
+{
+  "takenAtNs": 1000000000,
+  "vanished": 0,
+  "samples": [
+    {"key": {"pid": 80, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Notes", "path": "/Applications/Notes.app/Contents/MacOS/Notes", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 81, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Notes", "path": "/Volumes/Demo/Notes.app/Contents/MacOS/Notes", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+  ]
+}

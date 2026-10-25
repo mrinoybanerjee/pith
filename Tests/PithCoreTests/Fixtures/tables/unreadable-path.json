@@ -1,0 +1,9 @@
+{
+  "takenAtNs": 1000000000,
+  "vanished": 0,
+  "samples": [
+    {"key": {"pid": 600, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Slack", "path": "/Applications/Slack.app/Contents/MacOS/Slack", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 601, "startTime": 1000}, "parent": 600, "uid": 501, "name": "worker", "path": "", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 602, "startTime": 1000}, "parent": 1, "uid": 501, "name": "gone", "path": "", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+  ]
+}
