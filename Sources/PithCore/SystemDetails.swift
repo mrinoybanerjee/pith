@@ -61,8 +61,8 @@ public enum TopParser {
     }
   }
 
-  /// "420M+" is 420 << 20. `K`, `M` and `G` are powers of 1024, a bare number is bytes, and one
-  /// trailing `+` or `-` (the change since the first sample) is dropped.
+  /// "420M+" is 420 << 20. `K`, `M` and `G` are powers of 1024, `B` and a bare number are bytes,
+  /// and one trailing `+` or `-` (the change since the first sample) is dropped.
   private static func bytes(_ text: Substring) -> UInt64? {
     var digits = text
     if let last = digits.last, last == "+" || last == "-" { digits.removeLast() }
@@ -73,7 +73,7 @@ public enum TopParser {
       case "G": 30
       default: 0
       }
-    if shift > 0 { digits.removeLast() }
+    if shift > 0 || digits.last == "B" { digits.removeLast() }
     guard let value = UInt64(digits), value <= UInt64.max >> shift else { return nil }
     return value << shift
   }

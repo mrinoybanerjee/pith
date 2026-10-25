@@ -70,9 +70,10 @@ func unparseableRowThrows(row: String) {
   let rows = try TopParser.parse(
     secondSample(rows: [
       "1 a 0.0 2G 0", "2 b 0.0 3M+ 0", "3 c 0.0 4K- 0", "4 d 0.0 512 0", "5 e 0.0 0 0",
+      "6 f 0.0 8192B 0", "7 g 0.0 0B 0", "8 h 0.0 64B- 0",
     ]),
     excludingUID: 501)
-  #expect(rows.map(\.memory) == [2 << 30, 3 << 20, 4 << 10, 512, 0])
+  #expect(rows.map(\.memory) == [2 << 30, 3 << 20, 4 << 10, 512, 0, 8192, 0, 64])
 }
 
 @Test func commandCanHaveSpacesAndRowsCanEndInSpaces() throws {
