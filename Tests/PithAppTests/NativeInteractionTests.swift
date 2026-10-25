@@ -1027,26 +1027,10 @@ extension NativeInteractionTests {
     try press("Quit", in: w)
     #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
     apps.passTheConfirmGuard()
-    print("R139 F1 moving; run loop mode \(String(describing: RunLoop.main.currentMode))")
     store.moveSelection(-1)  // the last row, "macOS system"
     store.moveSelection(-10)  // the first row, Google Chrome
-    let away = try await eventually(w) {
-      !showsInTheList("Quit", in: w) && !store.confirmButtonInView
-    }
-    if !away {
-      r139Dump(w, store, "F1 scrolled away")
-      w.displayIfNeeded()
-      print("R139 F1 after displayIfNeeded: \(store.confirmButtonInView)")
-      CATransaction.flush()
-      print("R139 F1 after CATransaction.flush: \(store.confirmButtonInView)")
-      r139SpinRunLoop()
-      print("R139 F1 after one run loop turn: \(store.confirmButtonInView)")
-      store.metric = store.metric
-      try await Task.sleep(for: .milliseconds(50))
-      w.contentView!.layoutSubtreeIfNeeded()
-      print("R139 F1 after an observed change: \(store.confirmButtonInView)")
-    }
-    #expect(away)
+    #expect(
+      try await eventually(w) { !showsInTheList("Quit", in: w) && !store.confirmButtonInView })
     sendKey("↩", to: w)
     #expect(slack.terminations == 0 && store.quitFlow.state == .confirming)
     store.moveSelection(10)  // "macOS system"
@@ -1351,31 +1335,3 @@ private final class KeyRecorder: NSView {
 
   override func keyDown(with event: NSEvent) { keyCodes.append(event.keyCode) }
 }
-
-/// R139: temporary CI diagnostics, printed only when a check fails.
-@MainActor private func r139Dump(_ w: NSWindow, _ store: Store, _ note: String) {
-  print("R139 \(note): panel \(w.frame) screen \(w.screen?.visibleFrame ?? .zero)")
-  if let list = scrollView(in: w.contentView!) {
-    print(
-      "R139 list \(list.convert(list.bounds, to: nil)) document \(list.documentView?.frame ?? .zero)"
-        + " clip \(list.contentView.bounds)")
-  }
-  print(
-    "R139 store selected \(store.selectedRowID ?? "-") expanded \(store.expandedAppID ?? "-")"
-      + " confirmInView \(store.confirmButtonInView) rows \(store.rows.map(\.id))"
-      + " icons \(AppIcons.icons.keys.sorted())")
-  func walk(_ n: AXNode, _ depth: Int) {
-    let selector = NSSelectorFromString("accessibilityValue")
-    let raw =
-      n.element.responds(to: selector) ? n.element.perform(selector)?.takeUnretainedValue() : nil
-    print(
-      "R139 " + String(repeating: "  ", count: depth)
-        + "\(n.role) label=\(n.label ?? "-") value=\(raw.map { "\(type(of: $0)): \($0)" } ?? "nil")"
-        + " selected=\(n.selected) frame=\(w.convertFromScreen(n.frame))")
-    for c in n.children { walk(c, depth + 1) }
-  }
-  walk(AXNode(w), 0)
-}
-
-/// R139: one turn of the main run loop, from a synchronous context.
-@MainActor private func r139SpinRunLoop() { _ = CFRunLoopRunInMode(.defaultMode, 0.05, false) }

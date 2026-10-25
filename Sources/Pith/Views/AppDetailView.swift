@@ -95,26 +95,9 @@ private struct Confirm: View {
         Button(action) { store.confirmQuit() }
           .buttonStyle(.borderedProminent)
           .onGeometryChange(for: Bool.self) { proxy in
-            let inView =
-              proxy.bounds(of: .scrollView).map { $0.contains(proxy.frame(in: .local)) } ?? false
-            print(
-              "R139 geometry bounds(of: .scrollView) \(String(describing: proxy.bounds(of: .scrollView)))"
-                + " local \(proxy.frame(in: .local)) in scrollView \(proxy.frame(in: .scrollView))"
-                + " global \(proxy.frame(in: .global)) -> \(inView)")
-            print(
-              "R139 stack "
-                + Thread.callStackSymbols.dropFirst(2).prefix(40).map {
-                  String(
-                    ($0.split(separator: " ", omittingEmptySubsequences: true).dropFirst(3).first
-                      ?? "").prefix(60))
-                }.joined(separator: " < "))
-            return inView
+            proxy.bounds(of: .scrollView).map { $0.contains(proxy.frame(in: .local)) } ?? false
           } action: {
-            print("R139 confirmButtonInView = \($0)")
             store.confirmButtonInView = $0
-          }
-          .onScrollVisibilityChange(threshold: 1) {
-            print("R139 onScrollVisibilityChange(1) \($0)")
           }
           .onDisappear { store.confirmButtonInView = false }
       }

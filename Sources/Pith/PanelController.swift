@@ -114,9 +114,7 @@ import SwiftUI
   /// The content's height, up to `maxHeight` and to `visible`'s height less the 8 pt insets, so
   /// the panel fits a short screen; the app list scrolls inside it (R120).
   private func height(in visible: CGRect) -> CGFloat {
-    print("R139 fittingSize begin")
-    defer { print("R139 fittingSize end") }
-    return min(hosting.fittingSize.height.rounded(.up), Self.maxHeight, visible.height - 16)
+    min(hosting.fittingSize.height.rounded(.up), Self.maxHeight, visible.height - 16)
   }
 
   /// A pause drops a pending open: its reading does not come, and the wake must not open the
