@@ -1,4 +1,4 @@
-import Darwin
+import Foundation
 import Testing
 
 @testable import PithCore
@@ -38,9 +38,14 @@ import Testing
 
 @Test func roundedValuePicksTheFormat() {
   #expect(PercentFormat.app(0.0996) == "10%")
-  #expect(ByteFormat.memory(1023 << 20 + 800_000) == "1 GB")
+  #expect(ByteFormat.memory((1023 << 20) + 800_000) == "1 GB")
   #expect(ByteFormat.storage(999_600_000) == "1 GB")
   #expect(ByteFormat.storage(99_960_000_000) == "100 GB")
+}
+
+@Test func justBelowTheBoundaryKeepsTheLowerFormat() {
+  #expect(PercentFormat.app(0.099) == "9.9%")
+  #expect(ByteFormat.memory(1023 << 20) == "1023 MB")
 }
 
 @Test func currentTimebaseMatchesTheUptimeClock() {
@@ -52,6 +57,26 @@ import Testing
 @Test func readingValue() {
   #expect(Reading<Int>.value(3).value == 3)
   #expect(Reading<Int>.unavailable("x").value == nil)
+}
+
+@Test func readingEncodesAsPlainJSON() throws {
+  let encoder = JSONEncoder()
+  encoder.outputFormatting = .sortedKeys
+  func json(_ reading: Reading<Double>) throws -> String {
+    String(decoding: try encoder.encode(reading), as: UTF8.self)
+  }
+  #expect(try json(.value(0.38)) == #"{"value":0.38}"#)
+  #expect(try json(.unavailable("first tick")) == #"{"unavailable":"first tick"}"#)
+}
+
+@Test func readingDecodingNeedsExactlyOneKey() throws {
+  func decode(_ text: String) throws -> Reading<Int> {
+    try JSONDecoder().decode(Reading<Int>.self, from: Data(text.utf8))
+  }
+  #expect(try decode(#"{"value":3}"#) == .value(3))
+  #expect(try decode(#"{"unavailable":"x"}"#) == .unavailable("x"))
+  #expect(throws: DecodingError.self) { try decode(#"{"value":3,"unavailable":"x"}"#) }
+  #expect(throws: DecodingError.self) { try decode("{}") }
 }
 
 @Test func snapshotRoundTripsThroughJSON() throws {
@@ -70,5 +95,6 @@ import Testing
     ],
     system: .value(SystemResidual(memory: 1 << 30, cpu: .value(0.01))),
     grouping: .limited)
-  #expect(try jsonRoundTrip(snapshot) == snapshot)
+  let data = try JSONEncoder().encode(snapshot)
+  #expect(try JSONDecoder().decode(Snapshot.self, from: data) == snapshot)
 }
