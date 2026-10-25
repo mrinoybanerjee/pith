@@ -17,6 +17,7 @@ struct FakeSystem: SystemTotalsReading {
     storageTotal: .unavailable("fake"))
 
   func read() -> SystemTotals { Self.totals }
+  func resetCPUBaseline() {}
 }
 
 /// Counts reads. Each read returns an empty table.
@@ -42,6 +43,8 @@ final class ReadLog: SystemTotalsReading, ProcessTableReading {
     log.withLock { $0.append("system") }
     return FakeSystem.totals
   }
+
+  func resetCPUBaseline() {}
 
   func readTable() -> ProcessTable {
     log.withLock { $0.append("table") }

@@ -42,6 +42,10 @@ public actor Engine {
       nowNs: table.takenAtNs)
   }
 
-  /// The next open tick has no previous table, so it shows no CPU or disk rates yet.
-  public func resetBaseline() { previousTable = nil }
+  /// The next open tick has no previous table, so it shows no CPU or disk rates yet. The next system
+  /// CPU reading is a first sample too, so none averages over the gap, for example after wake.
+  public func resetBaseline() {
+    previousTable = nil
+    system.resetCPUBaseline()
+  }
 }

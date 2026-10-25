@@ -14,7 +14,9 @@ private func secondSample(columns: String = "PID COMMAND %CPU MEM UID", rows: [S
 @Test func parsesSecondSampleOnly() throws {
   let rows = try TopParser.parse(twoSamples, excludingUID: 501)
   #expect(
-    rows.map(\.name) == ["mds_stores", "WindowServer", "photoanalysisd", "launchd", "cloudd"])
+    rows.map(\.name) == [
+      "mds_stores", "WindowServer", "photoanalysisd", "launchd", "cloudd", "x86helperd",
+    ])
   #expect(rows[0].memory == 420 << 20)  // "420M+"
   #expect(rows.first { $0.name == "launchd" }?.memory == 12_288 << 10)  // "12288K"
   #expect(rows.allSatisfy { $0.uid != 501 })
@@ -24,6 +26,20 @@ private func secondSample(columns: String = "PID COMMAND %CPU MEM UID", rows: [S
   let rows = try TopParser.parse(twoSamples, excludingUID: 501)
   #expect(
     rows[1] == SystemProcess(pid: 174, name: "WindowServer", cpu: 1.3, memory: 345 << 20, uid: 88))
+}
+
+@Test func rosettaPIDKeepsOnlyTheNumber() throws {  // R57: Apple Silicon top prints `123*`
+  let rows = try TopParser.parse(twoSamples, excludingUID: 501)
+  #expect(
+    rows.last
+      == SystemProcess(pid: 3105, name: "x86helperd", cpu: 0.1, memory: 4096 << 10, uid: 0))
+}
+
+@Test func rosettaRowOfTheExcludedUserStillParses() throws {  // R57
+  // Before it is filtered out, the row must parse: an unreadable row fails the whole measurement.
+  let rows = try TopParser.parse(
+    secondSample(rows: ["9* a 0.0 2M 501", "8 b 0.0 1M 0"]), excludingUID: 501)
+  #expect(rows.map(\.pid) == [8])
 }
 
 @Test func malformedOutputThrows() {
@@ -56,6 +72,8 @@ private func secondSample(columns: String = "PID COMMAND %CPU MEM UID", rows: [S
   "1 a 0.0 M 0",  // no digits
   "1 a 0.0 17179869184G 0",  // 2^64 bytes
   "x a 0.0 1M 0",  // bad PID
+  "1** a 0.0 1M 0",  // one `*` is dropped, not two
+  "* a 0.0 1M 0",  // no digits
   "1 a x 1M 0",  // bad CPU
   "1 a 0.0 1M x",  // bad UID
   "1 0.0 1M 0",  // no COMMAND
@@ -108,7 +126,7 @@ func unparseableRowThrows(row: String) {
     b.items[0].explanation
       == guide.entry(name: "mds_stores", bundleID: nil, path: nil)?.explanation)
   #expect(b.items[3].explanation == nil)  // launchd has no guide entry
-  #expect(b.other == 5120 << 10)  // cloudd falls into "Other system work"
+  #expect(b.other == (5120 + 4096) << 10)  // cloudd and x86helperd fall into "Other system work"
 }
 
 @Test func cachedForTenSeconds() async throws {

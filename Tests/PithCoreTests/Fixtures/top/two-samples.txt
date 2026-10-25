@@ -18,7 +18,9 @@ PID    COMMAND          %CPU MEM  UID
 655    tmpworkerd       0.0  100M 0
 1      launchd          0.0  12M  0
 2300   cloudd           0.0  5M   502
+3105*  x86helperd       0.0  4M   0
 4410   Example Notes    0.0  3M   501
+4420*  Example Rosetta  0.0  2M   501
 
 Processes: 412 total, 2 running, 410 sleeping, 2299 threads
 2026/10/25 09:00:01
@@ -39,4 +41,6 @@ PID    COMMAND          %CPU MEM    UID
 2210   photoanalysisd   0.0  180M   502
 1      launchd          0.0  12288K 0
 2300   cloudd           0.1  5120K  502
+3105*  x86helperd       0.1  4096K  0
 4410   Example Notes    0.0  3072K  501
+4420*  Example Rosetta  0.0  2048K  501

@@ -35,6 +35,21 @@ private func engine(_ processes: any ProcessTableReading) -> Engine {
   #expect(await e.tick(mode: .open).apps[0].cpu == .unavailable("first sample"))
 }
 
+@Test func resetBaselineRestartsTheSystemCPUBaseline() async {  // R57: wake
+  // Without the reset, the first tick after wake would average the busy share over the sleep.
+  let ticks = scriptedTicks(
+    .value([CPUTicks(user: 0, system: 0, idle: 0, nice: 0)]),
+    .value([CPUTicks(user: 10, system: 0, idle: 30, nice: 0)]),
+    .value([CPUTicks(user: 20, system: 0, idle: 1000, nice: 0)]))
+  let e = Engine(
+    system: SystemReader(sampleTicks: ticks), processes: SpyTable(), grouper: .fake, guide: .empty,
+    cpuCount: 10)
+  _ = await e.tick(mode: .closed)
+  #expect(await e.tick(mode: .closed).totals.cpuBusy == .value(0.25))
+  await e.resetBaseline()
+  #expect(await e.tick(mode: .closed).totals.cpuBusy == .unavailable("first sample"))
+}
+
 @Test func cpuResidualRestartsAfterAFailedSystemRead() async {  // R55
   // Each interval is 1 s, and Chrome uses 0.05 of the machine in it (5 processes × 0.1 s on 10
   // cores). The sample before the failure is 0, the recovery sample is 100 busy of 200 ticks

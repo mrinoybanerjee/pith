@@ -42,11 +42,14 @@ public func cpuBusyFraction(previous: [CPUTicks], current: [CPUTicks]) -> Double
 
 public protocol SystemTotalsReading: Sendable {
   func read() -> SystemTotals
+  /// The next `read()` has no CPU busy share, as if it were the first.
+  func resetCPUBaseline()
 }
 
 /// Reads the whole-machine totals. CPU busy is the change since the previous `read()`, so the
-/// first `read()` has none, and a failed sample clears the baseline, so the next good `read()` has
-/// none either. Both baselines then restart at that tick, in step with the engine's process table.
+/// first `read()` has none, and a failed sample or `resetCPUBaseline()` clears the baseline, so the
+/// next good `read()` has none either. Both baselines then restart at that tick, in step with the
+/// engine's process table.
 /// Storage is read at most once a minute until `invalidateStorageCache()`. A failed kernel read is
 /// unavailable, never 0.
 public final class SystemReader: SystemTotalsReading {
@@ -76,6 +79,10 @@ public final class SystemReader: SystemTotalsReading {
 
   public func invalidateStorageCache() {
     state.withLock { $0.storage = nil }
+  }
+
+  public func resetCPUBaseline() {
+    state.withLock { $0.ticks = nil }
   }
 
   public func read() -> SystemTotals {

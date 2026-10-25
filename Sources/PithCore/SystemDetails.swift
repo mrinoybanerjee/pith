@@ -50,7 +50,7 @@ public enum TopParser {
       // from the right.
       let fromRight = cells.count - header.count
       func cell(_ index: Int) -> Substring { cells[index < commandAt ? index : index + fromRight] }
-      guard fromRight >= 0, let pid = Int32(cell(pidAt)), let cpu = Double(cell(cpuAt)),
+      guard fromRight >= 0, let pid = processID(cell(pidAt)), let cpu = Double(cell(cpuAt)),
         let memory = bytes(cell(memAt)), let signedUID = Int32(cell(uidAt))
       else { throw SystemDetailsError.failed("cannot read top row: \(line)") }
       // top prints the UID as a signed number: `nobody` (4294967294) is -2.
@@ -59,6 +59,11 @@ public enum TopParser {
       let name = cells[commandAt...(commandAt + fromRight)].joined(separator: " ")
       return SystemProcess(pid: pid, name: name, cpu: cpu, memory: memory, uid: uid)
     }
+  }
+
+  /// "123*" is 123: on Apple Silicon, top prints one `*` after the PID of a Rosetta process.
+  private static func processID(_ text: Substring) -> Int32? {
+    Int32(text.last == "*" ? text.dropLast() : text)
   }
 
   /// "420M+" is 420 << 20. `K`, `M` and `G` are powers of 1024, `B` and a bare number are bytes,
