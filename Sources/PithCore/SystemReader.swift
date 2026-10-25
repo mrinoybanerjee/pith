@@ -17,7 +17,7 @@ public struct VMCounts: Sendable {
 
 /// Activity Monitor's "Memory Used": app memory (anonymous minus purgeable), wired and compressed.
 public func memoryUsed(_ c: VMCounts, pageSize: UInt64) -> UInt64 {
-  (c.internal - c.purgeable + c.wired + c.compressor) * pageSize
+  (c.internal + c.wired + c.compressor - c.purgeable) * pageSize
 }
 
 /// Cumulative scheduler ticks of one core. The counters are 32-bit and wrap.
@@ -59,9 +59,18 @@ public final class SystemReader: SystemTotalsReading {
   }
 
   private static let host = mach_host_self()
+  private static let pageSize: UInt64 = {
+    var size: vm_size_t = 0
+    let status = host_page_size(host, &size)
+    assert(status == KERN_SUCCESS, "host_page_size failed: \(status)")
+    return UInt64(size)
+  }()
   private let state = OSAllocatedUnfairLock(initialState: State())
+  private let sampleTicks: @Sendable () -> [CPUTicks]
 
-  public init() {}
+  public init() { sampleTicks = Self.readCPUTicks }
+
+  init(sampleTicks: @escaping @Sendable () -> [CPUTicks]) { self.sampleTicks = sampleTicks }
 
   /// When the storage cache was filled; `nil` before the first read and after invalidation.
   var storageCachedAt: ContinuousClock.Instant? { state.withLock { $0.storage?.at } }
@@ -71,10 +80,11 @@ public final class SystemReader: SystemTotalsReading {
   }
 
   public func read() -> SystemTotals {
-    let ticks = Self.readCPUTicks()
-    let previous = state.withLock { s in
+    // Sample inside the lock: sampling outside lets two reads record out of order.
+    let (previous, ticks) = state.withLock { s in
+      let ticks = sampleTicks()
       defer { s.ticks = ticks }
-      return s.ticks
+      return (s.ticks, ticks)
     }
     let cpuBusy: Reading<Double>
     if let previous {
@@ -85,7 +95,7 @@ public final class SystemReader: SystemTotalsReading {
     }
     let storage = cachedStorage()
     return SystemTotals(
-      memoryUsed: memoryUsed(Self.readVMCounts(), pageSize: UInt64(getpagesize())),
+      memoryUsed: memoryUsed(Self.readVMCounts(), pageSize: Self.pageSize),
       memoryTotal: ProcessInfo.processInfo.physicalMemory,
       pressure: Pressure.fromKernel(),
       swapUsed: Self.readSwapUsed(),
@@ -95,20 +105,19 @@ public final class SystemReader: SystemTotalsReading {
   }
 
   private func cachedStorage() -> StorageCache {
-    if let cached = state.withLock({ $0.storage }), ContinuousClock.now - cached.at < .seconds(60) {
-      return cached
+    // Read inside the lock, so an in-flight read cannot overwrite a newer invalidation.
+    state.withLock { s in
+      if let cached = s.storage, ContinuousClock.now - cached.at < .seconds(60) { return cached }
+      let fresh = Self.readStorage()
+      s.storage = fresh
+      return fresh
     }
-    let fresh = Self.readStorage()
-    state.withLock { $0.storage = fresh }
-    return fresh
   }
 
   private static func readVMCounts() -> VMCounts {
     var stats = vm_statistics64()
-    // Up to `swapped_count`: the rev1 fields are all this needs.
     var count = mach_msg_type_number_t(
-      MemoryLayout<vm_statistics64_data_t>.offset(of: \.swapped_count)!
-        / MemoryLayout<integer_t>.size)
+      MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
     let status = withUnsafeMutablePointer(to: &stats) {
       $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
         host_statistics64(host, HOST_VM_INFO64, $0, &count)
