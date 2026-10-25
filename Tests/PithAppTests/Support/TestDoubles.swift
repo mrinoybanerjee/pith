@@ -82,6 +82,8 @@ extension RunningApps {
 @MainActor final class ManualChecks {
   private(set) var waits = 0
   private var pending: [CheckedContinuation<Void, Never>] = []
+  /// The waits that have begun and not ended.
+  var waiting: Int { pending.count }
 
   func wait() async {
     waits += 1

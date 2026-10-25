@@ -468,14 +468,15 @@ extension NativeInteractionTests {
   }
 
   /// R106: a drag may report each step as a move. While a mouse button is down, a pinned panel
-  /// passes any edge unclamped, so it can reach another display. At the first check with no
-  /// button down, it comes back 8 pt inside the screen, once, and saves that frame. The bottom,
-  /// left, right and top edges.
+  /// passes any edge unclamped, so it can reach another display, and each step replaces the
+  /// pending check. At the first check with no button down, the panel comes back 8 pt inside the
+  /// screen, once, and saves that frame. The bottom, left, right and top edges.
   @Test func aPinnedPanelIsClampedOnlyAfterTheDragEnds() async throws {
     defer { clearDefaults() }
     let (controller, checks, mouse) = try await hostPinnedPanel()
     let w = controller.panel
     let visible = try #require(NSScreen.main).visibleFrame
+    controller.ownScreenFrame = { _ in visible }  // the same on a Mac with more displays
     var moves = 0
     let observer = NotificationCenter.default.addObserver(
       forName: NSWindow.didMoveNotification, object: w, queue: nil
@@ -494,6 +495,7 @@ extension NativeInteractionTests {
       await settle()
       await checks.fire()
       #expect(!inside.contains(w.frame), "clamped during the drag at \(origin)")
+      #expect(checks.waiting == 1, "the second step left two checks at \(origin)")
       mouse.down = false
       moves = 0
       await checks.fire()
@@ -502,6 +504,24 @@ extension NativeInteractionTests {
       await checks.fire()  // the clamp's own move is checked too, and changes nothing
       #expect(moves == 1, "\(origin)")
     }
+  }
+
+  /// R106: closing a pinned panel drops its pending check, so a panel closed within 0.25 s of a
+  /// move is neither clamped nor saved when the button comes up.
+  @Test func closingAPinnedPanelDropsItsPendingClamp() async throws {
+    defer { clearDefaults() }
+    let (controller, checks, mouse) = try await hostPinnedPanel()
+    let w = controller.panel
+    let origin = CGPoint(x: try #require(NSScreen.main).visibleFrame.minX - 100, y: 300)
+    mouse.down = true
+    w.setFrameOrigin(origin)
+    await settle()
+    try clickStatusItem(of: w)
+    #expect(!w.isVisible && w.isMovableByWindowBackground)  // closed, and still pinned
+    mouse.down = false
+    await checks.fire()
+    #expect(w.frame.origin == origin)
+    #expect(UserDefaults(suiteName: testSuite())!.pinnedFrame == nil)
   }
 
   /// R106: a pinned panel dropped mostly on a second display stays there, 8 pt inside that

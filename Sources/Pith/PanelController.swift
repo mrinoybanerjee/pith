@@ -89,12 +89,13 @@ import SwiftUI
   /// last move, and every 0.25 s after that while a mouse button is down. The first check with no
   /// button down clamps the panel 8 pt inside its own screen and saves the frame, so no part of
   /// it, such as a quit confirm, stays off screen. The clamp's own move is checked too, and
-  /// changes nothing.
+  /// changes nothing. A later move or a close cancels the check.
   func windowDidMove(_ notification: Notification) {
     guard store.pinned else { return }
     dragCheck?.cancel()
     dragCheck = Task {
-      repeat { try await nextDragCheck() } while mouseIsDown()  // a later move cancels the wait
+      repeat { try await nextDragCheck() } while mouseIsDown()
+      try Task.checkCancellation()
       guard store.pinned, let visible = ownVisibleFrame else { return }
       panel.setFrame(PanelGeometry.clamp(panel.frame, to: visible), display: true)
       defaults.pinnedFrame = panel.frame
@@ -159,15 +160,12 @@ import SwiftUI
       display: true)
   }
 
-  /// The visible frame of the panel's own screen, or of the main one when it is off every screen.
-  private var ownVisibleFrame: CGRect? { ownScreenFrame(panel) ?? visibleFrame(of: NSScreen.main) }
-
-  /// `screen`'s visible frame. A panel dragged fully off screen has no screen of its own, so it
-  /// comes back onto the main one.
-  private func visibleFrame(of screen: NSScreen?) -> CGRect? {
-    let screen = screen ?? NSScreen.main
-    assert(screen != nil, "no screen to keep the panel on")
-    return screen?.visibleFrame
+  /// The visible frame of the panel's own screen. A panel dragged fully off screen has no screen of
+  /// its own, so it comes back onto the main one.
+  private var ownVisibleFrame: CGRect? {
+    let visible = ownScreenFrame(panel) ?? NSScreen.main?.visibleFrame
+    assert(visible != nil, "no screen to keep the panel on")
+    return visible
   }
 
   /// Spec 4.8: ↑ and ↓ move between the rows and Return opens or closes one, while the list
@@ -202,6 +200,7 @@ import SwiftUI
 
   private func close() {
     opening = false
+    dragCheck?.cancel()
     panel.orderOut(nil)
     removeMonitors()
     store.panelClosed()
@@ -219,8 +218,8 @@ import SwiftUI
       let frame = CGRect(
         x: saved.minX, y: saved.maxY - size.height, width: size.width, height: size.height)
       // The screen it was saved on may be gone.
-      if let visible = visibleFrame(
-        of: NSScreen.screens.first { $0.visibleFrame.intersects(frame) } ?? panel.screen)
+      if let visible = NSScreen.screens.first(where: { $0.visibleFrame.intersects(frame) })?
+        .visibleFrame ?? ownVisibleFrame
       {
         panel.setFrame(PanelGeometry.clamp(frame, to: visible), display: true)
       }
