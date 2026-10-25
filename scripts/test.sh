@@ -34,11 +34,15 @@ run_tests() {
     for attempt in 1 2 3; do
         log="$LOG_DIR/$(printf '%s' "$name" | tr -c 'A-Za-z0-9' '_')-$attempt.log"
         if ! swift test --skip-build "$@" >"$log" 2>&1 </dev/null; then
-            cat "$log"
+            cat "$log" >&2
             return 1
         fi
         if grep -Eq '✘ (Test|Suite) .*(failed|recorded an issue)' "$log"; then
-            cat "$log"
+            cat "$log" >&2
+            return 1
+        fi
+        if grep -Eq '^✔ Test run with 0 tests' "$log"; then
+            printf 'error: %s matched no tests\n' "$name" >&2
             return 1
         fi
         # Swift 6.2 adds "in N suites" to the summary; Swift 6.0 and 6.1 do not.
@@ -49,7 +53,7 @@ run_tests() {
         printf 'warning: %s ended before Swift Testing reported completion (attempt %s)\n' \
             "$name" "$attempt" >&2
     done
-    cat "$log"
+    cat "$log" >&2
     printf 'error: %s never completed; tests after the interruption did not run\n' "$name" >&2
     return 1
 }
@@ -62,8 +66,14 @@ swift test list --skip-build 2>/dev/null \
     | { grep 'NativeInteractionTests/' || (($? == 1)); } >"$LOG_DIR/native.txt"
 native_count=0
 while IFS= read -r test_id; do
-    pattern="^$(printf '%s' "$test_id" | sed -E 's/[][().*+?^$|\\]/\\&/g')\$"
+    # The filter matches the listed ID followed by "/<file>:<line>:<column>".
+    pattern="^$(printf '%s' "$test_id" | sed -E 's/[][().*+?^$|\\]/\\&/g')/"
+    # Only the passing summary is hidden; a failure prints its log on stderr.
     run_tests "$test_id" --filter "$pattern" >/dev/null
     native_count=$((native_count + 1))
 done <"$LOG_DIR/native.txt"
+if ((native_count == 0)) && grep -rq --include='*.swift' 'NativeInteractionTests' Tests; then
+    echo "error: Tests define NativeInteractionTests, but the test listing found none" >&2
+    exit 1
+fi
 printf 'native windows: %s tests completed, one process each\n' "$native_count"
