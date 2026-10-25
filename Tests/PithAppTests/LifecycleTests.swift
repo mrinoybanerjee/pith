@@ -444,6 +444,8 @@ extension NativeInteractionTests {
     let panel = PanelController(
       store: rig.store, defaults: rig.defaults,
       onChange: rig.lifecycle.panelChanged(visible:pinned:occluded:))
+    panel.uptimeNs = { 0 }  // the click comes before the reading (R121)
+    rig.engine.nowNs = 1
 
     panel.toggle(under: (.zero, .zero))  // a pinned panel ignores the anchor
     #expect(rig.clock.calls == [openSchedule])
@@ -464,6 +466,8 @@ extension NativeInteractionTests {
     let panel = PanelController(
       store: rig.store, defaults: rig.defaults,
       onChange: rig.lifecycle.panelChanged(visible:pinned:occluded:))
+    panel.uptimeNs = { 0 }  // the click comes before the reading (R121)
+    rig.engine.nowNs = 1
     rig.lifecycle.onPause = { panel.cancelOpening() }
     rig.engine.holding = true
     rig.engine.holdsResets = false

@@ -150,9 +150,9 @@ final class CountingCenter: NotificationCenter, @unchecked Sendable {
       forceOfferDelay: { await self.timer.wait() }, quitPith: { self.pithQuits += 1 })
   }
 
-  /// `app` ends, and macOS says so, as `NSWorkspace` does.
+  /// macOS says that `app` ended, as `NSWorkspace` does. The instance's `isTerminated` is left as
+  /// it is, so only the notice can end the flow (R122).
   func exit(_ app: FakeApp) async {
-    app.isTerminated = true
     exits.post(
       name: NSWorkspace.didTerminateApplicationNotification, object: nil,
       userInfo: [NSWorkspace.applicationUserInfoKey: app])

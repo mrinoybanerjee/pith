@@ -2,12 +2,13 @@ import AppKit
 import SwiftUI
 
 /// Owns the panel (spec 4.2 and 4.7). It never takes focus from the app in front.
-/// - A click asks for an open reading; the panel shows once that reading is applied, laid out and
-///   sized for it, so it never opens on old rows and then jumps (R71).
+/// - A click asks for an open reading; the panel shows once a reading taken after the click is
+///   applied, laid out and sized for it, so it never opens on old rows and then jumps (R71, R121).
 /// - Attached, it hangs under the status item and closes on an outside click, Escape or a second
 ///   click on the item.
 /// - Pinned, it floats where the user drags it, on every Space, and its frame is saved.
-/// - Its height follows the content up to 560 pt; taller content scrolls the app list (R59).
+/// - Its height follows the content up to 560 pt and to its screen's visible height less the 8 pt
+///   insets; taller content scrolls the app list (R59, R120).
 ///
 /// Every change to its visibility, pin or occlusion goes to `onChange`, which sets the speed.
 @MainActor final class PanelController: NSObject, NSWindowDelegate {
@@ -24,6 +25,8 @@ import SwiftUI
   /// From a click that opens the panel until the first open reading applied after it, unless a
   /// pause or a second click comes first.
   private var opening = false
+  /// When the click that opens the panel came, on the clock of a reading's `takenAtNs` (R121).
+  private var clickNs: UInt64 = 0
   /// Counts the opens, so each one draws a new panel view (R85).
   private var opens = 0
   /// Where the attached panel hangs: the status item's frame and its screen's visible frame.
@@ -42,6 +45,8 @@ import SwiftUI
   }
   var mouseIsDown: () -> Bool = { NSEvent.pressedMouseButtons != 0 }
   var ownScreenFrame: (NSWindow) -> CGRect? = { $0.screen?.visibleFrame }
+  /// The clock of a reading's `takenAtNs`. Tests set it (R121).
+  var uptimeNs: () -> UInt64 = { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
 
   init(
     store: Store, defaults: UserDefaults,
@@ -80,6 +85,7 @@ import SwiftUI
     guard !panel.isVisible, !opening else { return close() }
     self.anchor = anchor
     opening = true
+    clickNs = uptimeNs()
     store.readLoginItem()
     // The lifecycle takes an open reading at once. Not shown yet, so not covered either.
     onChange(true, store.pinned, false)
@@ -104,8 +110,11 @@ import SwiftUI
 
   func windowDidChangeOcclusionState(_ notification: Notification) { report() }
 
-  /// The content's height, up to `maxHeight`.
-  private var height: CGFloat { min(hosting.fittingSize.height.rounded(.up), Self.maxHeight) }
+  /// The content's height, up to `maxHeight` and to `visible`'s height less the 8 pt insets, so
+  /// the panel fits a short screen; the app list scrolls inside it (R120).
+  private func height(in visible: CGRect) -> CGFloat {
+    min(hosting.fittingSize.height.rounded(.up), Self.maxHeight, visible.height - 16)
+  }
 
   /// A pause drops a pending open: its reading does not come, and the wake must not open the
   /// panel by itself (R88).
@@ -115,10 +124,12 @@ import SwiftUI
     report()
   }
 
-  /// Shows the panel when the first open reading after the click has been applied. It draws a new
-  /// view, laid out at once, so the panel opens at its final size with nothing animating (R85).
+  /// Shows the panel when the first open reading taken after the click has been applied. A reading
+  /// that was already in flight, from an open that was closed again, does not count (R121). It
+  /// draws a new view, laid out at once, so the panel opens at its final size with nothing
+  /// animating (R85).
   private func show() {
-    guard opening else { return }
+    guard opening, let snapshot = store.snapshot, snapshot.takenAtNs > clickNs else { return }
     opening = false
     opens += 1
     hosting.rootView = PanelView(store: store, open: opens)
@@ -128,7 +139,8 @@ import SwiftUI
     } else {
       panel.setFrame(
         PanelGeometry.attachedFrame(
-          itemFrame: anchor.itemFrame, panelSize: CGSize(width: Self.width, height: height),
+          itemFrame: anchor.itemFrame,
+          panelSize: CGSize(width: Self.width, height: height(in: anchor.visibleFrame)),
           visibleFrame: anchor.visibleFrame),
         display: false)
       monitors = [
@@ -149,10 +161,10 @@ import SwiftUI
   /// top-left corner when pinned. The frame stays 8 pt inside its screen's visible frame. The new
   /// size lays out again, which changes nothing more.
   private func resize() {
-    let height = height
+    guard let visible = ownVisibleFrame else { return }
+    let height = height(in: visible)
     guard panel.frame.height != height else { return }
     let frame = panel.frame
-    guard let visible = ownVisibleFrame else { return }
     panel.setFrame(
       PanelGeometry.clamp(
         CGRect(x: frame.minX, y: frame.maxY - height, width: Self.width, height: height),

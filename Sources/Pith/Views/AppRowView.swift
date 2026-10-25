@@ -111,10 +111,11 @@ struct RowValue {
   let amount: Double?
   var help: String?
 
-  /// What a reading shows while it has no value: "not available yet" for a first sample, and
-  /// "not available" for anything else (R110). No reading at all is not yet.
-  static func missing<Value>(_ reading: Reading<Value>?) -> RowValue {
-    reading?.isFirstSample == false ? .unavailable : .notYet
+  /// What a reading with no value shows: "not available yet" for a first sample, and "not
+  /// available" for anything else (R110).
+  static func missing<Value>(_ reading: Reading<Value>) -> RowValue {
+    assert(reading.value == nil, "\(reading) has a value")
+    return reading.isFirstSample ? .notYet : .unavailable
   }
 
   /// `disk` is nil when the row has no disk reading at all.
@@ -135,7 +136,8 @@ struct RowValue {
 }
 
 /// "{App}, {value} {metric}, {N} processes" (spec 4.8). A missing value says why: "CPU not
-/// available yet" or "disk not measured".
+/// available yet" for a first sample, "CPU not available" when Pith couldn't measure it (R110),
+/// or "disk not measured" for a value that Pith never measures.
 func rowSentence(_ name: String, _ value: RowValue, _ metric: Metric, processes: Int?) -> String {
   let word =
     switch metric {

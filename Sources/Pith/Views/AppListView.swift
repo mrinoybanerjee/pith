@@ -24,7 +24,8 @@ struct AppListView: View {
       case (_, .value(let residual)?):
         .of(metric, memory: residual.memory, cpu: residual.cpu, disk: nil)
       case (.disk, _): .notMeasured
-      case (_, let reading): .missing(reading)
+      case (_, let reading?): .missing(reading)
+      case (_, nil): .notYet
       }
     let top = (values + [system]).compactMap(\.amount).max() ?? 0
     let fraction = { (value: RowValue) in value.amount.map { top > 0 ? $0 / top : 0 } }
