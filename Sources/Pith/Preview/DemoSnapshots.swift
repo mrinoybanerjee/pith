@@ -14,7 +14,7 @@ enum DemoSnapshots {
           ("Main process", 1, mb(150)),
         ]),
       app("Claude", "com.anthropic.claudefordesktop", pid: 520, cpu: 0.013, (9, gb(1.5))),
-      app("Codex", "com.openai.codex", pid: 610, cpu: 0.008, (6, gb(1.1))),
+      app("Codex", "com.example.codex", pid: 610, cpu: 0.008, (6, gb(1.1))),
       app("Slack", "com.tinyspeck.slackmacgap", pid: 730, cpu: 0.005, (7, mb(710))),
       app("Finder", "com.apple.finder", pid: 340, cpu: 0.001, (1, mb(180))),
     ])
@@ -32,7 +32,7 @@ enum DemoSnapshots {
         ]),
       app("Xcode", "com.apple.dt.Xcode", pid: 880, cpu: 0.062, (14, gb(2.8))),
       app("Claude", "com.anthropic.claudefordesktop", pid: 520, cpu: 0.013, (9, gb(1.6))),
-      app("Codex", "com.openai.codex", pid: 610, cpu: 0.011, (6, gb(1.1))),
+      app("Codex", "com.example.codex", pid: 610, cpu: 0.011, (6, gb(1.1))),
       app("Slack", "com.tinyspeck.slackmacgap", pid: 730, cpu: 0.006, (7, mb(790))),
     ])
 
@@ -58,7 +58,8 @@ enum DemoSnapshots {
     Snapshot(
       takenAtNs: 1_000_000_000, mode: .open,
       totals: SystemTotals(
-        memoryUsed: .value(used), memoryTotal: 16 << 30, pressure: .value(pressure),
+        memoryUsed: .value(used), footprintTotal: .value(apps.reduce(system) { $0 + $1.memory }),
+        memoryTotal: 16 << 30, pressure: .value(pressure),
         swapUsed: .value(swap), cpuBusy: .value(cpu), storageFree: .value(112_000_000_000),
         storageTotal: .value(228_000_000_000)),
       apps: apps, system: .value(SystemResidual(memory: system, cpu: .value(0.04))),

@@ -3,11 +3,12 @@ import os
 /// Turns two process tables, their app groups and the system totals into one `Snapshot`
 /// (spec 6.3, 6.4, 6.6). It is a pure function.
 public enum Aggregator {
-  /// The previous table's samples by key, and the wall-clock time since it was taken.
-  private typealias Baseline = (samples: [ProcessKey: ProcessSample], wallNs: Double)
+  /// The previous table's samples by executable, and the wall-clock time since it was taken.
+  private typealias Baseline = (samples: [ExecutableKey: ProcessSample], wallNs: Double)
 
-  /// Rows are keyed by app id. CPU and disk rates come only from processes in both tables, so a
-  /// new process adds memory but no rate this tick. An app with no process in `previous` has no
+  /// Rows are keyed by app id. CPU and disk rates come only from processes in both tables with
+  /// the same executable, so a new process, or one that ran `exec`, adds memory but no rate this
+  /// tick. An app with no process in `previous` has no
   /// rates yet. An open snapshot is taken at `current.takenAtNs`, and `current` must exist. A
   /// closed one reads no table: it is taken at `nowNs` and has no apps and no residual.
   public static func snapshot(
@@ -25,7 +26,7 @@ public enum Aggregator {
       precondition(
         current.takenAtNs > p.takenAtNs, "takenAtNs \(p.takenAtNs) -> \(current.takenAtNs)")
       return (
-        Dictionary(uniqueKeysWithValues: p.samples.map { ($0.key, $0) }),
+        Dictionary(uniqueKeysWithValues: p.samples.map { ($0.executableKey, $0) }),
         Double(current.takenAtNs - p.takenAtNs)
       )
     }
@@ -51,11 +52,15 @@ public enum Aggregator {
     let identity = groups[members[0].key]!
     var cpu = Reading<Double>.firstSample
     var disk = cpu
-    let continuing = members.compactMap { s in baseline?.samples[s.key].map { ($0, s) } }
+    let continuing = members.compactMap { s in
+      baseline?.samples[s.executableKey].map { ($0, s) }
+    }
     if let wallNs = baseline?.wallNs, !continuing.isEmpty {
       var cpuNs: UInt64 = 0
       var bytes: UInt64 = 0
-      // Keys include the start time, so a counter never goes backwards: if one does, this traps.
+      // An exec keeps the PID and start time and can lower the CPU time (seen on macOS 26.6.2), so
+      // the baseline is per executable: an exec starts a new one (R132). Within one executable a
+      // counter never goes backwards: if one does, this traps.
       for (p, s) in continuing {
         cpuNs += s.cpuTimeNs - p.cpuTimeNs
         bytes += (s.diskRead - p.diskRead) + (s.diskWritten - p.diskWritten)
@@ -80,14 +85,19 @@ public enum Aggregator {
       cpu: cpu, diskBytesPerSecond: disk, inside: inside)
   }
 
-  /// Spec 6.6: what the user's own processes leave unexplained. Without memory used the whole row
-  /// is unavailable, and a negative memory residual makes it a mismatch. A CPU residual less than
+  /// Spec 6.6: what the user's own processes leave unexplained. Memory comes from the footprint
+  /// total, which counts a compressed page at its full size, as footprints do (R133). Without it
+  /// the whole row is unavailable, and a negative memory residual makes it a mismatch. A CPU residual less than
   /// 0.01 below 0 is rounding, so it reads 0.
   private static func residual(
     _ totals: SystemTotals, appMemory: UInt64, appCPU: Reading<Double>
   ) -> Reading<SystemResidual> {
-    guard let used = totals.memoryUsed.value else { return .unavailable("memory unavailable") }
-    guard appMemory <= used else { return mismatch("memory used \(used), apps \(appMemory)") }
+    guard let total = totals.footprintTotal.value else {
+      return .unavailable("memory unavailable")
+    }
+    guard appMemory <= total else {
+      return mismatch("footprint total \(total), apps \(appMemory)")
+    }
     let cpu: Reading<Double> =
       switch (totals.cpuBusy, appCPU) {
       case (.value(let busy), .value(let apps)) where busy - apps > -0.01:
@@ -95,7 +105,7 @@ public enum Aggregator {
       case (.value(let busy), .value(let apps)): mismatch("CPU busy \(busy), apps \(apps)")
       case (.unavailable(let reason), _), (_, .unavailable(let reason)): .unavailable(reason)
       }
-    return .value(SystemResidual(memory: used - appMemory, cpu: cpu))
+    return .value(SystemResidual(memory: total - appMemory, cpu: cpu))
   }
 
   /// Shown as "—", never as 0. Debug builds log the inputs (spec 6.6).

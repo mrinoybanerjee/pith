@@ -100,7 +100,8 @@ extension NativeInteractionTests {
       Snapshot(
         takenAtNs: 2_000_000_000, mode: .closed,
         totals: SystemTotals(
-          memoryUsed: .value(12 << 30), memoryTotal: t.memoryTotal, pressure: t.pressure,
+          memoryUsed: .value(12 << 30), footprintTotal: .value(12 << 30),
+          memoryTotal: t.memoryTotal, pressure: t.pressure,
           swapUsed: t.swapUsed, cpuBusy: t.cpuBusy, storageFree: t.storageFree,
           storageTotal: t.storageTotal),
         apps: [], system: .unavailable("closed"), grouping: .full))
@@ -294,7 +295,8 @@ extension NativeInteractionTests {
     let missing = Snapshot(
       takenAtNs: calm.takenAtNs, mode: .open,
       totals: SystemTotals(
-        memoryUsed: .unavailable("host_statistics64 failed: 5"), memoryTotal: t.memoryTotal,
+        memoryUsed: .unavailable("host_statistics64 failed: 5"),
+        footprintTotal: .unavailable("host_statistics64 failed: 5"), memoryTotal: t.memoryTotal,
         pressure: t.pressure, swapUsed: t.swapUsed,
         cpuBusy: .unavailable("host_processor_info failed: 4"),
         storageFree: .unavailable("volume unmounted"), storageTotal: t.storageTotal),
@@ -507,7 +509,7 @@ extension NativeInteractionTests {
     let unknown = Snapshot(
       takenAtNs: tight.takenAtNs, mode: .open,
       totals: SystemTotals(
-        memoryUsed: t.memoryUsed, memoryTotal: t.memoryTotal,
+        memoryUsed: t.memoryUsed, footprintTotal: t.footprintTotal, memoryTotal: t.memoryTotal,
         pressure: .unavailable("synthetic"), swapUsed: .value(0), cpuBusy: .value(0.296),
         storageFree: t.storageFree, storageTotal: t.storageTotal),
       apps: tight.apps, system: tight.system, grouping: .full)
@@ -525,8 +527,9 @@ extension NativeInteractionTests {
     let busy = Snapshot(
       takenAtNs: calm.takenAtNs, mode: .open,
       totals: SystemTotals(
-        memoryUsed: t.memoryUsed, memoryTotal: t.memoryTotal, pressure: t.pressure,
-        swapUsed: t.swapUsed, cpuBusy: .value(0.705), storageFree: t.storageFree,
+        memoryUsed: t.memoryUsed, footprintTotal: t.footprintTotal, memoryTotal: t.memoryTotal,
+        pressure: t.pressure, swapUsed: t.swapUsed, cpuBusy: .value(0.705),
+        storageFree: t.storageFree,
         storageTotal: t.storageTotal),
       apps: calm.apps, system: calm.system, grouping: .full)
     let shown = PercentFormat.total(0.705)
@@ -737,7 +740,8 @@ extension NativeInteractionTests {
   }
 
   /// R106: closing a pinned panel drops its pending check, so a panel closed within 0.25 s of a
-  /// move is neither clamped nor saved when the button comes up.
+  /// move is neither clamped nor saved when the button comes up. The check is against the origin
+  /// AppKit accepted for the move, which may differ from the one asked for (R131).
   @Test func closingAPinnedPanelDropsItsPendingClamp() async throws {
     defer { clearDefaults() }
     let (controller, checks, mouse) = try await hostPinnedPanel()
@@ -746,11 +750,12 @@ extension NativeInteractionTests {
     mouse.down = true
     w.setFrameOrigin(origin)
     await settle()
+    let accepted = w.frame.origin
     try clickStatusItem(of: w)
     #expect(!w.isVisible && w.isMovableByWindowBackground)  // closed, and still pinned
     mouse.down = false
     await checks.fire()
-    #expect(w.frame.origin == origin)
+    #expect(w.frame.origin == accepted)
     #expect(UserDefaults(suiteName: testSuite())!.pinnedFrame == nil)
   }
 
