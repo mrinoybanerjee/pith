@@ -14,7 +14,7 @@ enum DemoSnapshots {
           ("Main process", 1, mb(150)),
         ]),
       app("Claude", "com.anthropic.claudefordesktop", pid: 520, cpu: 0.013, (9, gb(1.5))),
-      app("Codex", "com.openai.codex", pid: 610, cpu: 0.008, (6, gb(1.1))),
+      app("Codex", "com.example.codex", pid: 610, cpu: 0.008, (6, gb(1.1))),
       app("Slack", "com.tinyspeck.slackmacgap", pid: 730, cpu: 0.005, (7, mb(710))),
       app("Finder", "com.apple.finder", pid: 340, cpu: 0.001, (1, mb(180))),
     ])
@@ -32,7 +32,7 @@ enum DemoSnapshots {
         ]),
       app("Xcode", "com.apple.dt.Xcode", pid: 880, cpu: 0.062, (14, gb(2.8))),
       app("Claude", "com.anthropic.claudefordesktop", pid: 520, cpu: 0.013, (9, gb(1.6))),
-      app("Codex", "com.openai.codex", pid: 610, cpu: 0.011, (6, gb(1.1))),
+      app("Codex", "com.example.codex", pid: 610, cpu: 0.011, (6, gb(1.1))),
       app("Slack", "com.tinyspeck.slackmacgap", pid: 730, cpu: 0.006, (7, mb(790))),
     ])
 
