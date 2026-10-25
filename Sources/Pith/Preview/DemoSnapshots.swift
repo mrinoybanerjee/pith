@@ -11,7 +11,7 @@ enum DemoSnapshots {
         "Google Chrome", "com.google.Chrome", pid: 410, cpu: 0.032,
         inside: [
           ("Tabs and sites", 17, gb(2.4)), ("Graphics", 1, mb(380)), ("Extensions", 3, mb(240)),
-          ("Google Chrome", 1, mb(150)),
+          ("Main process", 1, mb(150)),
         ]),
       app("Claude", "com.anthropic.claudefordesktop", pid: 520, cpu: 0.013, (9, gb(1.5))),
       app("Codex", "com.openai.codex", pid: 610, cpu: 0.008, (6, gb(1.1))),
@@ -28,7 +28,7 @@ enum DemoSnapshots {
         "Google Chrome", "com.google.Chrome", pid: 410, cpu: 0.082,
         inside: [
           ("Tabs and sites", 34, gb(5.1)), ("Graphics", 1, mb(620)), ("Extensions", 5, mb(480)),
-          ("Google Chrome", 1, mb(210)),
+          ("Main process", 1, mb(210)),
         ]),
       app("Xcode", "com.apple.dt.Xcode", pid: 880, cpu: 0.062, (14, gb(2.8))),
       app("Claude", "com.anthropic.claudefordesktop", pid: 520, cpu: 0.013, (9, gb(1.6))),
@@ -65,11 +65,15 @@ enum DemoSnapshots {
       grouping: .full)
   }
 
-  /// An app in `/Applications` with one group of processes: its count and memory.
+  /// An app in `/Applications` with `count` processes and `memory` in all: its main process with
+  /// a fifth of it, and helpers with the rest.
   private static func app(
-    _ name: String, _ bundleID: String, pid: Int32, cpu: Double, _ group: (Int, UInt64)
+    _ name: String, _ bundleID: String, pid: Int32, cpu: Double,
+    _ total: (count: Int, memory: UInt64)
   ) -> AppUsage {
-    app(name, bundleID, pid: pid, cpu: cpu, inside: [(name, group.0, group.1)])
+    let main = total.count == 1 ? total.memory : total.memory / 5
+    let helpers = total.count == 1 ? [] : [("Helpers", total.count - 1, total.memory - main)]
+    return app(name, bundleID, pid: pid, cpu: cpu, inside: helpers + [("Main process", 1, main)])
   }
 
   /// An app in `/Applications` with the processes `inside` it, largest first, and made-up PIDs from

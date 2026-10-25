@@ -93,7 +93,22 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   let s = snap(fixture: "chrome-usage")
   #expect(s.apps[0].processCount == 5 && s.apps[0].memory == 5 * 100 << 20)
   #expect(
-    s.apps[0].inside.first == HelperGroup(label: "Tabs and sites", count: 3, memory: 300 << 20))
+    s.apps[0].inside == [
+      HelperGroup(label: "Tabs and sites", count: 3, memory: 300 << 20),
+      HelperGroup(label: "Graphics", count: 1, memory: 100 << 20),
+      HelperGroup(label: "Main process", count: 1, memory: 100 << 20),
+    ])
+}
+
+@Test func theAppsOwnExecutableIsTheMainProcess() {
+  let s = snap(
+    previous: nil,
+    current: table([process(300), process(301, file: "Notes Background Worker")], at: 0))
+  #expect(
+    s.apps[0].inside == [
+      HelperGroup(label: "Main process", count: 1, memory: 64 << 20),
+      HelperGroup(label: "Notes Background Worker", count: 1, memory: 64 << 20),
+    ])
 }
 
 @Test func residualIsTotalMinusApps() {

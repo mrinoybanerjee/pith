@@ -2,18 +2,14 @@ import Foundation
 import PithCore
 import ServiceManagement
 
-/// The three settings (spec 4.6). A key that was never saved has its default; a saved value of the
-/// wrong type traps.
+/// The saved settings (spec 4.6). Launch at login is not saved: macOS's own login item state is the
+/// truth (R74). A key that was never saved has its default; a saved value of the wrong type traps.
 struct Settings: Equatable {
-  var launchAtLogin = true
   var refresh = RefreshSetting.oneSecond
   var amberOnCPU = true
 
   static func load(_ defaults: UserDefaults) -> Settings {
     var settings = Settings()
-    if let value = defaults.object(forKey: "launchAtLogin") {
-      settings.launchAtLogin = value as! Bool
-    }
     if let value = defaults.object(forKey: "refresh") {
       settings.refresh = RefreshSetting(rawValue: value as! String)!
     }
@@ -22,7 +18,6 @@ struct Settings: Equatable {
   }
 
   func save(_ defaults: UserDefaults) {
-    defaults.set(launchAtLogin, forKey: "launchAtLogin")
     defaults.set(refresh.rawValue, forKey: "refresh")
     defaults.set(amberOnCPU, forKey: "amberOnCPU")
   }
@@ -50,5 +45,12 @@ extension UserDefaults {
   var pinnedFrame: CGRect? {
     get { string(forKey: "pinnedFrame").map(NSRectFromString) }
     set { set(newValue.map(NSStringFromRect), forKey: "pinnedFrame") }
+  }
+
+  /// Pith registers its login item on its first launch only (spec 4.6 and 12). After that only the
+  /// user turns it on or off.
+  var loginItemOfferedOnce: Bool {
+    get { bool(forKey: "loginItemOfferedOnce") }
+    set { set(newValue, forKey: "loginItemOfferedOnce") }
   }
 }

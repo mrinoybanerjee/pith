@@ -30,20 +30,29 @@ public enum ByteFormat {
   /// Decimal units (1 GB = 10^9 bytes), as Finder and System Settings show storage.
   public static func storage(_ bytes: UInt64) -> String { format(bytes, base: 1000) }
 
-  /// A disk rate in decimal units, as storage, from "0 KB/s" up.
+  /// A disk rate in decimal units, as storage, with the precision of gigabytes at every unit:
+  /// "0 KB/s", "5.5 KB/s", "340 KB/s", "1.2 MB/s".
   public static func rate(_ bytesPerSecond: Double) -> String {
-    let inKB = bytesPerSecond / 1000
-    if inKB.rounded() < 1000 { return String(format: "%.0f KB/s", inKB) }
-    return storage(UInt64(bytesPerSecond.rounded())) + "/s"
+    var value = bytesPerSecond / 1000
+    var unit = "KB/s"
+    for next in ["MB/s", "GB/s"] where value.rounded() >= 1000 {
+      value /= 1000
+      unit = next
+    }
+    return "\(decimal(value)) \(unit)"
   }
 
   private static func format(_ bytes: UInt64, base: Double) -> String {
     let inMB = Double(bytes) / (base * base)
-    let inGB = inMB / base
     // The rounded value picks the unit, so 1023.7 MB reads "1 GB", not "1024 MB".
     if inMB.rounded() < base { return String(format: "%.0f MB", inMB) }
-    if inGB >= 100 { return String(format: "%.0f GB", inGB) }
-    return String(format: "%.1f GB", inGB).replacing(".0 GB", with: " GB")
+    return "\(decimal(inMB / base)) GB"
+  }
+
+  /// One decimal under 100, none from 100 up, and never ".0". The rounded value picks the format.
+  private static func decimal(_ value: Double) -> String {
+    let text = String(format: (value * 10).rounded() < 1000 ? "%.1f" : "%.0f", value)
+    return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
   }
 }
 

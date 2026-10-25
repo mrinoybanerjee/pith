@@ -85,20 +85,23 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
 
 /// A `Lifecycle` over the recording fakes, fresh notification centers, a stub pressure monitor, and
 /// a fixed thermal and Low Power state. So no test posts to a center that other processes hear,
-/// and no real system event reaches the logs.
+/// and no real system event reaches the logs. Its defaults are the test's own suite, emptied
+/// first unless it is the next launch of the same Mac.
 @MainActor private final class Rig {
-  let suite = "pith.tests.\(UUID())"
+  let suite: String
   let clock = RecordingClock()
   let engine = RecordingEngine()
-  let store = testStore()
+  let store: Store
   let workspace = NotificationCenter()
   let distributed = NotificationCenter()
   let pressure = StubPressureMonitor()
   let defaults: UserDefaults
   let lifecycle: Lifecycle
 
-  init() {
-    defaults = UserDefaults(suiteName: suite)!
+  init(loginItem: LoginItem = .stub, nextLaunch: Bool = false, test: String = #function) {
+    suite = testSuite(test)
+    defaults = nextLaunch ? UserDefaults(suiteName: suite)! : testDefaults(test)
+    store = testStore(loginItem: loginItem)
     lifecycle = Lifecycle(
       clock: clock, engine: engine, store: store, reader: SystemReader(), defaults: defaults,
       workspaceCenter: workspace, distributedCenter: distributed, localCenter: NotificationCenter(),
@@ -111,7 +114,7 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
   /// Starts the lifecycle, waits for its first reading, then clears the logs.
   func start() async throws {
     lifecycle.start()
-    #expect(try await settled { engine.calls == ["tick closed"] && store.snapshot != nil })
+    #expect(try await settled { engine.calls == ["tick closed"] })
     #expect(clock.calls == [closedSchedule])
     clock.calls = []
     engine.calls = []
@@ -194,8 +197,10 @@ private let unlocked = "com.apple.screenIsUnlocked"
   rig.engine.release()
   #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick closed"] })
   #expect(rig.clock.calls == ["pause", closedSchedule, "resume"])
-  #expect(rig.store.snapshot?.takenAtNs == 60 * seconds)
   #expect(rig.store.status == .calm)  // the run restarted after the reset
+  // The reading at 60 s was applied and began the new run, so 60 s later the dot turns.
+  rig.store.apply(snapshot(cpu: .value(0.9), at: 120 * seconds))
+  #expect(rig.store.status.dot == .tight)
 }
 
 /// Rule 3: the clock resumes only when the last pause reason goes.
@@ -274,7 +279,24 @@ private let unlocked = "com.apple.screenIsUnlocked"
   rig.lifecycle.panelChanged(visible: false, pinned: false, occluded: false)  // closed
   rig.engine.release()
   #expect(try await settled { rig.engine.calls == ["tick open", "tick closed"] })
-  #expect(rig.store.snapshot?.mode == .closed)
+  #expect(rig.store.snapshot?.mode == .open)  // a closed reading changes only the status (R71)
+}
+
+/// R74 and spec 12: the first launch registers the login item once. A later launch never does,
+/// even when the user has turned it off in System Settings, and the toggle then shows Off.
+@MainActor @Test func onlyTheFirstLaunchRegistersTheLoginItem() async throws {
+  let item = FakeLoginItem(enabled: false)
+  let first = Rig(loginItem: item.loginItem)
+  defer { UserDefaults().removePersistentDomain(forName: first.suite) }
+  try await first.start()
+  #expect(item.registrations == 1 && first.store.launchesAtLogin)
+  #expect(first.defaults.loginItemOfferedOnce)
+
+  item.enabled = false  // the user turns it off in System Settings
+  let second = Rig(loginItem: item.loginItem, nextLaunch: true)
+  try await second.start()
+  second.store.readLoginItem()  // the panel opens
+  #expect(item.registrations == 1 && !second.store.launchesAtLogin)
 }
 
 /// Rule 7: a settings change is saved and sets the clock's speed.
@@ -354,8 +376,8 @@ private let unlocked = "com.apple.screenIsUnlocked"
 }
 
 extension NativeInteractionTests {
-  /// R64: a pinned panel was just ordered front when it opens, so it is open at once and ticks.
-  /// Later occlusion changes update the mode.
+  /// R64 and R71: a pinned panel is not covered when it opens, so it is open at once and ticks; it
+  /// shows once that reading is applied. Later occlusion changes update the mode.
   @Test func openingAPinnedPanelTicksAtOnce() async throws {
     let rig = Rig()
     defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
@@ -367,7 +389,7 @@ extension NativeInteractionTests {
 
     panel.toggle(under: (.zero, .zero))  // a pinned panel ignores the anchor
     #expect(rig.clock.calls == [openSchedule])
-    #expect(try await settled { rig.engine.calls == ["tick open"] })
+    #expect(try await settled { rig.engine.calls == ["tick open"] && panel.panel.isVisible })
     panel.toggle(under: (.zero, .zero))
     #expect(rig.clock.calls.last == closedSchedule)
   }

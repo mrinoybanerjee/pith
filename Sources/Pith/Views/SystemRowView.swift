@@ -5,7 +5,7 @@ import SwiftUI
 /// unexplained (spec 6.6). Opening it measures the largest system processes once, with `top`.
 struct SystemRowView: View {
   let store: Store
-  let value: RowValue?
+  let value: RowValue
   let fraction: Double?
 
   var body: some View {
@@ -22,8 +22,8 @@ struct SystemRowView: View {
             .foregroundStyle(.tertiary)
             .accessibilityHidden(true)
         },
-        fraction: fraction, value: value?.text, processes: nil,
-        highlighted: expanded || store.selectedRowID == Store.systemRowID,
+        fraction: fraction, value: value, processes: nil,
+        selected: store.selectedRowID == Store.systemRowID, expanded: expanded,
         sentence: rowSentence("macOS system", value, store.metric, processes: nil)
       ) { store.toggle(Store.systemRowID) }
       if expanded { details.detailWell() }
@@ -46,9 +46,9 @@ struct SystemRowView: View {
           .fixedSize(horizontal: false, vertical: true)
         VStack(spacing: 3) {
           ForEach(Array(breakdown.items.enumerated()), id: \.offset) { _, item in
-            line(item.title, ByteFormat.memory(item.memory))
+            line(item.title, item.memory)
           }
-          line("Other system work", other(breakdown).map(ByteFormat.memory) ?? "—")
+          line("Other system work", other(breakdown))
         }
         .font(.system(size: 13).monospacedDigit())
         .padding(.top, 8)
@@ -66,11 +66,15 @@ struct SystemRowView: View {
     }
   }
 
-  private func line(_ title: String, _ memory: String) -> some View {
+  private func line(_ title: String, _ memory: UInt64?) -> some View {
     HStack {
       Text(title)
       Spacer()
-      Text(memory)
+      if let memory {
+        Text(ByteFormat.memory(memory))
+      } else {
+        Text("—").accessibilityLabel("not available")
+      }
     }
     .accessibilityElement(children: .combine)
   }

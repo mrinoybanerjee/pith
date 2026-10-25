@@ -29,11 +29,14 @@ import Testing
   #expect(ByteFormat.storage(9_400_000_000) == "9.4 GB")
 }
 
-@Test func diskRatesUseDecimalUnitsPerSecond() {
+@Test func diskRatesUseDecimalUnitsWithTheSizesPrecision() {
   #expect(ByteFormat.rate(0) == "0 KB/s")
+  #expect(ByteFormat.rate(5_500) == "5.5 KB/s")
   #expect(ByteFormat.rate(340_000) == "340 KB/s")
   #expect(ByteFormat.rate(999_600) == "1 MB/s")
-  #expect(ByteFormat.rate(12_400_000) == "12 MB/s")
+  #expect(ByteFormat.rate(1_200_000) == "1.2 MB/s")
+  #expect(ByteFormat.rate(12_400_000) == "12.4 MB/s")
+  #expect(ByteFormat.rate(150_000_000) == "150 MB/s")
   #expect(ByteFormat.rate(2_500_000_000) == "2.5 GB/s")
 }
 

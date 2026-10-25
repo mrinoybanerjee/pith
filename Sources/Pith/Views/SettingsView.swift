@@ -1,8 +1,9 @@
 import PithCore
 import SwiftUI
 
-/// The three settings (spec 4.6). The login toggle shows what macOS really does, and says so when
-/// macOS refuses a change (R59). Limited grouping is a visible degraded mode (spec 6.5).
+/// The three settings (spec 4.6), as native controls that full keyboard access reaches. The login
+/// toggle shows what macOS says, and says so when macOS refuses a change (R74). Limited grouping
+/// is a visible degraded mode (spec 6.5).
 struct SettingsView: View {
   @Bindable var store: Store
 
@@ -26,10 +27,14 @@ struct SettingsView: View {
         }
         Divider()
         HStack {
-          Text("Refresh while open").frame(maxWidth: .infinity, alignment: .leading)
-          Segmented(
-            selection: $store.settings.refresh,
-            options: [(.oneSecond, "1 s"), (.twoSeconds, "2 s")])
+          label("Refresh while open")
+          Picker("Refresh while open", selection: $store.settings.refresh) {
+            Text("1 s").tag(RefreshSetting.oneSecond)
+            Text("2 s").tag(RefreshSetting.twoSeconds)
+          }
+          .pickerStyle(.segmented)
+          .labelsHidden()
+          .fixedSize()
         }
         Divider()
         label("Dot turns amber on")

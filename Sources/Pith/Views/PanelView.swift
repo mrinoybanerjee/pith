@@ -13,13 +13,13 @@ struct PanelView: View {
       } else {
         TilesView(totals: store.snapshot?.totals)
         AppListView(store: store)
-        // Decorative, so it is the one text under 13 pt (spec 4.2).
+        // Decorative, so it is the one text under 13 pt (spec 4.2). VoiceOver reports a font only
+        // when it is set on the text itself, in a combined element.
         HStack {
-          Text("Updated just now")
+          Text("Updated just now").font(.system(size: 11.5))
           Spacer()
-          Text("Pith")
+          Text("Pith").font(.system(size: 11.5))
         }
-        .font(.system(size: 11.5))
         .foregroundStyle(.tertiary)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -29,44 +29,6 @@ struct PanelView: View {
       }
     }
     .frame(width: 360)
-  }
-}
-
-/// Memory · CPU · Disk and 1 s · 2 s, in the approved design's style: a well with the chosen
-/// segment raised, each segment as wide as its name. VoiceOver reads the segments as buttons, the
-/// chosen one selected.
-struct Segmented<Value: Hashable>: View {
-  @Binding var selection: Value
-  let options: [(value: Value, title: String)]
-  @Environment(\.colorScheme) private var scheme
-
-  var body: some View {
-    HStack(spacing: 0) {
-      ForEach(options, id: \.value) { option in
-        let chosen = option.value == selection
-        Button {
-          selection = option.value
-        } label: {
-          Text(option.title)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(chosen ? .primary : .secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 2)
-            .background {
-              if chosen {
-                RoundedRectangle(cornerRadius: 5)
-                  .fill(.white.opacity(scheme == .dark ? 0.16 : 1))
-                  .shadow(color: .black.opacity(0.08), radius: 1, y: 1)
-              }
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(chosen ? .isSelected : [])
-      }
-    }
-    .padding(2)
-    .background(.quinary, in: .rect(cornerRadius: 7))
   }
 }
 

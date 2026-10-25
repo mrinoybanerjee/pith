@@ -47,7 +47,12 @@ run_tests() {
         fi
         # Swift 6.2 adds "in N suites" to the summary; Swift 6.0 and 6.1 do not.
         if grep -Eq '^✔ Test run with [0-9]+ tests? (in [0-9]+ suites? )?passed' "$log"; then
-            printf '%s: %s\n' "$name" "$(grep -E '^✔ Test run with' "$log")"
+            # A skipped test also ends in a passing summary; say that it was skipped.
+            if grep -Eq '^➜ Test .* skipped' "$log"; then
+                printf '%s: skipped (%s)\n' "$name" "$(grep -cE '^➜ Test .* skipped' "$log")"
+            else
+                printf '%s: %s\n' "$name" "$(grep -E '^✔ Test run with' "$log")"
+            fi
             return 0
         fi
         printf 'warning: %s ended before Swift Testing reported completion (attempt %s)\n' \
@@ -65,15 +70,21 @@ run_tests "core and app" --parallel --skip NativeInteractionTests
 swift test list --skip-build 2>/dev/null \
     | { grep 'NativeInteractionTests/' || (($? == 1)); } >"$LOG_DIR/native.txt"
 native_count=0
+skipped_count=0
 while IFS= read -r test_id; do
     # The filter matches the listed ID followed by "/<file>:<line>:<column>".
     pattern="^$(printf '%s' "$test_id" | sed -E 's/[][().*+?^$|\\]/\\&/g')/"
-    # Only the passing summary is hidden; a failure prints its log on stderr.
-    run_tests "$test_id" --filter "$pattern" >/dev/null
+    # Only the summary is kept; a failure prints its log on stderr and stops the script.
+    summary="$(run_tests "$test_id" --filter "$pattern")"
     native_count=$((native_count + 1))
+    if [[ $summary == *": skipped ("* ]]; then
+        printf '%s\n' "$summary"
+        skipped_count=$((skipped_count + 1))
+    fi
 done <"$LOG_DIR/native.txt"
 if ((native_count == 0)) && grep -rq --include='*.swift' 'NativeInteractionTests' Tests; then
     echo "error: Tests define NativeInteractionTests, but the test listing found none" >&2
     exit 1
 fi
-printf 'native windows: %s tests completed, one process each\n' "$native_count"
+printf 'native windows: %s tests completed, %s skipped, one process each\n' \
+    "$native_count" "$skipped_count"

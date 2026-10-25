@@ -9,21 +9,23 @@ enum SystemDetailsState: Equatable {
   case failed
 }
 
-/// The app's state on the main actor (spec 5.1): the latest snapshot and its status, the UI choices
+/// The app's state on the main actor (spec 5.1): the status, what the panel draws, the UI choices
 /// and the settings. Views read it; `Lifecycle` hands it each snapshot.
 @MainActor @Observable final class Store {
   /// The "macOS system" row's id. App ids are paths or start with "proc:" or "clone:".
   static let systemRowID = "system"
 
+  /// The latest open snapshot, which the panel draws. A closed tick never changes it, so the hidden
+  /// panel has nothing to redraw (R71).
   private(set) var snapshot: Snapshot?
-  /// Calm until the first tick, a moment after launch.
-  var status = Status.calm
+  /// Calm until the first tick, a moment after launch. It changes only when the state changes.
+  private(set) var status = Status.calm
   var metric = Metric.memory {
     didSet { rows = RowOrder.stable(previous: [], apps: snapshot?.apps ?? [], metric: metric) }
   }
   /// The app rows in the order shown (spec 4.2 and 4.8).
   private(set) var rows: [AppUsage] = []
-  var expandedAppID: String?
+  private(set) var expandedAppID: String?
   /// The row that ↑ and ↓ moved to (spec 4.8).
   private(set) var selectedRowID: String?
   /// Settings take the place of the tiles and the list.
@@ -37,11 +39,13 @@ enum SystemDetailsState: Equatable {
       }
     }
   }
-  /// Whether Pith really opens at login, which the user can change in System Settings.
+  /// Whether Pith opens at login, as macOS says (R74).
   private(set) var launchesAtLogin = false
   /// macOS refused the last change to the login item.
   private(set) var loginItemFailed = false
   let guide: Guide
+  /// Called after each open snapshot is applied. The panel shows on the first one after a click.
+  @ObservationIgnored var appliedOpenSnapshot: () -> Void = {}
   @ObservationIgnored private var rules: StatusRules
   @ObservationIgnored private let loginItem: LoginItem
   @ObservationIgnored private let measureSystem: @Sendable () async throws -> SystemBreakdown
@@ -57,11 +61,15 @@ enum SystemDetailsState: Equatable {
     rules = StatusRules(amberOnCPU: settings.amberOnCPU)
   }
 
-  /// The snapshot, its status and the row order change in one main-actor step (spec 5.3).
+  /// Every snapshot sets the status. Only an open one changes what the panel draws: the snapshot
+  /// and the row order, in the same main-actor step (spec 5.3).
   func apply(_ snapshot: Snapshot) {
+    let status = rules.evaluate(snapshot, nowNs: snapshot.takenAtNs)
+    if status != self.status { self.status = status }
+    guard snapshot.mode == .open else { return }
     self.snapshot = snapshot
-    status = rules.evaluate(snapshot, nowNs: snapshot.takenAtNs)
     rows = RowOrder.stable(previous: rows.map(\.id), apps: snapshot.apps, metric: metric)
+    appliedOpenSnapshot()
   }
 
   /// A CPU run must not span a pause, or one reading could flip the dot (ruling R45).
@@ -108,27 +116,25 @@ enum SystemDetailsState: Equatable {
     }
   }
 
-  /// Reads whether Pith opens at login, when the panel opens (R59).
-  func readLoginItem() { launchesAtLogin = loginItem.isEnabled() }
+  /// When the panel opens: what macOS says now, and no old refusal (R74).
+  func readLoginItem() {
+    launchesAtLogin = loginItem.isEnabled()
+    loginItemFailed = false
+  }
 
-  /// Asks macOS to follow `settings.launchAtLogin`. A refusal is logged and shown in Settings.
-  func applyLoginItem() {
+  /// Registers Pith as a login item or removes it. The toggle moves at once, then shows what macOS
+  /// really did; a refusal is logged and shown under it.
+  func setLaunchAtLogin(_ enabled: Bool) {
+    launchesAtLogin = enabled
     do {
-      try loginItem.set(settings.launchAtLogin)
+      try loginItem.set(enabled)
       loginItemFailed = false
     } catch {
       Logger(subsystem: "com.mrinoy.pith", category: "login-item")
-        .error("cannot set launch at login: \(error, privacy: .public)")
+        .error("cannot set launch at login to \(enabled): \(error, privacy: .public)")
       loginItemFailed = true
     }
-    readLoginItem()
-  }
-
-  /// The Settings toggle. It moves at once, then shows what macOS really did.
-  func setLaunchAtLogin(_ enabled: Bool) {
-    launchesAtLogin = enabled
-    settings.launchAtLogin = enabled
-    applyLoginItem()
+    launchesAtLogin = loginItem.isEnabled()
   }
 }
 

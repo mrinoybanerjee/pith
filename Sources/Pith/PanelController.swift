@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 /// Owns the panel (spec 4.2 and 4.7). It never takes focus from the app in front.
+/// - A click asks for an open reading; the panel shows once that reading is applied, laid out and
+///   sized for it, so it never opens on old rows and then jumps (R71).
 /// - Attached, it hangs under the status item and closes on an outside click, Escape or a second
 ///   click on the item.
 /// - Pinned, it floats where the user drags it, on every Space, and its frame is saved.
@@ -19,6 +21,10 @@ import SwiftUI
   private let store: Store
   private let defaults: UserDefaults
   private let onChange: @MainActor (_ visible: Bool, _ pinned: Bool, _ occluded: Bool) -> Void
+  /// From a click that opens the panel until the reading it asked for is applied.
+  private var opening = false
+  /// Where the attached panel hangs: the status item's frame and its screen's visible frame.
+  private var anchor = (itemFrame: CGRect.zero, visibleFrame: CGRect.zero)
   /// The outside-click monitor, installed while the panel is attached and open.
   private var monitors: [Any] = []
 
@@ -49,28 +55,18 @@ import SwiftUI
     hosting.onLayout = { [weak self] in self?.fit() }
     effect.addSubview(hosting)
     panel.contentView = effect
+    store.appliedOpenSnapshot = { [weak self] in self?.show() }
     follow({ [store] in store.pinned }, then: { [weak self] in self?.pin($0) })
   }
 
-  /// Opens the panel, attached under `anchor` unless it is pinned, or closes it if it is open.
+  /// Opens the panel, attached under `anchor` unless it is pinned, or closes it if it is open or
+  /// opening.
   func toggle(under anchor: (itemFrame: CGRect, visibleFrame: CGRect)) {
-    guard !panel.isVisible else { return close() }
+    guard !panel.isVisible, !opening else { return close() }
+    self.anchor = anchor
+    opening = true
     store.readLoginItem()
-    if !store.pinned {
-      panel.setFrame(
-        PanelGeometry.attachedFrame(
-          itemFrame: anchor.itemFrame, panelSize: CGSize(width: Self.width, height: height),
-          visibleFrame: anchor.visibleFrame),
-        display: false)
-      monitors = [
-        NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
-          MainActor.assumeIsolated { self?.close() }
-        }!
-      ]
-    }
-    panel.makeKeyAndOrderFront(nil)
-    // Just ordered front, so not covered: a pinned panel opens in the open mode and ticks at once.
-    // `windowDidChangeOcclusionState` reports any later change.
+    // The lifecycle takes an open reading at once. Not shown yet, so not covered either.
     onChange(true, store.pinned, false)
   }
 
@@ -83,37 +79,78 @@ import SwiftUI
   /// The content's height, up to `maxHeight`.
   private var height: CGFloat { min(hosting.fittingSize.height.rounded(.up), Self.maxHeight) }
 
-  /// Follows the content's height after each layout, at once, keeping the top edge: under the
-  /// status item when attached, the top-left corner when pinned. The new size lays out again,
-  /// which changes nothing more.
-  private func fit() {
-    let height = height
-    guard panel.isVisible, panel.frame.height != height else { return }
-    let frame = panel.frame
-    let resized = CGRect(x: frame.minX, y: frame.maxY - height, width: Self.width, height: height)
-    let corner = CGPoint(x: frame.minX, y: frame.maxY)
-    let screen = NSScreen.screens.first { $0.frame.contains(corner) }!
-    panel.setFrame(PanelGeometry.clamp(resized, to: screen.visibleFrame), display: true)
+  /// Shows the panel when the first open reading after the click has been applied. The hidden
+  /// content is laid out first, so the panel opens at its final size.
+  private func show() {
+    guard opening else { return }
+    opening = false
+    hosting.layoutSubtreeIfNeeded()
+    if store.pinned {
+      resize()
+    } else {
+      panel.setFrame(
+        PanelGeometry.attachedFrame(
+          itemFrame: anchor.itemFrame, panelSize: CGSize(width: Self.width, height: height),
+          visibleFrame: anchor.visibleFrame),
+        display: false)
+      monitors = [
+        NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
+          MainActor.assumeIsolated { self?.close() }
+        }!
+      ]
+    }
+    panel.makeKeyAndOrderFront(nil)
   }
 
-  /// ↑ and ↓ move between the rows, Return opens or closes one, ⌘1–⌘3 pick the metric, and
-  /// Escape closes the attached panel (spec 4.8).
+  /// Follows the content's height after each layout of the shown panel.
+  private func fit() {
+    if panel.isVisible { resize() }
+  }
+
+  /// Sets the content's height, keeping the top edge: under the status item when attached, the
+  /// top-left corner when pinned. The frame stays 8 pt inside its screen's visible frame. The new
+  /// size lays out again, which changes nothing more.
+  private func resize() {
+    let height = height
+    guard panel.frame.height != height else { return }
+    let frame = panel.frame
+    guard let visible = visibleFrame(of: panel.screen) else { return }
+    panel.setFrame(
+      PanelGeometry.clamp(
+        CGRect(x: frame.minX, y: frame.maxY - height, width: Self.width, height: height),
+        to: visible),
+      display: true)
+  }
+
+  /// `screen`'s visible frame. A panel dragged fully off screen has no screen of its own, so it
+  /// comes back onto the main one.
+  private func visibleFrame(of screen: NSScreen?) -> CGRect? {
+    let screen = screen ?? NSScreen.main
+    assert(screen != nil, "no screen to keep the panel on")
+    return screen?.visibleFrame
+  }
+
+  /// Spec 4.8: ↑ and ↓ move between the rows and Return opens or closes one, while the list
+  /// shows; in Settings they go to the controls. ⌘1–⌘3 pick the metric by key, on any keyboard
+  /// layout. Escape closes the attached panel.
   private func handle(_ event: NSEvent) -> Bool {
     let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-    switch (modifiers, event.keyCode, event.charactersIgnoringModifiers) {
-    case ([.command], _, "1"): store.metric = .memory
-    case ([.command], _, "2"): store.metric = .cpu
-    case ([.command], _, "3"): store.metric = .disk
-    case ([], 126, _): store.moveSelection(-1)
-    case ([], 125, _): store.moveSelection(1)
-    case ([], 36, _), ([], 76, _): store.toggleSelected()
-    case ([], 53, _) where !store.pinned: close()
+    let list = !store.showingSettings
+    switch (modifiers, event.keyCode) {
+    case ([.command], 18): store.metric = .memory
+    case ([.command], 19): store.metric = .cpu
+    case ([.command], 20): store.metric = .disk
+    case ([], 126) where list: store.moveSelection(-1)
+    case ([], 125) where list: store.moveSelection(1)
+    case ([], 36) where list, ([], 76) where list: store.toggleSelected()
+    case ([], 53) where !store.pinned: close()
     default: return false
     }
     return true
   }
 
   private func close() {
+    opening = false
     panel.orderOut(nil)
     removeMonitors()
     store.panelClosed()
@@ -131,8 +168,11 @@ import SwiftUI
       let frame = CGRect(
         x: saved.minX, y: saved.maxY - size.height, width: size.width, height: size.height)
       // The screen it was saved on may be gone.
-      let screen = NSScreen.screens.first { $0.visibleFrame.intersects(frame) } ?? panel.screen!
-      panel.setFrame(PanelGeometry.clamp(frame, to: screen.visibleFrame), display: true)
+      if let visible = visibleFrame(
+        of: NSScreen.screens.first { $0.visibleFrame.intersects(frame) } ?? panel.screen)
+      {
+        panel.setFrame(PanelGeometry.clamp(frame, to: visible), display: true)
+      }
     }
     report()
   }

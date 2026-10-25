@@ -16,8 +16,8 @@ struct TilesView: View {
     .padding(EdgeInsets(top: 0, leading: 12, bottom: 12, trailing: 12))
   }
 
-  /// "15.1 of 16 GB", then Plenty, Tight or Critical. Swap is added when pressure is not normal or
-  /// swap is over 1 GB.
+  /// "15.1 of 16 GB", then Plenty, Tight or Critical, or "—" when the pressure is unknown. Swap
+  /// in use is added when pressure is not normal or swap is over 1 GB.
   private var memory: some View {
     let pressure = totals?.pressure.value
     let tint: Color? =
@@ -26,15 +26,16 @@ struct TilesView: View {
       case .critical: .red
       default: nil
       }
-    let word: String? =
+    let word =
       switch pressure {
-      case .normal: "Plenty"
-      case .warning: "Tight"
-      case .critical: "Critical"
-      case nil: nil
+      case .normal: Text("Plenty")
+      case .warning: Text("Tight")
+      case .critical: Text("Critical")
+      case nil: Text("—").accessibilityLabel("pressure not available")
       }
     let swap = totals?.swapUsed.value.flatMap { swap in
-      pressure != .normal || swap > 1 << 30 ? "\(ByteFormat.memory(swap)) swap" : nil
+      swap > 0 && (pressure != .normal || swap > 1 << 30)
+        ? Text("\(ByteFormat.memory(swap)) swap") : nil
     }
     let memory = totals.flatMap { t in t.memoryUsed.value.map { (used: $0, total: t.memoryTotal) } }
     return Tile(
@@ -47,13 +48,16 @@ struct TilesView: View {
         return (number, "\(own) of \(total)".noBreaks(after: 1))
       },
       fraction: memory.map { Double($0.used) / Double($0.total) },
-      words: [word, swap].compactMap { $0 }, tint: tint)
+      words: [word] + [swap].compactMap { $0 }, tint: tint)
   }
 
-  /// "38%", then Light under 30%, Moderate to 70%, Busy above.
+  /// "38%", then Light under 30%, Moderate to 70%, Busy above, judged on the percent shown.
   private var cpu: some View {
     let busy = totals?.cpuBusy.value
-    let word = busy.map { $0 < 0.3 ? "Light" : $0 <= 0.7 ? "Moderate" : "Busy" }
+    let word = busy.map { busy in
+      let percent = (busy * 100).rounded()
+      return Text(percent < 30 ? "Light" : percent <= 70 ? "Moderate" : "Busy")
+    }
     return Tile(
       caption: "CPU", value: busy.map { split(PercentFormat.total($0)) }, fraction: busy,
       words: word.map { [$0] } ?? [], tint: nil)
@@ -71,7 +75,7 @@ struct TilesView: View {
         return (number, " \(unit) free".noBreaks(after: 1))
       },
       fraction: space.map { free, total in Double(total - free) / Double(total) },
-      words: space.map { ["of \(ByteFormat.storage($1))"] } ?? [], tint: nil)
+      words: space.map { [Text("of \(ByteFormat.storage($1))")] } ?? [], tint: nil)
   }
 
   /// "15.1 GB" is ("15.1", "GB") and "38%" is ("38", "%").
@@ -88,7 +92,7 @@ private struct Tile: View {
   let value: (number: String, unit: String)?
   let fraction: Double?
   /// One line each.
-  let words: [String]
+  let words: [Text]
   /// Amber for Tight, red for Critical.
   let tint: Color?
 
@@ -114,8 +118,8 @@ private struct Tile: View {
       .padding(.top, 5)
       Bar(fraction: fraction, height: 4, fill: tint ?? .primary.opacity(0.8))
         .padding(.top, 7)
-      ForEach(words, id: \.self) { word in
-        Text(word)
+      ForEach(words.indices, id: \.self) { line in
+        words[line]
           .font(.system(size: 13).monospacedDigit())
           .foregroundStyle(tint ?? .secondary)
           .fixedSize(horizontal: false, vertical: true)

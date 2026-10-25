@@ -28,7 +28,7 @@ enum PauseReason { case sleep, screensSleep, locked }
 ///   of them is left, or when the user opens the panel;
 /// - readings run one at a time, never while paused, and a pressure change takes one at once;
 /// - a volume mount or unmount re-reads storage;
-/// - the settings stay saved, and at launch the login item follows them.
+/// - the settings stay saved, and the first launch registers the login item.
 @MainActor final class Lifecycle {
   private let clock: any Ticker
   private let engine: any Sampler
@@ -82,10 +82,14 @@ enum PauseReason { case sleep, screensSleep, locked }
     self.isLowPowerModeEnabled = isLowPowerModeEnabled
   }
 
-  /// Follows the settings and the system, sets the login item, and takes the first reading.
+  /// Follows the settings and the system, registers the login item on the first launch only
+  /// (spec 4.6 and 12), and takes the first reading.
   func start() {
     follow({ [store] in store.settings }, then: { [weak self] in self?.apply($0) })
-    store.applyLoginItem()
+    if !defaults.loginItemOfferedOnce {
+      defaults.loginItemOfferedOnce = true
+      store.setLaunchAtLogin(true)
+    }
     pressure = makePressureMonitor { [weak self] _ in Task { @MainActor in self?.tick() } }
     let workspace = workspaceCenter
     let distributed = distributedCenter

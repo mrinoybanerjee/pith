@@ -19,15 +19,18 @@ struct HeaderView: View {
           .kerning(-0.17)
           .accessibilityAddTraits(.isHeader)
         // "6.4 GB" stays on one line.
-        Text(store.status.sentence.replacing(/\s(?=[KMG]B\b)/, with: "\u{A0}"))
-          .font(.system(size: 13))
-          .foregroundStyle(.secondary)
-          .lineSpacing(1.5)
-          .fixedSize(horizontal: false, vertical: true)
+        Text(
+          store.status.sentence.replacing(" GB", with: "\u{A0}GB")
+            .replacing(" MB", with: "\u{A0}MB")
+        )
+        .font(.system(size: 13))
+        .foregroundStyle(.secondary)
+        .lineSpacing(1.5)
+        .fixedSize(horizontal: false, vertical: true)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
       HStack(spacing: 2) {
-        IconButton(symbol: "pin", label: store.pinned ? "Unpin" : "Pin", on: store.pinned) {
+        IconButton(symbol: "pin", label: "Pin", on: store.pinned) {
           store.pinned.toggle()
         }
         IconButton(symbol: "gearshape", label: "Settings", on: store.showingSettings) {
@@ -47,7 +50,7 @@ struct HeaderView: View {
   }
 }
 
-/// A 26 pt icon button. When on, it sits in a well.
+/// A 26 pt icon button. When on, it sits in a well, and VoiceOver reads it as selected.
 private struct IconButton: View {
   let symbol: String
   let label: String
@@ -65,6 +68,7 @@ private struct IconButton: View {
     }
     .buttonStyle(.plain)
     .accessibilityLabel(label)
+    .accessibilityAddTraits(on ? .isSelected : [])
     .help(label)
   }
 }
