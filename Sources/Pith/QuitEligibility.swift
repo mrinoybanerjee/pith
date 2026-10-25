@@ -46,23 +46,23 @@ enum QuitEligibility {
     for app: AppUsage, in apps: RunningApps, uid: UInt32, guide: Guide
   ) -> (any QuitTarget)? {
     guard let bundlePath = app.bundlePath else { return nil }
-    let candidates = apps.running(app.pids).filter {
-      $0.activationPolicy == .regular || $0.activationPolicy == .accessory
-    }
+    // Each path is resolved once: the match and the `/System/Library/` guard read the same one.
+    let candidates = apps.running(app.pids)
+      .filter { $0.activationPolicy == .regular || $0.activationPolicy == .accessory }
+      .map { (target: $0, path: $0.bundleURL?.resolvingSymlinksInPath().path) }
     let own = URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
-    let byPath = candidates.filter { $0.bundleURL?.resolvingSymlinksInPath().path == own }
+    let byPath = candidates.filter { $0.path == own }
     let byID = candidates.filter {
-      $0.activationPolicy == .regular && $0.bundleIdentifier != nil
-        && $0.bundleIdentifier == app.bundleID
+      $0.target.activationPolicy == .regular && $0.target.bundleIdentifier != nil
+        && $0.target.bundleIdentifier == app.bundleID
     }
     let matches = byPath.isEmpty ? byID : byPath
-    // The `/System/Library/` guard reads the resolved path, as the match does.
-    guard matches.count == 1, let path = matches[0].bundleURL?.resolvingSymlinksInPath().path,
-      let owner = apps.ownerUID(matches[0].processIdentifier)
+    guard matches.count == 1, let path = matches[0].path,
+      let owner = apps.ownerUID(matches[0].target.processIdentifier)
     else { return nil }
     let running = RunningAppInfo(
-      pid: matches[0].processIdentifier, bundlePath: path, ownerUID: owner)
-    return canQuit(app, running: running, uid: uid, guide: guide) ? matches[0] : nil
+      pid: matches[0].target.processIdentifier, bundlePath: path, ownerUID: owner)
+    return canQuit(app, running: running, uid: uid, guide: guide) ? matches[0].target : nil
   }
 }
 

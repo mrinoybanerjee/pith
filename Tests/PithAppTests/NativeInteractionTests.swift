@@ -407,7 +407,9 @@ extension NativeInteractionTests {
   }
 
   /// R72: a pinned panel partly past the left edge, above the top, or with its corner exactly at the
-  /// top of the screen comes back on screen at its next height change, and never traps.
+  /// top of the screen comes back on screen at its next height change, and never traps. A pinned
+  /// panel's moves are clamped too, 0.25 s after the last one (R106), so this resize usually comes
+  /// first; `anAttachedPanelOffTheScreenComesBackWhenItResizes` checks the resize clamp alone.
   @Test func aPinnedPanelOffTheScreenComesBackWhenItResizes() async throws {
     defer { clearDefaults() }
     let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
@@ -430,23 +432,99 @@ extension NativeInteractionTests {
     }
   }
 
-  /// R104: a pinned panel dragged partly past the bottom, left or right edge comes back 8 pt inside
-  /// the screen when the drag ends, and the frame it saves is the one it comes back to.
-  @Test func aPinnedPanelDraggedPastAnEdgeComesBackAndSavesThatFrame() async throws {
+  /// R107: an attached panel is not clamped when it moves, so only the resize clamp brings it back:
+  /// past the left edge, or growing past the bottom edge, it ends 8 pt inside the screen.
+  @Test func anAttachedPanelOffTheScreenComesBackWhenItResizes() async throws {
     defer { clearDefaults() }
     let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
-    store.pinned = true
-    #expect(try await eventually(w) { w.isMovableByWindowBackground })
     let visible = try #require(NSScreen.main).visibleFrame
+    let finder = try #require(store.rows.first { $0.name == "Finder" }).id
+    for origin in [CGPoint(x: visible.minX - 200, y: 300), CGPoint(x: 400, y: visible.minY + 8)] {
+      w.setFrameOrigin(origin)
+      let height = w.frame.height
+      store.toggle(finder)  // the row opens, so the panel grows
+      #expect(try await eventually(w) { w.frame.height > height }, "\(origin)")
+      #expect(visible.insetBy(dx: 8, dy: 8).contains(w.frame), "\(origin) became \(w.frame)")
+      store.toggle(finder)
+      #expect(try await eventually(w) { w.frame.height == height }, "\(origin)")
+    }
+  }
+
+  /// A pinned panel whose drag checks and mouse button the test runs (R106), with no saved frame.
+  private func hostPinnedPanel(test: String = #function) async throws -> (
+    PanelController, ManualChecks, MouseButton
+  ) {
+    let (controller, store) = try hostPanelController(DemoSnapshots.calm, test: test)
+    let checks = ManualChecks()
+    let mouse = MouseButton()
+    controller.nextDragCheck = {  // throws once cancelled, as `Task.sleep` does
+      await checks.wait()
+      try Task.checkCancellation()
+    }
+    controller.mouseIsDown = { mouse.down }
+    store.pinned = true
+    #expect(try await eventually(controller.panel) { controller.panel.isMovableByWindowBackground })
+    return (controller, checks, mouse)
+  }
+
+  /// R106: a drag may report each step as a move. While a mouse button is down, a pinned panel
+  /// passes any edge unclamped, so it can reach another display. At the first check with no
+  /// button down, it comes back 8 pt inside the screen, once, and saves that frame. The bottom,
+  /// left, right and top edges.
+  @Test func aPinnedPanelIsClampedOnlyAfterTheDragEnds() async throws {
+    defer { clearDefaults() }
+    let (controller, checks, mouse) = try await hostPinnedPanel()
+    let w = controller.panel
+    let visible = try #require(NSScreen.main).visibleFrame
+    var moves = 0
+    let observer = NotificationCenter.default.addObserver(
+      forName: NSWindow.didMoveNotification, object: w, queue: nil
+    ) { _ in MainActor.assumeIsolated { moves += 1 } }
+    defer { NotificationCenter.default.removeObserver(observer) }
     let inside = visible.insetBy(dx: 8, dy: 8)
+    // macOS itself keeps the panel's top under the menu bar, so the top case moves only the last
+    // 8 pt.
     for origin in [
       CGPoint(x: 400, y: visible.minY - 100), CGPoint(x: visible.minX - 100, y: 300),
-      CGPoint(x: visible.maxX - 100, y: 300),
+      CGPoint(x: visible.maxX - 100, y: 300), CGPoint(x: 400, y: visible.maxY - 100),
     ] {
-      w.setFrameOrigin(origin)  // where the drag ends
+      mouse.down = true
+      w.setFrameOrigin(CGPoint(x: origin.x + 10, y: origin.y))  // two steps of the drag
+      w.setFrameOrigin(origin)
+      await settle()
+      await checks.fire()
+      #expect(!inside.contains(w.frame), "clamped during the drag at \(origin)")
+      mouse.down = false
+      moves = 0
+      await checks.fire()
       #expect(inside.contains(w.frame), "\(origin) ended at \(w.frame)")
       #expect(UserDefaults(suiteName: testSuite())!.pinnedFrame == w.frame, "\(origin)")
+      await checks.fire()  // the clamp's own move is checked too, and changes nothing
+      #expect(moves == 1, "\(origin)")
     }
+  }
+
+  /// R106: a pinned panel dropped mostly on a second display stays there, 8 pt inside that
+  /// display's visible frame (the display is faked). A panel off every display comes back onto
+  /// the main one.
+  @Test func aPinnedPanelIsClampedToItsOwnScreen() async throws {
+    defer { clearDefaults() }
+    let (controller, checks, _) = try await hostPinnedPanel()
+    let w = controller.panel
+    let main = try #require(NSScreen.main).visibleFrame
+    let beyond = NSScreen.screens.map(\.frame).reduce(main) { $0.union($1) }.maxX + 500
+    w.setFrameOrigin(CGPoint(x: beyond, y: 300))
+    #expect(w.screen == nil)
+    await settle()
+    await checks.fire()
+    #expect(main.insetBy(dx: 8, dy: 8).contains(w.frame), "ended at \(w.frame)")
+
+    let second = CGRect(x: main.maxX, y: main.minY + 200, width: 1920, height: 1080)
+    controller.ownScreenFrame = { $0.frame.midX > main.maxX ? second : main }
+    w.setFrameOrigin(CGPoint(x: second.maxX - 300, y: second.minY - 100))
+    await settle()
+    await checks.fire()
+    #expect(second.insetBy(dx: 8, dy: 8).contains(w.frame), "ended at \(w.frame)")
   }
 
   /// R74: Settings show whether Pith opens at login as macOS says, read when the panel opens. A
@@ -848,15 +926,11 @@ extension NativeInteractionTests {
   /// The test sets what macOS reports, so it means the same on any screen (R104).
   @Test func aPinnedPanelReportsWhetherItIsCovered() async throws {
     defer { clearDefaults() }
-    let store = testStore(guide: try Guide.bundled())
-    let controller = PanelController(
-      store: store, defaults: testDefaults(),
-      onChange: { visible, _, _ in if visible { store.apply(DemoSnapshots.calm) } })
+    let (controller, store) = try hostPanelController(DemoSnapshots.calm)
     var covered = true
     controller.isCovered = { _ in covered }
     let w = controller.panel
     let note = Notification(name: NSWindow.didChangeOcclusionStateNotification)
-    controller.toggle(under: try anchor())
     controller.windowDidChangeOcclusionState(note)
     #expect(w.isVisible && !store.panelCovered)
     store.pinned = true
@@ -865,6 +939,18 @@ extension NativeInteractionTests {
     covered = false
     controller.windowDidChangeOcclusionState(note)
     #expect(!store.panelCovered)
+  }
+
+  /// R107: by default the panel is covered exactly when macOS does not report it visible. A panel
+  /// that was never shown is not visible on any machine, so it is covered.
+  @Test func isCoveredReadsThePanelsOcclusion() throws {
+    defer { clearDefaults() }
+    let hidden = PanelController(
+      store: testStore(), defaults: testDefaults(), onChange: { _, _, _ in })
+    #expect(!hidden.panel.occlusionState.contains(.visible))
+    #expect(hidden.isCovered(hidden.panel))
+    let (shown, _) = try hostPanelController(DemoSnapshots.calm)
+    #expect(shown.isCovered(shown.panel) == !shown.panel.occlusionState.contains(.visible))
   }
 
   /// R102: a row opened again shows itself, and a later reading that changes what is inside it

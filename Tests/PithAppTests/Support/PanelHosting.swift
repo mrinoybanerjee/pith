@@ -28,6 +28,16 @@ import Testing
   _ snapshot: Snapshot, appearance: NSAppearance.Name = .aqua, store: Store? = nil,
   test: String = #function
 ) throws -> (NSWindow, Store) {
+  let (controller, store) = try hostPanelController(
+    snapshot, appearance: appearance, store: store, test: test)
+  return (controller.panel, store)
+}
+
+/// `hostPanelWithStore` with the panel's controller, which stays alive until the process ends.
+@MainActor func hostPanelController(
+  _ snapshot: Snapshot, appearance: NSAppearance.Name = .aqua, store: Store? = nil,
+  test: String = #function
+) throws -> (PanelController, Store) {
   enableAccessibilityTree()
   let store = try store ?? testStore(guide: Guide.bundled())
   let controller = PanelController(
@@ -39,7 +49,7 @@ import Testing
   #expect(controller.panel.isVisible)
   controller.panel.contentView!.layoutSubtreeIfNeeded()
   hostedPanels.append(controller)
-  return (controller.panel, store)
+  return (controller, store)
 }
 
 @MainActor func hostPanel(

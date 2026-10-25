@@ -30,8 +30,18 @@ import SwiftUI
   private var anchor = (itemFrame: CGRect.zero, visibleFrame: CGRect.zero)
   /// The outside-click monitor, installed while the panel is attached and open.
   private var monitors: [Any] = []
+  /// The check that keeps a moved pinned panel on screen (R106).
+  private var dragCheck: Task<Void, any Error>?
   /// Whether other windows cover the panel, as macOS reports it. Tests set it (R104).
   var isCovered: (NSWindow) -> Bool = { !$0.occlusionState.contains(.visible) }
+  /// The wait before each check of a moved pinned panel, which throws once the check is cancelled;
+  /// whether a mouse button is still down; and the visible frame of the panel's own screen. Tests
+  /// set them (R106).
+  var nextDragCheck: @MainActor @Sendable () async throws -> Void = {
+    try await Task.sleep(for: .seconds(0.25))
+  }
+  var mouseIsDown: () -> Bool = { NSEvent.pressedMouseButtons != 0 }
+  var ownScreenFrame: (NSWindow) -> CGRect? = { $0.screen?.visibleFrame }
 
   init(
     store: Store, defaults: UserDefaults,
@@ -75,12 +85,20 @@ import SwiftUI
     onChange(true, store.pinned, false)
   }
 
-  /// A drag that ends past an edge pulls the pinned panel back 8 pt inside its screen, so no part
-  /// of it, such as a quit confirm, can sit off screen. The frame it comes back to is saved.
+  /// A drag may report each step as a move, so a moved pinned panel is checked 0.25 s after its
+  /// last move, and every 0.25 s after that while a mouse button is down. The first check with no
+  /// button down clamps the panel 8 pt inside its own screen and saves the frame, so no part of
+  /// it, such as a quit confirm, stays off screen. The clamp's own move is checked too, and
+  /// changes nothing.
   func windowDidMove(_ notification: Notification) {
-    guard store.pinned, let visible = visibleFrame(of: panel.screen) else { return }
-    panel.setFrame(PanelGeometry.clamp(panel.frame, to: visible), display: true)
-    defaults.pinnedFrame = panel.frame
+    guard store.pinned else { return }
+    dragCheck?.cancel()
+    dragCheck = Task {
+      repeat { try await nextDragCheck() } while mouseIsDown()  // a later move cancels the wait
+      guard store.pinned, let visible = ownVisibleFrame else { return }
+      panel.setFrame(PanelGeometry.clamp(panel.frame, to: visible), display: true)
+      defaults.pinnedFrame = panel.frame
+    }
   }
 
   func windowDidChangeOcclusionState(_ notification: Notification) { report() }
@@ -133,13 +151,16 @@ import SwiftUI
     let height = height
     guard panel.frame.height != height else { return }
     let frame = panel.frame
-    guard let visible = visibleFrame(of: panel.screen) else { return }
+    guard let visible = ownVisibleFrame else { return }
     panel.setFrame(
       PanelGeometry.clamp(
         CGRect(x: frame.minX, y: frame.maxY - height, width: Self.width, height: height),
         to: visible),
       display: true)
   }
+
+  /// The visible frame of the panel's own screen, or of the main one when it is off every screen.
+  private var ownVisibleFrame: CGRect? { ownScreenFrame(panel) ?? visibleFrame(of: NSScreen.main) }
 
   /// `screen`'s visible frame. A panel dragged fully off screen has no screen of its own, so it
   /// comes back onto the main one.

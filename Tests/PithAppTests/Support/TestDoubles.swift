@@ -97,6 +97,12 @@ extension RunningApps {
   }
 }
 
+/// The mouse button that a test holds down or lets go, as a pinned panel's drag check reads it
+/// (R106).
+@MainActor final class MouseButton {
+  var down = false
+}
+
 /// Lets the main actor's pending tasks run, such as a check loop that has just started.
 @MainActor func settle() async {
   for _ in 0..<10 { await Task.yield() }
