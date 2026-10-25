@@ -270,6 +270,101 @@ extension NativeInteractionTests {
     #expect(!labels.contains { $0.hasSuffix("/s") })
   }
 
+  /// R110: a missing value says whether the next reading has it. Google Chrome's first CPU sample
+  /// reads "not available yet". The accounting mismatch of "macOS system" and a failed CPU read
+  /// read "not available", and their tooltip says, in plain words, that Pith couldn't measure them.
+  @Test func aMissingValueSaysWhetherTheNextReadingHasIt() async throws {
+    defer { clearDefaults() }
+    let calm = DemoSnapshots.calm
+    let t = calm.totals
+    let chrome = remake(calm, firstTick: true).apps[0]
+    let missing = Snapshot(
+      takenAtNs: calm.takenAtNs, mode: .open,
+      totals: SystemTotals(
+        memoryUsed: t.memoryUsed, memoryTotal: t.memoryTotal, pressure: t.pressure,
+        swapUsed: t.swapUsed, cpuBusy: .unavailable("host_processor_info failed: 4"),
+        storageFree: t.storageFree, storageTotal: t.storageTotal),
+      apps: [chrome] + calm.apps.dropFirst(), system: .unavailable("accounting mismatch"),
+      grouping: .full)
+    let (w, store) = try hostPanelWithStore(missing)
+    let plain = "Pith couldn't measure this right now."
+    #expect(axLabels(in: w).contains("macOS system, memory not available"))
+    let systemValue = try #require(
+      axNodes(in: w).first { $0.identifier == "pith.value" && $0.spoken == "not available" })
+    #expect(systemValue.help == plain)
+    #expect(try axNode("CPU, not available", in: w).help == plain)
+    store.metric = .cpu
+    #expect(
+      try await eventually(w) {
+        axLabels(in: w).contains("Google Chrome, CPU not available yet, 22 processes")
+      })
+    let chromeValue = try #require(
+      axNodes(in: w).first { $0.identifier == "pith.value" && $0.spoken == "not available yet" })
+    #expect((chromeValue.help ?? "").isEmpty)
+  }
+
+  /// R112: the store itself prunes the icon cache at each open snapshot, so no view has to be
+  /// there to do it. Opened with apps A and B, whose icons the rows drew, closed, then opened with
+  /// C and D only: the cache holds C and D. This runs in its own process, as the cache is shared.
+  @Test func theStorePrunesTheIconCacheAtEachOpenSnapshot() {
+    let store = testStore()
+    let paths = ["a", "b", "c", "d"].map { "/Applications/Example \($0.uppercased()).app" }
+    let snapshots = [paths[0...1], paths[2...3]].map { pair in
+      remake(
+        DemoSnapshots.calm,
+        apps: pair.map {
+          AppUsage(
+            id: $0, name: $0, bundlePath: $0, bundleID: nil, pids: [5000], processCount: 1,
+            memory: 1 << 28, cpu: .value(0.01), diskBytesPerSecond: .value(0), inside: [])
+        })
+    }
+    store.apply(snapshots[0])
+    for path in paths[0...1] { _ = AppIcons.icon(forFile: path) }  // as the rows draw them
+    store.panelClosed()
+    store.apply(snapshots[1])
+    #expect(Set(AppIcons.icons.keys).isSubset(of: paths[2...3]))
+    for path in paths[2...3] { _ = AppIcons.icon(forFile: path) }
+    #expect(Set(AppIcons.icons.keys) == Set(paths[2...3]))
+  }
+
+  /// R112, through the real panel: opened with apps A and B and closed, then opened with C and D
+  /// only, the cache holds C and D; the open reading lands a moment after the click, as the
+  /// lifecycle's does. The same holds when C and D come while Settings take the list's place.
+  @Test func theIconCacheKeepsOnlyTheRowsShown() async throws {
+    defer { clearDefaults() }
+    let store = testStore()
+    let paths = ["a", "b", "c", "d"].map { "/Applications/Example \($0.uppercased()).app" }
+    let apps = paths.enumerated().map { index, path in
+      AppUsage(
+        id: path, name: "Example \(index)", bundlePath: path, bundleID: nil,
+        pids: [Int32(5000 + index)], processCount: 1, memory: UInt64(4 - index) << 28,
+        cpu: .value(0.01), diskBytesPerSecond: .value(0), inside: [])
+    }
+    let ab = remake(DemoSnapshots.calm, apps: Array(apps[0...1]))
+    let cd = remake(DemoSnapshots.calm, apps: Array(apps[2...3]))
+    let reading = NextReading(ab)
+    let controller = PanelController(
+      store: store, defaults: testDefaults(),
+      onChange: { visible, _, _ in if visible { Task { store.apply(reading.snapshot) } } })
+    let w = controller.panel
+    controller.toggle(under: try anchor())
+    #expect(try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[0...1]) })
+    controller.toggle(under: try anchor())  // closes it
+    reading.snapshot = cd
+    controller.toggle(under: try anchor())
+    #expect(try await eventually(w) { w.isVisible })
+    #expect(try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[2...3]) }, "reopened")
+
+    store.apply(ab)
+    #expect(try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[0...1]) })
+    store.showingSettings = true
+    try await Task.sleep(for: .milliseconds(100))
+    store.apply(cd)
+    store.showingSettings = false
+    #expect(
+      try await eventually(w) { Set(AppIcons.icons.keys) == Set(paths[2...3]) }, "after Settings")
+  }
+
   /// R76: an unknown pressure reads "—", and swap that is 0 is not shown.
   @Test func anUnknownPressureIsADashAndNoSwapIsNotShown() throws {
     let tight = DemoSnapshots.tight
@@ -815,7 +910,7 @@ extension NativeInteractionTests {
     #expect(slack.terminations == 1)
     await settle()
     apps.nowNs += 5_000_000_000
-    await apps.checks.fire()
+    await apps.timer.fire()
     #expect(store.quitFlow.state == .offerForce)
     #expect(try await eventually(w) { axLabels(in: w).contains("Quitting Slack…") })
     sendKey("↓", to: w)  // Google Chrome, the first row

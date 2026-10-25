@@ -1,3 +1,4 @@
+import AppKit
 import Observation
 import PithCore
 import os
@@ -73,9 +74,13 @@ enum SystemDetailsState: Equatable {
     didSet { if confirmVisible, !oldValue { confirmShownNs = nowNs() } }
   }
   @ObservationIgnored private var confirmShownNs: UInt64 = 0
-  /// Checks the quitting app once per second (R78 and R95).
-  @ObservationIgnored private var quitChecks: Task<Void, any Error>? {
+  /// Sends `.tick` once, 5 s after the app was asked to quit, which offers Force Quit (R111).
+  @ObservationIgnored private var forceOffer: Task<Void, any Error>? {
     didSet { oldValue?.cancel() }
+  }
+  /// Watches for the flow's own process to exit (R111). Nothing polls.
+  @ObservationIgnored private var exitWatch: (any NSObjectProtocol)? {
+    didSet { oldValue.map(runningApps.exits.removeObserver) }
   }
 
   init(
@@ -100,6 +105,8 @@ enum SystemDetailsState: Equatable {
     guard snapshot.mode == .open else { return }
     self.snapshot = snapshot
     rows = RowOrder.stable(previous: rows.map(\.id), apps: snapshot.apps, metric: metric)
+    // The icons kept are those of the rows shown now, whatever the view drew before (R112).
+    AppIcons.keep(Set(rows.compactMap(\.bundlePath)))
     if !flowTargetHolds { resetQuit() }
     appliedOpenSnapshot()
   }
@@ -180,17 +187,19 @@ enum SystemDetailsState: Equatable {
     return quitTarget(for: app)?.isEqual(flowTarget) == true
   }
 
-  /// Every call goes to the flow's own process, never to a PID looked up again (R95). While the
-  /// app quits, or Force Quit is offered or asked, the flow checks it once per second. An event
-  /// that the state does not offer, such as a late click, does nothing (R101).
-  private func sendQuit(_ event: QuitFlow.Event) {
+  /// Every call goes to the flow's own process, never to a PID looked up again (R95). An event
+  /// that the state does not offer, such as a late click, does nothing (R101). Once the app is
+  /// asked to quit, two events move the flow on, and nothing polls (R111): the app's exit, and one
+  /// timer 5 s after each quit or Force Quit, which offers Force Quit if the app still runs.
+  /// `exited` is the exit event.
+  private func sendQuit(_ event: QuitFlow.Event, exited: Bool = false) {
     guard quitFlow.offers(event) else { return }
     guard let target = flowTarget else {
       return assertionFailure("the quit flow in \(quitFlow.state) has no process")
     }
     let shown = quitFlow.state
     quitFlow.send(
-      event, nowNs: nowNs(), isRunning: { !target.isTerminated },
+      event, nowNs: nowNs(), isRunning: { !exited && !target.isTerminated },
       terminate: { if !target.terminate() { Self.refused("terminate", target) } },
       forceTerminate: { if !target.forceTerminate() { Self.refused("forceTerminate", target) } })
     let state = quitFlow.state
@@ -201,21 +210,36 @@ enum SystemDetailsState: Equatable {
     switch state {
     case .idle:
       flowTarget = nil
-      quitChecks = nil
-    case .confirming, .done: quitChecks = nil
-    case .waiting, .offerForce, .confirmingForce:
-      if quitChecks == nil {
-        quitChecks = Task { [weak self, runningApps] in
-          while !Task.isCancelled {
-            try await runningApps.nextCheck()
-            // A check that ends as the flow starts over does not tick.
-            try Task.checkCancellation()
-            guard let self else { return }
-            sendQuit(.tick)
-          }
-        }
+      stopWatching()
+    case .done: stopWatching()
+    case .waiting where state != shown:
+      if exitWatch == nil { watchExit(of: target) }
+      forceOffer = Task { [weak self, runningApps] in
+        try await runningApps.forceOfferDelay()
+        // A timer that ends as the flow starts over does not tick.
+        try Task.checkCancellation()
+        self?.sendQuit(.tick)
+      }
+    case .confirming, .waiting, .offerForce, .confirmingForce: break
+    }
+  }
+
+  private func watchExit(of target: any QuitTarget) {
+    exitWatch = runningApps.exits.addObserver(
+      forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+    ) { [weak self] note in
+      // Delivered on the main queue, so the app object never leaves the main thread.
+      nonisolated(unsafe) let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSObject
+      MainActor.assumeIsolated {
+        guard let self, let target = self.flowTarget, app?.isEqual(target) == true else { return }
+        self.sendQuit(.tick, exited: true)
       }
     }
+  }
+
+  private func stopWatching() {
+    forceOffer = nil
+    exitWatch = nil
   }
 
   private static func refused(_ call: String, _ target: any QuitTarget) {
@@ -227,7 +251,7 @@ enum SystemDetailsState: Equatable {
     guard quitFlow.state != .idle else { return }
     quitFlow = QuitFlow()
     flowTarget = nil
-    quitChecks = nil
+    stopWatching()
   }
 
   /// Asks `top` what macOS itself uses, at most once per 10 s (spec 4.4 and 6.7). Retry calls it

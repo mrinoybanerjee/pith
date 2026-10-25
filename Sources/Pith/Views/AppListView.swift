@@ -19,10 +19,13 @@ struct AppListView: View {
     let values = store.rows.map {
       RowValue.of(metric, memory: $0.memory, cpu: $0.cpu, disk: $0.diskBytesPerSecond)
     }
-    let system =
-      store.snapshot?.system.value.map {
-        RowValue.of(metric, memory: $0.memory, cpu: $0.cpu, disk: nil)
-      } ?? (metric == .disk ? .notMeasured : .notYet)
+    let system: RowValue =
+      switch (metric, store.snapshot?.system) {
+      case (_, .value(let residual)?):
+        .of(metric, memory: residual.memory, cpu: residual.cpu, disk: nil)
+      case (.disk, _): .notMeasured
+      case (_, let reading): .missing(reading)
+      }
     let top = (values + [system]).compactMap(\.amount).max() ?? 0
     let fraction = { (value: RowValue) in value.amount.map { top > 0 ? $0 / top : 0 } }
     let order = store.rows.map(\.id)
@@ -73,7 +76,6 @@ struct AppListView: View {
         }
         .onChange(of: opened) { if revealPending { show(proxy) } }
         .onChange(of: listHeight) { show(proxy) }
-        .onChange(of: order) { AppIcons.keep(Set(store.rows.compactMap(\.bundlePath))) }
       }
     }
   }

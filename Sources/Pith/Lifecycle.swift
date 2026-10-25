@@ -50,6 +50,8 @@ enum PauseReason { case sleep, screensSleep, locked }
   /// A reading is running; `pending` asks for one more when it ends.
   private var ticking = false
   private var pending = false
+  /// The next reading starts on a fresh baseline (R109).
+  private var resetPending = false
   private var pressure: AnyObject?
   private var observers: [any NSObjectProtocol] = []
   /// Told about each pause, so a panel that waits for an open reading stops waiting (R88).
@@ -134,12 +136,18 @@ enum PauseReason { case sleep, screensSleep, locked }
     guard newMode != mode else { return }
     mode = newMode
     configure()
-    if mode == .open { tick() }
+    // R109: an open reading never measures across the closed time. Each opening, attached,
+    // pinned or uncovered, resets the baseline in the same reading as the open tick.
+    if mode == .open {
+      resetPending = true
+      tick()
+    }
   }
 
   /// Asks for a reading. Every trigger calls this on the main actor. While paused it does nothing.
   /// Readings run one at a time, so they apply in the order they were asked for; requests during a
-  /// reading give one more when it ends, in the mode of that moment (ruling R61). The engine works
+  /// reading give one more when it ends, in the mode of that moment (ruling R61). A pending reset
+  /// runs just before its reading, so no other reading comes between them (R109). The engine works
   /// on its own executor; only `apply` runs on the main actor.
   func tick() {
     guard !paused else { return }
@@ -151,6 +159,10 @@ enum PauseReason { case sleep, screensSleep, locked }
     Task {
       repeat {
         pending = false
+        if resetPending {
+          resetPending = false
+          await engine.resetBaseline()
+        }
         store.apply(await engine.tick(mode: mode))
       } while pending && !paused
       ticking = false
@@ -188,6 +200,8 @@ enum PauseReason { case sleep, screensSleep, locked }
   private func resume() {
     Task {
       await engine.resetBaseline()
+      // No reading runs while paused, so this reset also serves an opening during the pause.
+      resetPending = false
       store.resetCPUTimer()
       guard pauseReasons.isEmpty else { return }
       paused = false

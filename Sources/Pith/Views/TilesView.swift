@@ -2,7 +2,8 @@ import PithCore
 import SwiftUI
 
 /// Memory, CPU and Storage (spec 4.2), each a caption, a value, a meter and a word. VoiceOver
-/// reads each tile as one sentence. A value that is not available shows "—", never 0.
+/// reads each tile as one sentence. A value that is not available shows "—", never 0, and says
+/// whether the next reading has it (R110).
 struct TilesView: View {
   let totals: SystemTotals?
 
@@ -47,6 +48,7 @@ struct TilesView: View {
         let own = total.hasSuffix(" " + unit) ? "" : " " + unit
         return (number, "\(own) of \(total)".noBreaks(after: 1))
       },
+      missing: .missing(totals?.memoryUsed),
       fraction: memory.map { Double($0.used) / Double($0.total) },
       words: [word] + [swap].compactMap { $0 }, tint: tint)
   }
@@ -61,7 +63,8 @@ struct TilesView: View {
       return Text(percent < 30 ? "Light" : percent <= 70 ? "Moderate" : "Busy")
     }
     return Tile(
-      caption: "CPU", value: shown, fraction: busy, words: word.map { [$0] } ?? [], tint: nil)
+      caption: "CPU", value: shown, missing: .missing(totals?.cpuBusy), fraction: busy,
+      words: word.map { [$0] } ?? [], tint: nil)
   }
 
   /// "112 GB free", then "of 228 GB"; the meter is the used share.
@@ -75,6 +78,8 @@ struct TilesView: View {
         let (number, unit) = split(ByteFormat.storage(free))
         return (number, " \(unit) free".noBreaks(after: 1))
       },
+      missing: .missing(
+        totals.map { $0.storageFree.value == nil ? $0.storageFree : $0.storageTotal }),
       fraction: space.map { free, total in Double(total - free) / Double(total) },
       words: space.map { [Text("of \(ByteFormat.storage($1))")] } ?? [], tint: nil)
   }
@@ -91,6 +96,8 @@ private struct Tile: View {
   let caption: String
   /// The number and its unit, or nil when the reading is not available.
   let value: (number: String, unit: String)?
+  /// What the value says while it is nil.
+  let missing: RowValue
   let fraction: Double?
   /// One line each.
   let words: [Text]
@@ -110,8 +117,9 @@ private struct Tile: View {
             .foregroundStyle(.secondary)
           Text("\(number)\(unit)")
         } else {
-          Text("—").font(.panel(.value, weight: .semibold))
-            .accessibilityLabel("not available yet")
+          Text(missing.text).font(.panel(.value, weight: .semibold))
+            .accessibilityLabel(missing.label)
+            .help(missing.help ?? "")
         }
       }
       .kerning(-0.19)

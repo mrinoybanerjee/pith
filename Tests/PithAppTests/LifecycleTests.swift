@@ -1,6 +1,7 @@
 import AppKit
 import PithCore
 import Testing
+import os
 
 @testable import Pith
 
@@ -25,10 +26,12 @@ import Testing
   }
 }
 
-/// Records each call. While `holding` is set, a call waits until `release()`.
+/// Records each call. While `holding` is set, a call waits until `release()`; a reset waits too,
+/// unless `holdsResets` is off.
 @MainActor private final class RecordingEngine: Sampler {
   var calls: [String] = []
   var holding = false
+  var holdsResets = true
   /// The CPU and the time of the readings it returns.
   var cpu = Reading<Double>.unavailable("test")
   var nowNs: UInt64 = 0
@@ -42,7 +45,7 @@ import Testing
 
   func resetBaseline() async {
     calls.append("resetBaseline")
-    await hold()
+    if holdsResets { await hold() }
   }
 
   func release() {
@@ -151,7 +154,7 @@ private let unlocked = "com.apple.screenIsUnlocked"
   try await rig.start()
 
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
-  #expect(try await settled { rig.engine.calls == ["tick open"] })
+  #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick open"] })
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: true)  // attached: still open
   rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: true)  // pinned and covered
   rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: false)
@@ -272,14 +275,65 @@ private let unlocked = "com.apple.screenIsUnlocked"
   try await rig.start()
 
   rig.engine.holding = true
+  rig.engine.holdsResets = false
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
-  #expect(try await settled { rig.engine.calls == ["tick open"] })
+  #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick open"] })
   rig.lifecycle.tick()
   rig.lifecycle.tick()
   rig.lifecycle.panelChanged(visible: false, pinned: false, occluded: false)  // closed
   rig.engine.release()
-  #expect(try await settled { rig.engine.calls == ["tick open", "tick closed"] })
+  #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick open", "tick closed"] })
   #expect(rig.store.snapshot?.mode == .open)  // a closed reading changes only the status (R71)
+}
+
+/// One synthetic process, "Example", which uses 10 ms of CPU and writes 1 MB between two reads of
+/// the table, 1 s apart on the table's own clock.
+private final class GrowingTable: ProcessTableReading {
+  private let reads = OSAllocatedUnfairLock(initialState: UInt64(0))
+
+  func readTable() -> ProcessTable {
+    let n = reads.withLock {
+      $0 += 1
+      return $0
+    }
+    let example = ProcessSample(
+      key: ProcessKey(pid: 4242, startTime: 1), parent: 1, uid: getuid(), name: "Example",
+      path: "/Applications/Example.app/Contents/MacOS/Example",
+      executableID: UUID(uuidString: "00000000-0000-0000-0000-000000004242")!,
+      footprint: 50 << 20, cpuTimeNs: n * 10_000_000, diskRead: 0, diskWritten: n << 20)
+    return ProcessTable(samples: [example], takenAtNs: n * seconds, vanished: 0)
+  }
+}
+
+/// R109: a reopen within 5 s, with no closed reading between, starts on a fresh baseline. The first
+/// open reading after it has no CPU or disk rate yet ("—", "not available yet"), and the system
+/// CPU residual is a first sample too, so nothing measures across the closed time.
+@MainActor @Test func aReopenStartsOnAFreshBaseline() async throws {
+  defer { clearDefaults() }
+  let store = testStore()
+  let engine = Engine(
+    system: SystemReader(), processes: GrowingTable(),
+    grouper: AppGrouper(responsible: nil, bundleInfo: { _ in nil }), guide: .empty, cpuCount: 1)
+  let lifecycle = Lifecycle(
+    clock: RecordingClock(), engine: engine, store: store, reader: SystemReader(),
+    defaults: testDefaults(), workspaceCenter: NotificationCenter(),
+    distributedCenter: NotificationCenter(), localCenter: NotificationCenter(),
+    makePressureMonitor: { _ in NSObject() }, thermalState: { .nominal },
+    isLowPowerModeEnabled: { false })
+  lifecycle.start()  // a closed reading
+  lifecycle.panelChanged(visible: true, pinned: false, occluded: false)
+  #expect(try await settled { store.snapshot?.takenAtNs == 1 * seconds })
+  lifecycle.tick()
+  #expect(try await settled { store.snapshot?.apps.first?.cpu.value != nil })
+  lifecycle.panelChanged(visible: false, pinned: false, occluded: false)  // closed: no reading
+  lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // reopened at once
+  #expect(try await settled { store.snapshot?.takenAtNs == 3 * seconds })
+  let example = try #require(store.snapshot?.apps.first)
+  #expect(example.cpu.isFirstSample && example.diskBytesPerSecond.isFirstSample)
+  #expect(store.snapshot?.system.value?.cpu.isFirstSample == true)
+  let shown = RowValue.of(
+    .cpu, memory: example.memory, cpu: example.cpu, disk: example.diskBytesPerSecond)
+  #expect(shown.text == "—" && shown.label == "not available yet")
 }
 
 /// R74 and spec 12: the first launch registers the login item once. A later launch never does,
@@ -341,7 +395,7 @@ private let unlocked = "com.apple.screenIsUnlocked"
   try await rig.start()
 
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // a 1 s interval
-  #expect(try await settled { rig.engine.calls == ["tick open"] })
+  #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick open"] })
   rig.post(rig.workspace, willSleep)
   try await Task.sleep(for: .milliseconds(1500))  // the suspended timer misses a fire
   rig.engine.calls = []
@@ -360,14 +414,18 @@ private let unlocked = "com.apple.screenIsUnlocked"
   try await rig.start()
 
   rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: false)  // pinned and open
-  #expect(try await settled { rig.engine.calls == ["tick open"] })
+  #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick open"] })
   rig.post(rig.distributed, locked)
   rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: true)  // the lock covers it
   rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: false)
-  #expect(try await settled { rig.engine.calls == ["tick open"] })  // still paused
+  #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick open"] })  // still paused
   rig.lifecycle.panelChanged(visible: false, pinned: true, occluded: false)  // closed
   rig.lifecycle.panelChanged(visible: true, pinned: true, occluded: false)  // opened: no unlock
-  #expect(try await settled { rig.engine.calls == ["tick open", "resetBaseline", "tick open"] })
+  // The wake's reset also serves this opening: one reset, then the reading (R109).
+  #expect(
+    try await settled {
+      rig.engine.calls == ["resetBaseline", "tick open", "resetBaseline", "tick open"]
+    })
   #expect(
     rig.clock.calls == [
       openSchedule, "pause", closedSchedule, openSchedule, closedSchedule, openSchedule,
@@ -389,7 +447,10 @@ extension NativeInteractionTests {
 
     panel.toggle(under: (.zero, .zero))  // a pinned panel ignores the anchor
     #expect(rig.clock.calls == [openSchedule])
-    #expect(try await settled { rig.engine.calls == ["tick open"] && panel.panel.isVisible })
+    #expect(
+      try await settled {
+        rig.engine.calls == ["resetBaseline", "tick open"] && panel.panel.isVisible
+      })
     panel.toggle(under: (.zero, .zero))
     #expect(rig.clock.calls.last == closedSchedule)
   }
@@ -405,13 +466,16 @@ extension NativeInteractionTests {
       onChange: rig.lifecycle.panelChanged(visible:pinned:occluded:))
     rig.lifecycle.onPause = { panel.cancelOpening() }
     rig.engine.holding = true
+    rig.engine.holdsResets = false
     panel.toggle(under: try anchor())
-    #expect(try await settled { rig.engine.calls == ["tick open"] })
+    #expect(try await settled { rig.engine.calls == ["resetBaseline", "tick open"] })
     rig.post(rig.workspace, willSleep)
     rig.engine.release()  // the open reading lands during the sleep
     rig.post(rig.workspace, didWake)
     #expect(
-      try await settled { rig.engine.calls == ["tick open", "resetBaseline", "tick closed"] })
+      try await settled {
+        rig.engine.calls == ["resetBaseline", "tick open", "resetBaseline", "tick closed"]
+      })
     #expect(!panel.panel.isVisible)
   }
 }
