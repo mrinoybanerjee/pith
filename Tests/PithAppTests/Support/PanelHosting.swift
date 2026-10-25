@@ -14,6 +14,9 @@ import Testing
   return (CGRect(x: screen.midX, y: screen.maxY, width: 22, height: 24), screen)
 }
 
+/// Sets AppKit up as the app's `main.swift` does, before a test makes a status item.
+@MainActor func startAppKit() { _ = NSApplication.shared }
+
 /// SwiftUI builds its accessibility tree only for an assistive client, which sets this.
 @MainActor func enableAccessibilityTree() {
   _ = NSApplication.shared.perform(
