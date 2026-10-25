@@ -86,7 +86,7 @@ import os
       return count
     }
     Thread.sleep(forTimeInterval: 0.0002)  // widens any gap between sampling and recording
-    return [CPUTicks(user: n, system: 0, idle: 3 * n, nice: 0)]
+    return .value([CPUTicks(user: n, system: 0, idle: 3 * n, nice: 0)])
   })
   let busy = await withTaskGroup(of: Reading<Double>.self) { group in
     for _ in 0..<50 { group.addTask { r.read().cpuBusy } }
@@ -94,4 +94,19 @@ import os
   }
   #expect(busy.filter { $0 == .unavailable("first sample") }.count == 1)
   #expect(busy.filter { $0 == .value(0.25) }.count == 49)
+}
+
+@Test func failedCPUSampleIsUnavailableAndKeepsTheLastGoodBaseline() {
+  let samples = OSAllocatedUnfairLock(
+    initialState: [
+      Reading<[CPUTicks]>.unavailable("host_processor_info failed: 4"),  // before any baseline
+      .value([CPUTicks(user: 0, system: 0, idle: 0, nice: 0)]),
+      .unavailable("host_processor_info failed: 4"),
+      .value([CPUTicks(user: 1, system: 0, idle: 3, nice: 0)]),
+    ])
+  let r = SystemReader(sampleTicks: { samples.withLock { $0.removeFirst() } })
+  #expect(r.read().cpuBusy == .unavailable("host_processor_info failed: 4"))
+  #expect(r.read().cpuBusy == .unavailable("first sample"))
+  #expect(r.read().cpuBusy == .unavailable("host_processor_info failed: 4"))
+  #expect(r.read().cpuBusy == .value(0.25))  // against the first good sample, not the failed one
 }

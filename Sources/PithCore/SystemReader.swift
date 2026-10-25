@@ -45,8 +45,9 @@ public protocol SystemTotalsReading: Sendable {
 }
 
 /// Reads the whole-machine totals. CPU busy is the change since the previous `read()`, so the
-/// first `read()` has none. Storage is read at most once a minute until `invalidateStorageCache()`.
-/// A failed kernel read is unavailable, never 0.
+/// first `read()` has none, and a failed sample leaves the previous good one as the baseline.
+/// Storage is read at most once a minute until `invalidateStorageCache()`. A failed kernel read is
+/// unavailable, never 0.
 public final class SystemReader: SystemTotalsReading {
   private struct StorageCache: Sendable {
     let at: ContinuousClock.Instant
@@ -60,18 +61,14 @@ public final class SystemReader: SystemTotalsReading {
   }
 
   private static let host = mach_host_self()
-  private static let pageSize: UInt64 = {
-    var size: vm_size_t = 0
-    let status = host_page_size(host, &size)
-    assert(status == KERN_SUCCESS, "host_page_size failed: \(status)")
-    return UInt64(size)
-  }()
   private let state = OSAllocatedUnfairLock(initialState: State())
-  private let sampleTicks: @Sendable () -> [CPUTicks]
+  private let sampleTicks: @Sendable () -> Reading<[CPUTicks]>
 
   public init() { sampleTicks = Self.readCPUTicks }
 
-  init(sampleTicks: @escaping @Sendable () -> [CPUTicks]) { self.sampleTicks = sampleTicks }
+  init(sampleTicks: @escaping @Sendable () -> Reading<[CPUTicks]>) {
+    self.sampleTicks = sampleTicks
+  }
 
   /// When the storage cache was filled; `nil` before the first read and after invalidation.
   var storageCachedAt: ContinuousClock.Instant? { state.withLock { $0.storage?.at } }
@@ -82,17 +79,16 @@ public final class SystemReader: SystemTotalsReading {
 
   public func read() -> SystemTotals {
     // Sample inside the lock: sampling outside lets two reads record out of order.
-    let (previous, ticks) = state.withLock { s in
-      let ticks = sampleTicks()
-      defer { s.ticks = ticks }
-      return (s.ticks, ticks)
-    }
-    let cpuBusy: Reading<Double>
-    if let previous {
-      let busy = cpuBusyFraction(previous: previous, current: ticks)
-      cpuBusy = busy.isNaN ? .unavailable("no ticks elapsed") : .value(busy)
-    } else {
-      cpuBusy = .unavailable("first sample")
+    let cpuBusy: Reading<Double> = state.withLock { s in
+      switch sampleTicks() {
+      case .unavailable(let reason):
+        return .unavailable(reason)
+      case .value(let ticks):
+        defer { s.ticks = ticks }
+        guard let previous = s.ticks else { return .unavailable("first sample") }
+        let busy = cpuBusyFraction(previous: previous, current: ticks)
+        return busy.isNaN ? .unavailable("no ticks elapsed") : .value(busy)
+      }
     }
     let storage = cachedStorage()
     return SystemTotals(
@@ -116,6 +112,11 @@ public final class SystemReader: SystemTotalsReading {
   }
 
   private static func readMemoryUsed() -> Reading<UInt64> {
+    var pageSize: vm_size_t = 0
+    let pageStatus = host_page_size(host, &pageSize)
+    guard pageStatus == KERN_SUCCESS else {
+      return .unavailable("host_page_size failed: \(pageStatus)")
+    }
     var stats = vm_statistics64()
     var count = mach_msg_type_number_t(
       MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
@@ -128,7 +129,7 @@ public final class SystemReader: SystemTotalsReading {
     let counts = VMCounts(
       internal: UInt64(stats.internal_page_count), purgeable: UInt64(stats.purgeable_count),
       wired: UInt64(stats.wire_count), compressor: UInt64(stats.compressor_page_count))
-    return .value(memoryUsed(counts, pageSize: pageSize))
+    return .value(memoryUsed(counts, pageSize: UInt64(pageSize)))
   }
 
   private static func readSwapUsed() -> Reading<UInt64> {
@@ -140,19 +141,21 @@ public final class SystemReader: SystemTotalsReading {
     return .value(swap.xsu_used)
   }
 
-  private static func readCPUTicks() -> [CPUTicks] {
+  private static func readCPUTicks() -> Reading<[CPUTicks]> {
     var cpuCount: natural_t = 0
     var info: processor_info_array_t?
     var infoCount: mach_msg_type_number_t = 0
     let status = host_processor_info(host, PROCESSOR_CPU_LOAD_INFO, &cpuCount, &info, &infoCount)
-    assert(status == KERN_SUCCESS, "host_processor_info failed: \(status)")
+    guard status == KERN_SUCCESS else {
+      return .unavailable("host_processor_info failed: \(status)")
+    }
     defer {
       vm_deallocate(
         mach_task_self_, vm_address_t(bitPattern: info),
         vm_size_t(infoCount) * vm_size_t(MemoryLayout<integer_t>.stride))
     }
     let raw = UnsafeBufferPointer(start: info, count: Int(infoCount))
-    return (0..<Int(cpuCount)).map { cpu in
+    let ticks = (0..<Int(cpuCount)).map { cpu in
       let base = cpu * Int(CPU_STATE_MAX)
       return CPUTicks(
         user: UInt32(bitPattern: raw[base + Int(CPU_STATE_USER)]),
@@ -160,6 +163,7 @@ public final class SystemReader: SystemTotalsReading {
         idle: UInt32(bitPattern: raw[base + Int(CPU_STATE_IDLE)]),
         nice: UInt32(bitPattern: raw[base + Int(CPU_STATE_NICE)]))
     }
+    return .value(ticks)
   }
 
   private static func readStorage() -> StorageCache {
