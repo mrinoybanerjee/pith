@@ -28,7 +28,7 @@ enum PauseReason { case sleep, screensSleep, locked }
 ///   of them is left, or when the user opens the panel;
 /// - readings run one at a time, never while paused, and a pressure change takes one at once;
 /// - a volume mount or unmount re-reads storage;
-/// - the settings stay saved, and the login item follows them.
+/// - the settings stay saved, and at launch the login item follows them.
 @MainActor final class Lifecycle {
   private let clock: any Ticker
   private let engine: any Sampler
@@ -41,7 +41,6 @@ enum PauseReason { case sleep, screensSleep, locked }
   private let makePressureMonitor: (@escaping @Sendable (Reading<Pressure>) -> Void) -> AnyObject
   private let thermalState: () -> ProcessInfo.ThermalState
   private let isLowPowerModeEnabled: () -> Bool
-  private let loginItem: (Bool) -> Void
   private var mode = Mode.closed
   /// The panel's visibility at the last change, so an open is told apart from an occlusion change.
   private var panelVisible = false
@@ -68,8 +67,7 @@ enum PauseReason { case sleep, screensSleep, locked }
     thermalState: @escaping () -> ProcessInfo.ThermalState = {
       ProcessInfo.processInfo.thermalState
     },
-    isLowPowerModeEnabled: @escaping () -> Bool = { ProcessInfo.processInfo.isLowPowerModeEnabled },
-    loginItem: @escaping (Bool) -> Void
+    isLowPowerModeEnabled: @escaping () -> Bool = { ProcessInfo.processInfo.isLowPowerModeEnabled }
   ) {
     self.clock = clock
     self.engine = engine
@@ -82,12 +80,12 @@ enum PauseReason { case sleep, screensSleep, locked }
     self.makePressureMonitor = makePressureMonitor
     self.thermalState = thermalState
     self.isLowPowerModeEnabled = isLowPowerModeEnabled
-    self.loginItem = loginItem
   }
 
-  /// Follows the settings and the system, and takes the first reading.
+  /// Follows the settings and the system, sets the login item, and takes the first reading.
   func start() {
     follow({ [store] in store.settings }, then: { [weak self] in self?.apply($0) })
+    store.applyLoginItem()
     pressure = makePressureMonitor { [weak self] _ in Task { @MainActor in self?.tick() } }
     let workspace = workspaceCenter
     let distributed = distributedCenter
@@ -155,7 +153,6 @@ enum PauseReason { case sleep, screensSleep, locked }
 
   private func apply(_ settings: Settings) {
     settings.save(defaults)
-    loginItem(settings.launchAtLogin)
     configure()
   }
 

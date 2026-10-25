@@ -10,16 +10,19 @@ import PithCore
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     let defaults = UserDefaults.standard
-    let store = Store(settings: .load(defaults))
+    let guide = try! Guide.bundled()
+    let details = SystemDetails(guide: guide, nowNs: { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) })
+    let store = Store(
+      settings: .load(defaults), guide: guide, loginItem: .main,
+      measureSystem: { try await details.measure() })
     let reader = SystemReader()
     let engine = Engine(
-      system: reader, processes: LibprocProcessTable(), grouper: .live(),
-      guide: try! Guide.bundled(), cpuCount: ProcessInfo.processInfo.activeProcessorCount)
+      system: reader, processes: LibprocProcessTable(), grouper: .live(), guide: guide,
+      cpuCount: ProcessInfo.processInfo.activeProcessorCount)
     // The clock keeps `onTick` until it is released, so `onTick` must not hold its owners.
     let clock = Clock { [weak self] in Task { @MainActor in self?.lifecycle.tick() } }
     lifecycle = Lifecycle(
-      clock: clock, engine: engine, store: store, reader: reader, defaults: defaults,
-      loginItem: Settings.setLoginItem)
+      clock: clock, engine: engine, store: store, reader: reader, defaults: defaults)
     panel = PanelController(
       store: store, defaults: defaults, onChange: lifecycle.panelChanged(visible:pinned:occluded:))
     statusItem = StatusItemController { [weak self] in

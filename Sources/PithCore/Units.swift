@@ -30,6 +30,13 @@ public enum ByteFormat {
   /// Decimal units (1 GB = 10^9 bytes), as Finder and System Settings show storage.
   public static func storage(_ bytes: UInt64) -> String { format(bytes, base: 1000) }
 
+  /// A disk rate in decimal units, as storage, from "0 KB/s" up.
+  public static func rate(_ bytesPerSecond: Double) -> String {
+    let inKB = bytesPerSecond / 1000
+    if inKB.rounded() < 1000 { return String(format: "%.0f KB/s", inKB) }
+    return storage(UInt64(bytesPerSecond.rounded())) + "/s"
+  }
+
   private static func format(_ bytes: UInt64, base: Double) -> String {
     let inMB = Double(bytes) / (base * base)
     let inGB = inMB / base

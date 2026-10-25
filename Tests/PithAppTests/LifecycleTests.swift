@@ -90,7 +90,7 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
   let suite = "pith.tests.\(UUID())"
   let clock = RecordingClock()
   let engine = RecordingEngine()
-  let store = Store(settings: Settings())
+  let store = testStore()
   let workspace = NotificationCenter()
   let distributed = NotificationCenter()
   let pressure = StubPressureMonitor()
@@ -105,7 +105,7 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
       makePressureMonitor: { [pressure] in
         pressure.onChange = $0
         return pressure
-      }, thermalState: { .nominal }, isLowPowerModeEnabled: { false }, loginItem: { _ in })
+      }, thermalState: { .nominal }, isLowPowerModeEnabled: { false })
   }
 
   /// Starts the lifecycle, waits for its first reading, then clears the logs.
@@ -295,7 +295,7 @@ private let unlocked = "com.apple.screenIsUnlocked"
 
 /// Rule 8: the rules start afresh when `amberOnCPU` changes.
 @MainActor @Test func changingAmberOnCPURebuildsTheRules() {
-  let store = Store(settings: Settings())
+  let store = testStore()
   store.apply(snapshot(cpu: .value(0.9), at: 0))
   store.apply(snapshot(cpu: .value(0.9), at: 60 * seconds))
   #expect(store.status.dot == .tight)

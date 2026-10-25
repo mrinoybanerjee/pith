@@ -1,7 +1,6 @@
 import Foundation
 import PithCore
 import ServiceManagement
-import os
 
 /// The three settings (spec 4.6). A key that was never saved has its default; a saved value of the
 /// wrong type traps.
@@ -27,19 +26,22 @@ struct Settings: Equatable {
     defaults.set(refresh.rawValue, forKey: "refresh")
     defaults.set(amberOnCPU, forKey: "amberOnCPU")
   }
+}
 
-  /// Registers Pith as a login item, or removes it, to follow `launchAtLogin`. macOS can refuse, for
-  /// example for an app outside a bundle; the refusal is logged as an error.
-  static func setLoginItem(_ enabled: Bool) {
-    let app = SMAppService.mainApp
-    do {
+/// Pith's login item (spec 4.6): `SMAppService.mainApp` in the app, a stand-in in tests.
+struct LoginItem {
+  static let main = LoginItem(
+    isEnabled: { SMAppService.mainApp.status == .enabled },
+    set: { enabled in
+      let app = SMAppService.mainApp
       if enabled, app.status != .enabled { try app.register() }
       if !enabled, app.status != .notRegistered { try app.unregister() }
-    } catch {
-      Logger(subsystem: "com.mrinoy.pith", category: "login-item")
-        .error("cannot set launch at login to \(enabled): \(error, privacy: .public)")
-    }
-  }
+    })
+
+  /// Whether Pith opens at login now. The user can change it in System Settings at any time.
+  let isEnabled: @MainActor @Sendable () -> Bool
+  /// Registers Pith or removes it. macOS can refuse, for example for an app outside a bundle.
+  let set: @MainActor @Sendable (Bool) throws -> Void
 }
 
 extension UserDefaults {
