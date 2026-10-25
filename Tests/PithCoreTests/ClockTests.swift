@@ -59,7 +59,7 @@ private func countingClock() -> (clock: Clock, ticks: @Sendable () -> Int) {
 
 @Test func clockTicksAndPauses() async throws {
   let (c, ticks) = countingClock()
-  c.configure(seconds: 0.05, leeway: 0.005)
+  c.configure(seconds: 0.05, leeway: 0.005, first: 0.05)
   try await Task.sleep(for: .milliseconds(180))
   c.pause()
   try await Task.sleep(for: .milliseconds(20))  // a tick already running at `pause()` can finish
@@ -72,7 +72,7 @@ private func countingClock() -> (clock: Clock, ticks: @Sendable () -> Int) {
 @Test func pauseAndResumeAreIdempotent() async throws {
   let (c, ticks) = countingClock()
   c.resume()  // already running: not an over-resume
-  c.configure(seconds: 0.05, leeway: 0.005)
+  c.configure(seconds: 0.05, leeway: 0.005, first: 0.05)
   c.pause()
   c.pause()
   c.resume()  // one resume ends any number of pauses
@@ -82,12 +82,19 @@ private func countingClock() -> (clock: Clock, ticks: @Sendable () -> Int) {
 
 @Test func configureReschedules() async throws {
   let (c, ticks) = countingClock()
-  c.configure(seconds: 60, leeway: 1)
-  c.configure(seconds: 0.5, leeway: 0.05)
+  c.configure(seconds: 60, leeway: 1, first: 60)
+  c.configure(seconds: 0.5, leeway: 0.05, first: 0.5)
   try await Task.sleep(for: .milliseconds(100))
   #expect(ticks() == 0)  // the first tick comes one interval after `configure`
   try await Task.sleep(for: .milliseconds(600))
   #expect(ticks() >= 1)
+}
+
+@Test func theFirstTickCanComeSoonerThanTheInterval() async throws {  // R134
+  let (c, ticks) = countingClock()
+  c.configure(seconds: 0.5, leeway: 0.01, first: 0.05)
+  try await Task.sleep(for: .milliseconds(250))
+  #expect(ticks() == 1)  // at 50 ms; the next comes at 550 ms
 }
 
 @Test func pausedClockCanBeReleased() {

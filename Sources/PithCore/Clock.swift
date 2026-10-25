@@ -42,11 +42,13 @@ public final class Clock: Sendable {
     timer.activate()
   }
 
-  /// Replaces the schedule. The first tick comes one interval from now.
-  public func configure(seconds: Double, leeway: Double) {
-    precondition(seconds > 0 && leeway >= 0, "seconds \(seconds), leeway \(leeway)")
+  /// Replaces the schedule. The first tick comes `first` from now, then one every `seconds`.
+  public func configure(seconds: Double, leeway: Double, first: Double) {
+    precondition(
+      seconds > 0 && first > 0 && leeway >= 0,
+      "seconds \(seconds), leeway \(leeway), first \(first)")
     timer.schedule(
-      deadline: .now() + seconds, repeating: seconds,
+      deadline: .now() + first, repeating: seconds,
       leeway: .nanoseconds(Int(leeway * 1_000_000_000)))
   }
 

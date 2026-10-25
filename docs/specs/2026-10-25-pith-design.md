@@ -116,7 +116,7 @@ Clicking a row expands it in place. The expanded row shows:
 | Setting | Options | Default |
 |---|---|---|
 | Launch at login | On / Off (`SMAppService.mainApp`) | On |
-| Refresh while open | 1 s / 2 s | 1 s |
+| Refresh while open | 1 s / 2 s | 2 s (R134) |
 | Dot turns amber on | Memory, CPU or storage / Memory or storage only | Memory, CPU or storage |
 
 ### 4.7 Pin
@@ -244,7 +244,7 @@ struct Snapshot: Sendable {
 
 - App CPU = Σ over the app's processes of Δ`cpuTimeNs` / (Δwall-clock ns × logical CPU count). This is the share of the whole Mac, 0–100%; it never exceeds 100%.
 - Total CPU busy = Δ(user + system + nice ticks) / Δ(all ticks), summed over all cores.
-- Opening the panel shows the last snapshot at once and runs one tick immediately. That tick has no previous table, so it fills memory right away and shows "—" for CPU and Disk until the next tick, 1 s later.
+- Opening the panel shows the last snapshot at once and runs one tick immediately. That tick has no previous table, so it fills memory right away and shows "—" for CPU and Disk until the next tick, 1 s later. The first interval after an open is always the 1 s one (doubled in Low Power Mode or a serious thermal state); then the refresh setting's interval applies (R134).
 
 ### 6.4 Memory "used"
 
@@ -332,7 +332,7 @@ The sentence is visible only while the panel is open, and opening the panel runs
 
 - Two speeds:
   - **closed:** 5 s interval, 1 s leeway, system totals only;
-  - **open:** 1 s interval (or 2 s by setting), 0.1 s leeway, full sweep.
+  - **open:** 2 s interval by default (1 s by setting), a tenth of it as leeway, full sweep. The first interval after an open is 1 s. At 1 s the panel measured 1.9–2.4% of one core on the mini, over the open budget (R134).
 - A pinned panel that is fully covered (`NSWindow.occlusionState`) uses the closed speed.
 - The clock stops on sleep, screen lock and display sleep, and resumes on wake.
 - Low Power Mode or `ProcessInfo.thermalState` ≥ `.serious` doubles both intervals.

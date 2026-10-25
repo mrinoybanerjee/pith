@@ -10,9 +10,9 @@ import os
   var calls: [String] = []
   var real: Clock?
 
-  func configure(seconds: Double, leeway: Double) {
-    calls.append("configure \(seconds) \(leeway)")
-    real?.configure(seconds: seconds, leeway: leeway)
+  func configure(seconds: Double, leeway: Double, first: Double) {
+    calls.append("configure \(seconds) \(leeway) first \(first)")
+    real?.configure(seconds: seconds, leeway: leeway, first: first)
   }
 
   func pause() {
@@ -35,10 +35,13 @@ import os
   /// The CPU and the time of the readings it returns.
   var cpu = Reading<Double>.unavailable("test")
   var nowNs: UInt64 = 0
+  /// When each open reading began.
+  private(set) var openTicks: [ContinuousClock.Instant] = []
   private var held: [CheckedContinuation<Void, Never>] = []
 
   func tick(mode: Mode) async -> Snapshot {
     calls.append("tick \(mode)")
+    if mode == .open { openTicks.append(.now) }
     await hold()
     return snapshot(cpu: cpu, at: nowNs, mode: mode)
   }
@@ -138,8 +141,9 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
 }
 
 /// The schedules `Lifecycle` gives the clock with Low Power Mode off and a nominal thermal state.
-private let closedSchedule = "configure 5.0 1.0"
-private let openSchedule = "configure 1.0 0.1"
+/// An open reads every 2 s by default, after a first interval of 1 s (R134).
+private let closedSchedule = "configure 5.0 1.0 first 5.0"
+private let openSchedule = "configure 2.0 0.2 first 1.0"
 
 private let seconds: UInt64 = 1_000_000_000
 private let willSleep = NSWorkspace.willSleepNotification.rawValue
@@ -362,7 +366,8 @@ private final class GrowingTable: ProcessTableReading {
 
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
   for (refresh, schedule) in [
-    (RefreshSetting.twoSeconds, "configure 2.0 0.2"), (.oneSecond, openSchedule),
+    (RefreshSetting.oneSecond, "configure 1.0 0.1 first 1.0"),
+    (.twoSeconds, "configure 2.0 0.2 first 2.0"),
   ] {
     rig.store.settings.refresh = refresh
     #expect(try await settled { rig.clock.calls.last == schedule }, "\(refresh)")
@@ -383,6 +388,27 @@ private final class GrowingTable: ProcessTableReading {
   store.apply(snapshot(cpu: .value(0.9), at: 180 * seconds))
   store.apply(snapshot(cpu: .value(0.9), at: 240 * seconds))
   #expect(store.status.dot == .tight)
+}
+
+/// R134: with the 2 s default, the first interval after an open is 1 s, so CPU and Disk show 1 s
+/// after the click; then a reading comes every 2 s.
+@MainActor @Test func afterAnOpenTheNextReadingComesIn1sThenEvery2s() async throws {
+  let rig = Rig()
+  defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+  rig.clock.real = Clock { [weak lifecycle = rig.lifecycle] in
+    Task { @MainActor in lifecycle?.tick() }
+  }
+  try await rig.start()
+
+  rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
+  for _ in 0..<500 where rig.engine.openTicks.count < 3 {
+    try await Task.sleep(for: .milliseconds(10))
+  }
+  let t = rig.engine.openTicks
+  try #require(t.count == 3)
+  let (first, second) = (t[0].duration(to: t[1]), t[1].duration(to: t[2]))
+  #expect(first > .milliseconds(900) && first < .milliseconds(1400), "\(first)")
+  #expect(second > .milliseconds(1800) && second < .milliseconds(2500), "\(second)")
 }
 
 /// R65: a suspended timer keeps the fire it missed and delivers it on resume. The wake reschedules

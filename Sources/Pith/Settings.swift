@@ -5,7 +5,8 @@ import ServiceManagement
 /// The saved settings (spec 4.6). Launch at login is not saved: macOS's own login item state is the
 /// truth (R74). A key that was never saved has its default; a saved value of the wrong type traps.
 struct Settings: Equatable {
-  var refresh = RefreshSetting.oneSecond
+  /// 2 s while open by default; 1 s by setting (R134).
+  var refresh = RefreshSetting.twoSeconds
   var amberOnCPU = true
 
   static func load(_ defaults: UserDefaults) -> Settings {

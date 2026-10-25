@@ -4,7 +4,7 @@ import os
 
 /// The clock's controls, so a test can record them. `Clock` is the real one.
 @MainActor protocol Ticker: AnyObject {
-  func configure(seconds: Double, leeway: Double)
+  func configure(seconds: Double, leeway: Double, first: Double)
   func pause()
   func resume()
 }
@@ -137,7 +137,7 @@ enum PauseReason { case sleep, screensSleep, locked }
     let newMode = ModePolicy.mode(panelVisible: visible, pinned: pinned, occluded: occluded)
     guard newMode != mode else { return }
     mode = newMode
-    configure()
+    configure(fresh: mode == .open)
     // R109: an open reading never measures across the closed time. Each opening, attached,
     // pinned or uncovered, resets the baseline in the same reading as the open tick.
     if mode == .open {
@@ -186,12 +186,20 @@ enum PauseReason { case sleep, screensSleep, locked }
     configure()
   }
 
-  private func configure() {
+  /// Sets the clock's speed. When the panel is open and readings restart on a `fresh` baseline,
+  /// after an open or a wake, the first interval is the 1 s one, so CPU and Disk show 1 s after
+  /// the click; then the setting's (R134).
+  private func configure(fresh: Bool = false) {
     let thermal = thermalState()
-    let interval = SamplingPolicy.interval(
-      mode: mode, refresh: store.settings.refresh, lowPower: isLowPowerModeEnabled(),
-      thermalSerious: thermal == .serious || thermal == .critical)
-    clock.configure(seconds: interval.seconds, leeway: interval.leeway)
+    let interval = { (refresh: RefreshSetting) in
+      SamplingPolicy.interval(
+        mode: self.mode, refresh: refresh, lowPower: self.isLowPowerModeEnabled(),
+        thermalSerious: thermal == .serious || thermal == .critical)
+    }
+    let steady = interval(store.settings.refresh)
+    clock.configure(
+      seconds: steady.seconds, leeway: steady.leeway,
+      first: fresh ? interval(.oneSecond).seconds : steady.seconds)
   }
 
   private func pause(_ reason: PauseReason) {
@@ -217,7 +225,7 @@ enum PauseReason { case sleep, screensSleep, locked }
       store.resetCPUTimer()
       guard pauseReasons.isEmpty else { return }
       paused = false
-      configure()
+      configure(fresh: mode == .open)
       clock.resume()
       tick()
     }
