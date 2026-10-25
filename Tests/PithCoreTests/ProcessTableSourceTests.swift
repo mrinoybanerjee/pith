@@ -1,0 +1,90 @@
+import Darwin
+import Testing
+import os
+
+@testable import PithCore
+
+@Test func ownProcessIsPresentAndOthersAreNot() throws {
+  let t = LibprocProcessTable().readTable()
+  let me = try #require(t.samples.first { $0.key.pid == getpid() })
+  #expect(me.footprint > 0 && me.uid == getuid())
+  #expect(t.samples.allSatisfy { $0.uid == getuid() })
+  #expect(!t.samples.contains { $0.key.pid == 1 })
+}
+
+@Test func cpuTimeAdvances() throws {
+  let src = LibprocProcessTable()
+  let a = try #require(src.readTable().samples.first { $0.key.pid == getpid() })
+  var x = 0.0
+  for i in 0..<3_000_000 { x += Double(i).squareRoot() }
+  _ = x
+  let b = try #require(src.readTable().samples.first { $0.key.pid == getpid() })
+  #expect(b.cpuTimeNs > a.cpuTimeNs && a.key == b.key)
+}
+
+@Test func vanishedProcessIsCountedNotReported() {  // Review Focus 2
+  var probe = ProcessProbe.fake(pids: [10, 11], uid: 501)
+  probe.rusage = { $0 == 11 ? .failure(.noSuchProcess) : .success(.fake(footprint: 1)) }
+  let t = LibprocProcessTable(probe: probe, uid: 501).readTable()
+  #expect(t.samples.map(\.key.pid) == [10] && t.vanished == 1)
+}
+
+@Test func pidBufferGrows() {  // Review Focus 1
+  var calls = 0
+  let pids = listAllPIDs(
+    count: { 2_000 },
+    fill: { buf, cap in
+      calls += 1
+      let n = min(5_000, Int(cap))
+      for i in 0..<n { buf[i] = Int32(i + 1) }
+      return Int32(n) == cap ? cap : Int32(n)
+    })
+  #expect(pids.count == 5_000 && calls >= 2)
+}
+
+@Test func otherUsersAndDeniedProcessesAreLeftOut() {
+  var probe = ProcessProbe.fake(pids: [10, 11, 12], uid: 501)
+  probe.bsdInfo = { ($0 == 11 ? 0 : 501, 1, "fake") }
+  probe.rusage = { $0 == 12 ? .failure(.notPermitted) : .success(.fake(footprint: 1)) }
+  let t = LibprocProcessTable(probe: probe, uid: 501).readTable()
+  #expect(t.samples.map(\.key.pid) == [10] && t.vanished == 0)
+}
+
+@Test func sampleConvertsTicksWithTheTimebase() throws {
+  var usage = rusage_info_v6.fake(footprint: 7)
+  usage.ri_proc_start_abstime = 24_000_000  // 1 s at 125/3
+  usage.ri_user_time = 1_800_000
+  usage.ri_system_time = 600_000  // 0.1 s together
+  usage.ri_diskio_bytesread = 3
+  usage.ri_diskio_byteswritten = 4
+  var probe = ProcessProbe.fake(pids: [10], uid: 501)
+  probe.rusage = { [usage] _ in .success(usage) }
+  let table = LibprocProcessTable(
+    probe: probe, uid: 501, timebase: MachTimebase(numer: 125, denom: 3))
+  #expect(
+    table.readTable().samples == [
+      ProcessSample(
+        key: ProcessKey(pid: 10, startTime: 1_000_000), parent: 1, uid: 501, name: "fake",
+        path: "/Applications/Fake.app/Contents/MacOS/Fake", footprint: 7, cpuTimeNs: 100_000_000,
+        diskRead: 3, diskWritten: 4)
+    ])
+}
+
+@Test func pathIsReadOncePerKeyAndEvictedWhenGone() {
+  let pids = OSAllocatedUnfairLock(initialState: [Int32]([10, 11]))
+  let reads = OSAllocatedUnfairLock(initialState: [Int32]())
+  var probe = ProcessProbe.fake(pids: [], uid: 501)
+  probe.listPIDs = { pids.withLock { $0 } }
+  probe.path = { pid in
+    reads.withLock { $0.append(pid) }
+    return "/Applications/Fake.app/Contents/MacOS/Fake"
+  }
+  let table = LibprocProcessTable(probe: probe, uid: 501)
+  _ = table.readTable()
+  _ = table.readTable()  // both paths come from the cache
+  pids.withLock { $0 = [10] }
+  _ = table.readTable()  // 11 is evicted
+  pids.withLock { $0 = [10, 11] }
+  _ = table.readTable()  // so its path is read again
+  #expect(reads.withLock { $0 } == [10, 11, 11])
+}
