@@ -22,14 +22,20 @@ let package = Package(
       name: "Pith",
       dependencies: ["PithCore"]
     ),
+    // Test-only helpers. No product and neither app target depends on it, so it never ships.
+    .target(
+      name: "PithTestSupport",
+      dependencies: ["PithCore"],
+      path: "Tests/PithTestSupport"
+    ),
     .testTarget(
       name: "PithCoreTests",
-      dependencies: ["PithCore"],
+      dependencies: ["PithCore", "PithTestSupport"],
       resources: [.copy("Fixtures")]
     ),
     .testTarget(
       name: "PithAppTests",
-      dependencies: ["Pith", "PithCore"]
+      dependencies: ["Pith", "PithCore", "PithTestSupport"]
     ),
   ],
   swiftLanguageModes: [.v6]

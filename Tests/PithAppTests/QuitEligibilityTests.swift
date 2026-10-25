@@ -1,4 +1,5 @@
 import AppKit
+import PithTestSupport
 import Testing
 
 @testable import Pith

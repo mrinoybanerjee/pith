@@ -32,6 +32,13 @@ if [[ $# -eq 0 ]]; then
     echo "$USAGE" >&2
     exit 2
 fi
+# ssh would read a target such as -oProxyCommand=... as an option.
+for target in "$@"; do
+    if [[ "$target" == -* ]]; then
+        printf 'error: target %s starts with "-"\n%s\n' "$target" "$USAGE" >&2
+        exit 2
+    fi
+done
 # With a trailing slash, rsync --delete would make /Applications match the app's contents.
 if [[ -n "$APP" && "${APP##*/}" != Pith.app ]]; then
     echo "error: --app must name Pith.app itself, without a trailing slash" >&2

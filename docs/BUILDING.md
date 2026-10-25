@@ -47,7 +47,8 @@ This runs the lint, a release build with warnings as errors, and every test, inc
 ```
 
 A remote target needs key-based SSH (the script uses `BatchMode=yes`, so it never asks for a
-password) and a logged-in desktop session, so that `open` can start Pith there.
+password, and the host key must already be in `known_hosts`) and a logged-in desktop session,
+so that `open` can start Pith there.
 
 Before it changes anything, the script checks that the app exists and passes
 `codesign --verify --deep --strict`. The `--app` path must end in `Pith.app`, with no trailing

@@ -26,7 +26,7 @@ cp /usr/bin/true "$APP/Contents/MacOS/Pith"
 printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
     '<plist version="1.0"><dict><key>CFBundleExecutable</key><string>Pith</string></dict></plist>' \
     >"$APP/Contents/Info.plist"
-codesign --force --sign - "$APP" 2>/dev/null
+signed="$(codesign --force --sign - "$APP" 2>&1)" || fail "cannot sign the stand-in app: $signed"
 A="$(printf %q "$APP")"
 # A copy whose seal is broken.
 mkdir -p "$TMP/Broken"
@@ -79,6 +79,7 @@ refuse --app "$TMP/Broken/Pith.app" local
 refuse --app "$APP"
 refuse --app
 refuse --force local
+refuse --app "$APP" local -oProxyCommand=true # ssh would read it as an option
 
 # Host "down" refuses ssh and host "up" accepts. Fake ssh and rsync stand in, so nothing is
 # copied, quit or opened anywhere.
