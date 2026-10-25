@@ -14,7 +14,9 @@ let package = Package(
   targets: [
     .target(
       name: "PithCore",
-      resources: [.copy("Resources/guide.json")]
+      // Not a SwiftPM resource: Bundle.module would compile this Mac's .build path into the app.
+      // scripts/build-app.sh copies guide.json into Contents/Resources; tests read it here.
+      exclude: ["Resources/guide.json"]
     ),
     .executableTarget(
       name: "Pith",

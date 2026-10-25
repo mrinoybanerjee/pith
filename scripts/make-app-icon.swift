@@ -36,7 +36,7 @@ struct Icon: View {
   let resources = URL(fileURLWithPath: "Resources", isDirectory: true)
   guard FileManager.default.fileExists(atPath: resources.appendingPathComponent("Info.plist").path)
   else {
-    print("Run from the repository root.")
+    FileHandle.standardError.write(Data("Run from the repository root.\n".utf8))
     exit(1)
   }
   let iconset = URL(fileURLWithPath: ".build/AppIcon.iconset", isDirectory: true)

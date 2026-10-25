@@ -74,8 +74,8 @@ public struct Guide: Sendable, Equatable {
   private let pathPrefixes: [GuideEntry]  // longest first
   private let helperPatterns: [GuideEntry]  // longest first
 
-  /// Traps on two entries with the same match, as a backstop for hand-built guides. `bundled()`
-  /// reports a duplicate as an error before it gets here.
+  /// Traps on two entries with the same match, as a backstop for hand-built guides.
+  /// `bundled(in:)` reports a duplicate as an error before it gets here.
   public init(entries: [GuideEntry]) {
     self.entries = entries
     byMatch = Dictionary(uniqueKeysWithValues: entries.map { ($0.match, $0) })
@@ -83,12 +83,8 @@ public struct Guide: Sendable, Equatable {
     helperPatterns = Self.longestFirst(entries, .helperPattern)
   }
 
-  /// SwiftPM's resource bundle, for tests. The app calls `bundled(in: .main)`.
-  public static func bundled() throws -> Guide { try bundled(in: .module) }
-
-  /// The app reads the copy that scripts/build-app.sh puts in Contents/Resources. `Bundle.module`
-  /// looks for its bundle at the app's root, where code signing rejects it, and then at the
-  /// absolute `.build` path of the Mac that built the app.
+  /// The app passes `.main`: scripts/build-app.sh puts guide.json in its Contents/Resources.
+  /// Tests pass the source folder (their `Guide.bundled()`).
   public static func bundled(in bundle: Bundle) throws -> Guide {
     guard let url = bundle.url(forResource: "guide", withExtension: "json") else {
       throw GuideError.missingResource("guide.json")

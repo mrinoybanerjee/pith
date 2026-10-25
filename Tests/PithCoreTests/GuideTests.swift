@@ -16,13 +16,14 @@ private func entry(_ match: GuideMatch, _ title: String) -> GuideEntry {
   #expect(g.entries.filter { $0.kind == .helper }.allSatisfy { !$0.quittable })  // R84
 }
 
-/// The app reads guide.json from its own Contents/Resources, so it passes `.main`.
-@Test func bundledReadsTheGivenBundle() throws {
+/// The app's loader (`bundled(in: .main)`) reads only the bundle it is given. Every other guide
+/// test reads the source folder through the same loader.
+@Test func bundleWithoutGuideIsAMissingResource() throws {
   let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
   try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: dir) }
-  try JSONEncoder().encode(Guide.bundled().entries).write(to: dir.appending(path: "guide.json"))
-  #expect(try Guide.bundled(in: #require(Bundle(url: dir))) == Guide.bundled())
+  let bundle = try #require(Bundle(url: dir))
+  #expect(throws: GuideError.missingResource("guide.json")) { try Guide.bundled(in: bundle) }
 }
 
 @Test func guideCoversCommonProcesses() throws {
