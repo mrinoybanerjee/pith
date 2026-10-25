@@ -29,6 +29,24 @@ final class SpyTable: ProcessTableReading {
   }
 }
 
+/// Both readers in one, logging each read in order. It returns `FakeSystem.totals` and
+/// `ProcessTable.chromeAt0`.
+final class ReadLog: SystemTotalsReading, ProcessTableReading {
+  private let log = OSAllocatedUnfairLock(initialState: [String]())
+
+  var reads: [String] { log.withLock { $0 } }
+
+  func read() -> SystemTotals {
+    log.withLock { $0.append("system") }
+    return FakeSystem.totals
+  }
+
+  func readTable() -> ProcessTable {
+    log.withLock { $0.append("table") }
+    return .chromeAt0
+  }
+}
+
 /// Returns the given tables in order. A read past the last one traps.
 final class SequenceTable: ProcessTableReading {
   private let tables: OSAllocatedUnfairLock<[ProcessTable]>

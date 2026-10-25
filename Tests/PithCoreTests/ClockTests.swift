@@ -1,7 +1,18 @@
 import Dispatch
 import Testing
+import os
 
 @testable import PithCore
+
+/// A clock that counts its ticks synchronously on its own queue, which is never the main queue.
+private func countingClock() -> (clock: Clock, ticks: @Sendable () -> Int) {
+  let n = OSAllocatedUnfairLock(initialState: 0)
+  let clock = Clock(onTick: {
+    dispatchPrecondition(condition: .notOnQueue(.main))
+    n.withLock { $0 += 1 }
+  })
+  return (clock, { n.withLock { $0 } })
+}
 
 @Test func intervals() {
   #expect(
@@ -46,42 +57,37 @@ import Testing
   }
 }
 
-@Test func clockTicksAndPauses() async {
-  let n = Counter()
-  let c = Clock(onTick: { Task { await n.bump() } })
+@Test func clockTicksAndPauses() async throws {
+  let (c, ticks) = countingClock()
   c.configure(seconds: 0.05, leeway: 0.005)
-  try? await Task.sleep(for: .milliseconds(180))
+  try await Task.sleep(for: .milliseconds(180))
   c.pause()
-  let paused = await n.value
-  try? await Task.sleep(for: .milliseconds(150))
+  try await Task.sleep(for: .milliseconds(20))  // a tick already running at `pause()` can finish
+  let paused = ticks()
+  try await Task.sleep(for: .milliseconds(150))
   #expect(paused >= 2)
-  #expect(await n.value == paused)
+  #expect(ticks() == paused)
 }
 
-@Test func pauseAndResumeAreIdempotent() async {
-  let n = Counter()
-  let c = Clock(onTick: {
-    dispatchPrecondition(condition: .notOnQueue(.main))
-    Task { await n.bump() }
-  })
+@Test func pauseAndResumeAreIdempotent() async throws {
+  let (c, ticks) = countingClock()
   c.resume()  // already running: not an over-resume
   c.configure(seconds: 0.05, leeway: 0.005)
   c.pause()
   c.pause()
   c.resume()  // one resume ends any number of pauses
-  try? await Task.sleep(for: .milliseconds(180))
-  #expect(await n.value >= 2)
+  try await Task.sleep(for: .milliseconds(180))
+  #expect(ticks() >= 2)
 }
 
-@Test func configureReschedules() async {
-  let n = Counter()
-  let c = Clock(onTick: { Task { await n.bump() } })
+@Test func configureReschedules() async throws {
+  let (c, ticks) = countingClock()
   c.configure(seconds: 60, leeway: 1)
   c.configure(seconds: 0.5, leeway: 0.05)
-  try? await Task.sleep(for: .milliseconds(100))
-  #expect(await n.value == 0)  // the first tick comes one interval after `configure`
-  try? await Task.sleep(for: .milliseconds(600))
-  #expect(await n.value >= 1)
+  try await Task.sleep(for: .milliseconds(100))
+  #expect(ticks() == 0)  // the first tick comes one interval after `configure`
+  try await Task.sleep(for: .milliseconds(600))
+  #expect(ticks() >= 1)
 }
 
 @Test func pausedClockCanBeReleased() {

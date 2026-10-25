@@ -44,6 +44,7 @@ public final class Clock: Sendable {
 
   /// Replaces the schedule. The first tick comes one interval from now.
   public func configure(seconds: Double, leeway: Double) {
+    precondition(seconds > 0 && leeway >= 0, "seconds \(seconds), leeway \(leeway)")
     timer.schedule(
       deadline: .now() + seconds, repeating: seconds,
       leeway: .nanoseconds(Int(leeway * 1_000_000_000)))

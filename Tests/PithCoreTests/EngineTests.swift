@@ -20,6 +20,14 @@ private func engine(_ processes: any ProcessTableReading) -> Engine {
   #expect(s.mode == .closed && s.totals == FakeSystem.totals)
 }
 
+@Test func ticksReadSystemThenTable() async {
+  let log = ReadLog()
+  let e = Engine(system: log, processes: log, grouper: .fake, guide: .empty, cpuCount: 10)
+  _ = await e.tick(mode: .open)
+  _ = await e.tick(mode: .closed)
+  #expect(log.reads == ["system", "table", "system"])
+}
+
 @Test func openTickDiffsAcrossClosedTicks() async {
   let e = engine(SequenceTable(.chromeAt0, .chromeAt1s))
   _ = await e.tick(mode: .open)
