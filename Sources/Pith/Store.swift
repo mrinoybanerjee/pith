@@ -31,10 +31,13 @@ enum SystemDetailsState: Equatable {
   /// Settings take the place of the tiles and the list.
   var showingSettings = false
   private(set) var systemDetails = SystemDetailsState.idle
-  /// The opened row's quit flow (spec 4.5). It starts over when the row closes, another row opens,
-  /// the panel closes or the app leaves the list (R78), so no confirm outlives its row. A quit
-  /// already sent stays sent.
+  /// The opened row's quit flow (spec 4.5). It starts over when the row closes, another row opens
+  /// or the panel closes (R78), and when the row no longer has the process that the user asked to
+  /// quit (R95). So no confirm outlives its row or its process. A quit already sent stays sent.
   private(set) var quitFlow = QuitFlow()
+  /// Whether the confirm's default button shows whole in the list. Only then does Return press it
+  /// (R94). The confirm reports it.
+  @ObservationIgnored var confirmButtonInView = false
   var pinned = false
   var settings: Settings {
     didSet {
@@ -56,8 +59,12 @@ enum SystemDetailsState: Equatable {
   @ObservationIgnored private let measureSystem: @Sendable () async throws -> SystemBreakdown
   /// The time that the quit flow's 5 s are counted in.
   @ObservationIgnored private let nowNs: @MainActor @Sendable () -> UInt64
-  /// Sends `.tick` to the quit flow once per second while it waits (R78).
-  @ObservationIgnored private var quitTicks: Task<Void, any Error>? {
+  /// The process that the quit flow acts on, from the Quit click until the flow starts over (R95).
+  @ObservationIgnored private var flowTarget: (any QuitTarget)?
+  /// When the confirm that shows appeared. Its buttons wait 0.4 s (R93).
+  @ObservationIgnored private var confirmShownNs: UInt64 = 0
+  /// Checks the quitting app once per second (R78 and R95).
+  @ObservationIgnored private var quitChecks: Task<Void, any Error>? {
     didSet { oldValue?.cancel() }
   }
 
@@ -83,7 +90,7 @@ enum SystemDetailsState: Equatable {
     guard snapshot.mode == .open else { return }
     self.snapshot = snapshot
     rows = RowOrder.stable(previous: rows.map(\.id), apps: snapshot.apps, metric: metric)
-    if !rows.contains(where: { $0.id == expandedAppID }) { resetQuit() }
+    if !flowTargetHolds { resetQuit() }
     appliedOpenSnapshot()
   }
 
@@ -118,32 +125,95 @@ enum SystemDetailsState: Equatable {
     showingSettings = false
   }
 
-  /// Sends `event` to the opened row's quit flow, for the app whose own process is `pid`
-  /// (spec 4.5). While the flow waits for the app to quit, it ticks once per second (R78).
-  func sendQuit(_ event: QuitFlow.Event, pid: Int32) {
+  /// The process that Quit acts on for the opened row `app`, when Pith may quit it (spec 4.5).
+  func quitTarget(for app: AppUsage) -> (any QuitTarget)? {
+    QuitEligibility.target(for: app, in: runningApps, uid: getuid(), guide: guide)
+  }
+
+  /// Quit, on the opened row: the confirm shows, for `target`, the process the row has now (R95).
+  func askToQuit(_ target: any QuitTarget) {
+    flowTarget = target
+    sendQuit(.tapQuit)
+  }
+
+  /// The Force Quit offer: the second confirm shows.
+  func offerForceQuit() { sendQuit(.tapForce) }
+
+  /// A confirm's default button, by a click, Return or VoiceOver. It does nothing for 0.4 s after
+  /// the confirm shows, so a double-click cannot pass it (R93). It acts only while the row still
+  /// has the process that the user asked to quit and may quit it; otherwise the flow starts over
+  /// (R95).
+  func confirmQuit() {
+    guard confirmArmed else { return }
+    guard flowTargetHolds else { return resetQuit() }
+    sendQuit(quitFlow.state == .confirming ? .confirm : .confirmForce)
+  }
+
+  /// A confirm's Cancel button, which waits 0.4 s too (R93).
+  func cancelQuitButton() {
+    if confirmArmed { sendQuit(.cancel) }
+  }
+
+  /// Escape, ↑ or ↓ cancel a confirm at once, drawn or not (R94).
+  func cancelQuit() { sendQuit(.cancel) }
+
+  /// Quit Pith, in Settings or with ⌘Q: Pith's own quit, at once (R91).
+  func quitPith() { runningApps.quitPith() }
+
+  private var confirmArmed: Bool { nowNs() - confirmShownNs >= 400_000_000 }
+
+  /// Whether the opened row still has the flow's process, and Pith may quit it (R95).
+  private var flowTargetHolds: Bool {
+    guard let flowTarget, let app = rows.first(where: { $0.id == expandedAppID }) else {
+      return false
+    }
+    return quitTarget(for: app)?.isEqual(flowTarget) == true
+  }
+
+  /// Every call goes to the flow's own process, never to a PID looked up again (R95). While the
+  /// app quits, or Force Quit is offered or asked, the flow checks it once per second.
+  private func sendQuit(_ event: QuitFlow.Event) {
+    let target = flowTarget!
+    let shown = quitFlow.state
     quitFlow.send(
-      event, nowNs: nowNs(), isRunning: { runningApps.isRunning(pid) },
-      terminate: { runningApps.terminate(pid) }, forceTerminate: { runningApps.forceTerminate(pid) }
-    )
-    switch quitFlow.state {
-    case .waiting:
-      if quitTicks == nil {
-        quitTicks = Task { [weak self] in
-          while true {
-            try await Task.sleep(for: .seconds(1))
+      event, nowNs: nowNs(), isRunning: { !target.isTerminated },
+      terminate: { if !target.terminate() { Self.refused("terminate", target) } },
+      forceTerminate: { if !target.forceTerminate() { Self.refused("forceTerminate", target) } })
+    let state = quitFlow.state
+    if state != shown, state == .confirming || state == .confirmingForce {
+      confirmShownNs = nowNs()
+      confirmButtonInView = false
+    }
+    switch state {
+    case .idle:
+      flowTarget = nil
+      quitChecks = nil
+    case .confirming, .done: quitChecks = nil
+    case .waiting, .offerForce, .confirmingForce:
+      if quitChecks == nil {
+        quitChecks = Task { [weak self, runningApps] in
+          while !Task.isCancelled {
+            try await runningApps.nextCheck()
+            // A check that ends as the flow starts over does not tick.
+            try Task.checkCancellation()
             guard let self else { return }
-            sendQuit(.tick, pid: pid)
+            sendQuit(.tick)
           }
         }
       }
-    default: quitTicks = nil
     }
+  }
+
+  private static func refused(_ call: String, _ target: any QuitTarget) {
+    Logger(subsystem: "com.mrinoy.pith", category: "quit")
+      .error("\(call, privacy: .public) refused for pid \(target.processIdentifier)")
   }
 
   private func resetQuit() {
     guard quitFlow.state != .idle else { return }
     quitFlow = QuitFlow()
-    quitTicks = nil
+    flowTarget = nil
+    quitChecks = nil
   }
 
   /// Asks `top` what macOS itself uses, at most once per 10 s (spec 4.4 and 6.7). Retry calls it

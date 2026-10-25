@@ -25,12 +25,9 @@ struct AppRowView: View {
         sentence: rowSentence(name, value, store.metric, processes: app.processCount)
       ) { store.toggle(app.id) }
       if expanded {
-        let running = store.runningApps.find(app.pids)
-        let quittable = QuitEligibility.canQuit(
-          app, running: running, uid: getuid(), guide: store.guide)
         AppDetailView(
           store: store, name: name, explanation: entry?.explanation, inside: app.inside,
-          quitPID: quittable ? running?.pid : nil)
+          quitTarget: store.quitTarget(for: app))
       }
     }
   }

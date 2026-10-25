@@ -17,9 +17,9 @@ public struct QuitFlow {
 
   public init(state: State = .idle) { self.state = state }
 
-  /// A tick while waiting checks whether the app is gone. Force Quit waits again, in case even that
-  /// does not end the app. An event that the state does not offer, such as a second click on a
-  /// button that has just gone, changes nothing.
+  /// A tick while the app quits, or while Force Quit is offered or asked, checks whether the app is
+  /// gone. Force Quit waits again, in case even that does not end the app. An event that the state
+  /// does not offer, such as a second click on a button that has just gone, changes nothing.
   public mutating func send(
     _ e: Event, nowNs: UInt64, isRunning: () -> Bool, terminate: () -> Void,
     forceTerminate: () -> Void
@@ -30,7 +30,9 @@ public struct QuitFlow {
     case (.confirming, .confirm):
       terminate()
       state = .waiting(sinceNs: nowNs)
-    case (.waiting, .tick) where !isRunning(): state = .done
+    case (.waiting, .tick) where !isRunning(), (.offerForce, .tick) where !isRunning(),
+      (.confirmingForce, .tick) where !isRunning():
+      state = .done
     case (.waiting(let since), .tick) where nowNs - since >= Self.forceAfterNs: state = .offerForce
     case (.offerForce, .tapForce): state = .confirmingForce
     case (.confirmingForce, .cancel): state = .offerForce

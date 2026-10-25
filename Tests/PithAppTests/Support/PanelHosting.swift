@@ -78,7 +78,7 @@ import Testing
   return condition()
 }
 
-/// Sends a key press to `window` as the application does. `key` is a digit or ↑ ↓ ↩ ⎋, and
+/// Sends a key press to `window` as the application does. `key` is a digit, q or ↑ ↓ ↩ ⎋, and
 /// `characters` what another keyboard layout types with that key.
 @MainActor func sendKey(
   _ key: String, modifiers: NSEvent.ModifierFlags = [], characters: String? = nil,
@@ -86,7 +86,7 @@ import Testing
 ) {
   let keys: [String: (code: UInt16, characters: String)] = [
     "1": (18, "1"), "2": (19, "2"), "3": (20, "3"), "↑": (126, "\u{F700}"),
-    "↓": (125, "\u{F701}"), "↩": (36, "\r"), "⎋": (53, "\u{1B}"),
+    "↓": (125, "\u{F701}"), "↩": (36, "\r"), "⎋": (53, "\u{1B}"), "q": (12, "q"),
   ]
   let (code, typed) = keys[key]!
   // A real arrow key also carries the function-key and keypad flags.

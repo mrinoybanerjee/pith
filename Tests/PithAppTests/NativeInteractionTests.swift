@@ -38,7 +38,7 @@ extension NativeInteractionTests {
   }
 
   /// R75: a tool for the design check and the README images, so it is skipped, not passed, unless
-  /// asked for. The last state is Google Chrome opened, asking to quit (spec 4.5).
+  /// asked for. The last states are Google Chrome opened, asking to quit (spec 4.5).
   @MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["PITH_UI_SNAPSHOT_DIR"] != nil))
   func captureDesignStatesWhenRequested() async throws {
     defer { clearDefaults() }
@@ -48,13 +48,17 @@ extension NativeInteractionTests {
         try writePNG(
           hostPanel(snap, appearance: scheme), to: "\(dir)/\(name)-\(scheme.rawValue).png")
       }
-      let apps = FakeRunningApps([chromeProcess])
-      let (w, store) = try hostPanelWithStore(
-        DemoSnapshots.tight, appearance: scheme, store: apps.store(guide: Guide.bundled()))
-      store.toggle(store.rows[0].id)
-      store.sendQuit(.tapQuit, pid: chromeProcess.pid)
-      #expect(try await eventually(w) { showsAboveTheFooter("Quit", in: w) })
-      try writePNG(w, to: "\(dir)/quit-confirm-\(scheme.rawValue).png")
+      // The tight panel's Google Chrome is taller than the list with its confirm, so its top stays
+      // at the list's top (R92); the calm panel's fits whole.
+      for (name, snapshot) in [
+        ("quit-confirm", DemoSnapshots.tight), ("quit-confirm-calm", DemoSnapshots.calm),
+      ] {
+        let (w, _, _) = try await hostOpened("Google Chrome", in: snapshot, appearance: scheme)
+        try press("Quit", in: w)
+        #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+        try await Task.sleep(for: .milliseconds(100))
+        try writePNG(w, to: "\(dir)/\(name)-\(scheme.rawValue).png")
+      }
     }
   }
 
@@ -485,62 +489,103 @@ extension NativeInteractionTests {
   }
 }
 
-/// The first confirm for the tight mockup's Google Chrome, as VoiceOver reads it (spec 4.5).
+/// The first confirm for the mockups' Google Chrome, as VoiceOver reads it (spec 4.5).
 private let quitSentence = "Quit Google Chrome? It can ask you to save first."
 
-/// Whether the button `label` shows whole above the footer, not scrolled out of the list.
-@MainActor private func showsAboveTheFooter(_ label: String, in w: NSWindow) -> Bool {
-  guard let button = axInteractiveElements(in: w).first(where: { $0.label == label }),
-    let footer = axNodes(in: w).first(where: { $0.identifier == "pith.footer" })
-  else { return false }
-  return w.convertFromScreen(button.frame).minY >= w.convertFromScreen(footer.frame).maxY
+/// The frame of the button `label` in `w`, in the window's coordinates.
+@MainActor private func buttonFrame(_ label: String, in w: NSWindow) throws -> CGRect {
+  w.convertFromScreen(
+    try #require(axInteractiveElements(in: w).first { $0.label == label }, "no \(label)").frame)
+}
+
+/// The visible part of the panel's list, in the window's coordinates.
+@MainActor private func listFrame(in w: NSWindow) throws -> CGRect {
+  let list = try #require(scrollView(in: w.contentView!))
+  return list.convert(list.bounds, to: nil)
+}
+
+/// The list's scroll view.
+@MainActor private func scrollView(in view: NSView) -> NSScrollView? {
+  view as? NSScrollView ?? view.subviews.lazy.compactMap(scrollView).first
+}
+
+/// Whether the button `label` shows whole in the list, not scrolled out of it.
+@MainActor private func showsInTheList(_ label: String, in w: NSWindow) -> Bool {
+  guard let button = try? buttonFrame(label, in: w), let list = try? listFrame(in: w) else {
+    return false
+  }
+  return list.contains(button)
 }
 
 extension NativeInteractionTests {
-  /// The panel with the tight mockup's Google Chrome opened. Only Chrome runs as an app, and
-  /// Slack's process belongs to another user.
-  private func hostOpenedChrome(test: String = #function) async throws -> (
-    NSWindow, Store, FakeRunningApps
-  ) {
-    let slack = RunningAppInfo(
-      pid: 730, bundlePath: "/Applications/Slack.app", ownerUID: getuid() + 1)
-    let apps = FakeRunningApps([chromeProcess, slack])
+  /// The panel showing `snapshot`, with the row `name` opened and offering Quit. Each mockup app's
+  /// first process is its own.
+  private func hostOpened(
+    _ name: String, in snapshot: Snapshot, appearance: NSAppearance.Name = .aqua,
+    test: String = #function
+  ) async throws -> (NSWindow, Store, FakeRunningApps) {
+    let apps = FakeRunningApps(
+      snapshot.apps.map { FakeApp(pid: $0.pids[0], bundlePath: $0.bundlePath!) })
     let (w, store) = try hostPanelWithStore(
-      DemoSnapshots.tight, store: apps.store(guide: Guide.bundled()), test: test)
-    store.toggle(store.rows[0].id)
+      snapshot, appearance: appearance, store: apps.store(guide: Guide.bundled()), test: test)
+    store.toggle(try #require(store.rows.first { $0.name == name }).id)
     #expect(
       try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == "Quit" } })
+    try await Task.sleep(for: .milliseconds(100))
     return (w, store, apps)
   }
 
+  /// The process that Quit acts on for the opened row.
+  private func target(_ apps: FakeRunningApps, _ store: Store) throws -> FakeApp {
+    let row = try #require(store.rows.first { $0.id == store.expandedAppID })
+    return try #require(apps.apps[row.pids[0]])
+  }
+
   /// Spec 4.5 and R79–R80: Quit asks first, and VoiceOver reads the confirm as one sentence, then
-  /// Cancel and Quit. Return presses Quit, the default button: the app is asked to quit once, and
-  /// the row says so while it quits. When the app is gone, the flow is done.
+  /// Cancel and Quit. Once the confirm has shown for 0.4 s, Return presses Quit, the default
+  /// button: the app is asked to quit once, and the row says so while it quits.
   @Test func quitAsksFirstThenReturnQuitsOnce() async throws {
     defer { clearDefaults() }
-    let (w, store, apps) = try await hostOpenedChrome()
+    let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    let chrome = try target(apps, store)
     try press("Quit", in: w)
     #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
     let spoken = axNodes(in: w).compactMap(\.spoken)
     let sentence = try #require(spoken.firstIndex(of: quitSentence))
     #expect(Array(spoken[(sentence + 1)...].prefix(2)) == ["Cancel", "Quit"])
-    // The opened row is taller than the list, so the list scrolls the confirm into view.
-    #expect(try await eventually(w) { showsAboveTheFooter("Quit", in: w) })
-    #expect(apps.terminated.isEmpty)
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    #expect(chrome.terminations == 0)
+    apps.passTheConfirmGuard()
     sendKey("↩", to: w)
     #expect(try await eventually(w) { axLabels(in: w).contains("Quitting Google Chrome…") })
-    #expect(apps.terminated == [410] && store.expandedAppID == store.rows[0].id)
+    #expect(chrome.terminations == 1 && store.expandedAppID == store.rows[0].id)
     #expect(!axInteractiveElements(in: w).contains { $0.label == "Quit" })
-    apps.running = []
-    #expect(try await eventually(w) { store.quitFlow.state == .done })
-    #expect(apps.terminated == [410] && apps.forced.isEmpty)
   }
 
-  /// R80: the first Escape cancels the confirm, and only the next one closes the panel. Cancel
-  /// does the same as the first Escape.
+  /// R93: within 0.4 s of the confirm showing, a press of its default button does nothing, by
+  /// VoiceOver or Return; after that it works.
+  @Test func aConfirmIgnoresPressesForItsFirst0Point4Seconds() async throws {
+    defer { clearDefaults() }
+    let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    let chrome = try target(apps, store)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    apps.nowNs += 399_000_000
+    try press("Quit", in: w)
+    sendKey("↩", to: w)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(chrome.terminations == 0 && store.quitFlow.state == .confirming)
+    apps.nowNs += 1_000_000
+    try press("Quit", in: w)
+    #expect(chrome.terminations == 1)
+  }
+
+  /// R80 and R94: the first Escape cancels the confirm, and only the next one closes the panel.
+  /// Cancel does the same as the first Escape.
   @Test func escapeCancelsTheConfirmBeforeItClosesThePanel() async throws {
     defer { clearDefaults() }
-    let (w, store, apps) = try await hostOpenedChrome()
+    let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    let chrome = try target(apps, store)
     try press("Quit", in: w)
     #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
     sendKey("⎋", to: w)
@@ -548,63 +593,189 @@ extension NativeInteractionTests {
     #expect(w.isVisible && store.quitFlow.state == .idle)
     try press("Quit", in: w)
     #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    apps.passTheConfirmGuard()
     try press("Cancel", in: w)
     #expect(try await eventually(w) { store.quitFlow.state == .idle })
     sendKey("⎋", to: w)
-    #expect(!w.isVisible && apps.terminated.isEmpty)
+    #expect(!w.isVisible && chrome.terminations == 0)
   }
 
-  /// Spec 4.5 and R79: an app still running 5 s after Quit is offered Force Quit, which asks again;
-  /// only its confirm forces the quit.
-  @Test func anAppStillRunningAfterFiveSecondsIsOfferedForceQuit() async throws {
+  /// R94: while a confirm shows, ↑ and ↓ cancel it and do not move; then Return opens or closes a
+  /// row, as without a confirm, and quits nothing.
+  @Test func arrowsCancelAConfirmBeforeReturnCanReachIt() async throws {
     defer { clearDefaults() }
-    let (w, store, apps) = try await hostOpenedChrome()
+    let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    let chrome = try target(apps, store)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    apps.passTheConfirmGuard()
+    sendKey("↓", to: w)
+    #expect(store.quitFlow.state == .idle && store.selectedRowID == nil)
+    sendKey("↓", to: w)
+    sendKey("↓", to: w)
+    sendKey("↩", to: w)
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(chrome.terminations == 0 && store.quitFlow.state == .idle)
+  }
+
+  /// R94: Return presses the default button only while it shows whole in the list. The list
+  /// scrolls as the app scrolls it, to a selected row: to Google Chrome at the top, which takes
+  /// Slack's confirm out of view, and to the last row, which brings it back. Out of view, Return
+  /// does nothing; in view, it quits.
+  @Test func returnDoesNothingWhileTheConfirmIsScrolledAway() async throws {
+    defer { clearDefaults() }
+    let (w, store, apps) = try await hostOpened("Slack", in: DemoSnapshots.calm)
+    let slack = try target(apps, store)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
+    apps.passTheConfirmGuard()
+    store.moveSelection(-1)  // the last row, "macOS system"
+    store.moveSelection(-10)  // the first row, Google Chrome
+    #expect(
+      try await eventually(w) { !showsInTheList("Quit", in: w) && !store.confirmButtonInView })
+    sendKey("↩", to: w)
+    #expect(slack.terminations == 0 && store.quitFlow.state == .confirming)
+    store.moveSelection(10)  // "macOS system"
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
+    sendKey("↩", to: w)
+    #expect(slack.terminations == 1)
+  }
+
+  /// R92: a reading that only changes what is inside the opened row does not scroll the list, so
+  /// a confirm that the user scrolled to stays in view.
+  @Test func aReadingDoesNotScrollAwayAConfirm() async throws {
+    defer { clearDefaults() }
+    let (w, store, _) = try await hostOpened("Google Chrome", in: DemoSnapshots.tight)
     try press("Quit", in: w)
     #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    store.moveSelection(-1)  // the last row, "macOS system", which brings the confirm into view
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    let c = DemoSnapshots.tight.apps[0]
+    let grown = AppUsage(
+      id: c.id, name: c.name, bundlePath: c.bundlePath, bundleID: c.bundleID, pids: c.pids,
+      processCount: c.processCount + 2, memory: c.memory, cpu: c.cpu,
+      diskBytesPerSecond: c.diskBytesPerSecond,
+      inside: c.inside + [HelperGroup(label: "Utilities", count: 2, memory: 40 << 20)])
+    store.apply(remake(DemoSnapshots.tight, apps: [grown] + DemoSnapshots.tight.apps.dropFirst()))
+    #expect(try await eventually(w) { axLabels(in: w).contains("Utilities (2), 40 MB") })
+    try await Task.sleep(for: .milliseconds(100))
+    w.contentView!.layoutSubtreeIfNeeded()
+    #expect(showsInTheList("Quit", in: w) && store.quitFlow.state == .confirming)
+  }
+
+  /// R94: Escape cancels a confirm even when it is not drawn, as when the row's process went.
+  @Test func escapeCancelsAConfirmThatIsNotDrawn() async throws {
+    defer { clearDefaults() }
+    let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    let chrome = try target(apps, store)
     try press("Quit", in: w)
-    apps.nowNs = 5_000_000_000
-    #expect(
-      try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == "Force Quit" } }
-    )
-    #expect(axLabels(in: w).contains("Quitting Google Chrome…"))
+    #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    apps.apps[chrome.processIdentifier] = nil
+    store.metric = .cpu  // the rows draw again, now with no process to quit
+    #expect(try await eventually(w) { !axLabels(in: w).contains(quitSentence) })
+    #expect(store.quitFlow.state == .confirming)
+    sendKey("⎋", to: w)
+    #expect(store.quitFlow.state == .idle && w.isVisible && chrome.terminations == 0)
+  }
+
+  /// Spec 4.5, R79 and R93: an app still running 5 s after Quit is offered Force Quit, which asks
+  /// again; only its confirm forces the quit. The list scrolls to the top row and back to Slack,
+  /// which puts Slack's opened row at the list's bottom edge, where the offer shows. Its confirm
+  /// grows the row, which scrolls the confirm's buttons to that same edge. The offer's button is at
+  /// the leading edge and the confirm's default button at the trailing edge, so one double-click
+  /// cannot press both.
+  @Test func anAppStillRunningAfterFiveSecondsIsOfferedForceQuit() async throws {
+    defer { clearDefaults() }
+    let (w, store, apps) = try await hostOpened("Slack", in: DemoSnapshots.tight)
+    let slack = try target(apps, store)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { store.confirmButtonInView })
+    apps.passTheConfirmGuard()
+    sendKey("↩", to: w)
+    #expect(slack.terminations == 1)
+    await settle()
+    apps.nowNs += 5_000_000_000
+    await apps.checks.fire()
+    #expect(store.quitFlow.state == .offerForce)
+    #expect(try await eventually(w) { axLabels(in: w).contains("Quitting Slack…") })
+    sendKey("↓", to: w)  // Google Chrome, the first row
+    #expect(try await eventually(w) { !showsInTheList("Force Quit", in: w) })
+    for _ in 0..<4 { sendKey("↓", to: w) }  // Slack
+    #expect(try await eventually(w) { showsInTheList("Force Quit", in: w) })
+    let offer = try buttonFrame("Force Quit", in: w)
+    #expect(offer.minY - (try listFrame(in: w)).minY < 30, "the offer sits at the bottom edge")
     try press("Force Quit", in: w)
-    let force = "Force Quit Google Chrome? Unsaved changes will be lost."
+    let force = "Force Quit Slack? Unsaved changes will be lost."
     #expect(try await eventually(w) { axLabels(in: w).contains(force) })
+    #expect(try await eventually(w) { store.confirmButtonInView })
+    let confirm = try buttonFrame("Force Quit", in: w)
+    #expect(!offer.intersects(confirm), "\(offer) and \(confirm)")
     let spoken = axNodes(in: w).compactMap(\.spoken)
     let sentence = try #require(spoken.firstIndex(of: force))
     #expect(Array(spoken[(sentence + 1)...].prefix(2)) == ["Cancel", "Force Quit"])
-    #expect(apps.forced.isEmpty)
+    #expect(slack.forcedTerminations == 0)
+    apps.passTheConfirmGuard()
     sendKey("↩", to: w)
-    #expect(try await eventually(w) { apps.forced == [410] })
-    #expect(store.quitFlow.state == .waiting(sinceNs: 5_000_000_000) && apps.terminated == [410])
+    #expect(slack.forcedTerminations == 1 && slack.terminations == 1)
+    #expect(store.quitFlow.state == .waiting(sinceNs: apps.nowNs))
   }
 
   /// Spec 4.5: Quit shows only for an app of the user's own that macOS runs as an app: not for
-  /// Finder, which the guide marks not quittable, not for another user's Slack, and not for
+  /// another user's Slack, not for Finder, which the guide marks not quittable, and not for
   /// "macOS system".
   @Test func onlyTheUsersOwnQuittableAppsShowQuit() async throws {
     defer { clearDefaults() }
-    let (w, store, _) = try await hostOpenedChrome()
-    for id in [
-      try #require(store.rows.first { $0.name == "Slack" }).id, Store.systemRowID,
-    ] {
+    let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    apps.owners[730] = getuid() + 1  // Slack
+    for name in ["Slack", "Finder", "macOS system"] {
+      let id =
+        name == "macOS system"
+        ? Store.systemRowID : try #require(store.rows.first { $0.name == name }).id
       store.toggle(id)
       #expect(try await eventually(w) { store.expandedAppID == id })
       try await Task.sleep(for: .milliseconds(100))
       w.contentView!.layoutSubtreeIfNeeded()
-      #expect(!axInteractiveElements(in: w).contains { $0.label == "Quit" }, "\(id)")
+      #expect(!axInteractiveElements(in: w).contains { $0.label == "Quit" }, "\(name)")
     }
-    let apps = FakeRunningApps([
-      RunningAppInfo(pid: 340, bundlePath: "/Applications/Finder.app", ownerUID: getuid())
-    ])
-    let (calm, calmStore) = try hostPanelWithStore(
+  }
+
+  /// R92: when a confirm appears, the opened row's name stays in view. Slack with its confirm fits
+  /// in the list, so all of it shows. Google Chrome with its confirm is taller than the tight
+  /// panel's list, so its top stays at the list's top, and Return waits until its confirm shows
+  /// whole.
+  @Test func anOpenedRowsNameStaysInViewWhenItsConfirmAppears() async throws {
+    defer { clearDefaults() }
+    for (name, snapshot, header) in [
+      ("Slack", DemoSnapshots.calm, "Slack, 710 MB memory, 7 processes"),
+      ("Google Chrome", DemoSnapshots.tight, "Google Chrome, 6.4 GB memory, 41 processes"),
+    ] {
+      let (w, store, _) = try await hostOpened(name, in: snapshot)
+      try press("Quit", in: w)
+      #expect(
+        try await eventually(w) { axLabels(in: w).contains { $0.hasPrefix("Quit \(name)?") } })
+      try await Task.sleep(for: .milliseconds(100))
+      let list = try listFrame(in: w).insetBy(dx: 0, dy: -0.5)
+      let row = w.convertFromScreen(try axNode(header, in: w).frame)
+      #expect(list.contains(row), "\(name): \(row) in \(list)")
+      #expect(
+        showsInTheList("Quit", in: w) == (name == "Slack")
+          && store.confirmButtonInView == (name == "Slack"))
+    }
+  }
+
+  /// R91: Settings end with Quit Pith, and ⌘Q quits Pith while the panel is key, at once.
+  @Test func quitPithInSettingsAndCommandQ() async throws {
+    defer { clearDefaults() }
+    let apps = FakeRunningApps([])
+    let (w, store) = try hostPanelWithStore(
       DemoSnapshots.calm, store: apps.store(guide: Guide.bundled()))
-    calmStore.toggle(try #require(calmStore.rows.first { $0.name == "Finder" }).id)
+    sendKey("q", modifiers: .command, to: w)
+    #expect(apps.pithQuits == 1)
+    store.showingSettings = true
     #expect(
-      try await eventually(calm) {
-        axLabels(in: calm).contains { $0.hasPrefix("Shows your files") }
-      })
-    #expect(!axInteractiveElements(in: calm).contains { $0.label == "Quit" })
+      try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == "Quit Pith" } })
+    try press("Quit Pith", in: w)
+    #expect(apps.pithQuits == 2)
   }
 
   /// Task 11 review: pressing a segment chooses it. VoiceOver hears the "Sort by" group with the

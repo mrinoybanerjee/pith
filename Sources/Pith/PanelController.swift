@@ -145,21 +145,28 @@ import SwiftUI
 
   /// Spec 4.8: ↑ and ↓ move between the rows and Return opens or closes one, while the list
   /// shows; in Settings they go to the controls. ⌘1–⌘3 pick the metric by key, on any keyboard
-  /// layout. Escape closes the attached panel. While a quit confirm shows, Return and Escape go to
-  /// its buttons (R80).
+  /// layout. Escape closes the attached panel. ⌘Q quits Pith (R91).
+  ///
+  /// While a quit confirm is up (R94), ↑ and ↓ cancel it and do not move. Return presses its
+  /// default button only while that shows whole in the list, and otherwise does nothing. Escape
+  /// cancels it even when it is not drawn.
   private func handle(_ event: NSEvent) -> Bool {
     let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
     let list = !store.showingSettings
-    let confirming = list && [.confirming, .confirmingForce].contains(store.quitFlow.state)
+    let confirming = [.confirming, .confirmingForce].contains(store.quitFlow.state)
     switch (modifiers, event.keyCode) {
     case ([.command], 18): store.metric = .memory
     case ([.command], 19): store.metric = .cpu
     case ([.command], 20): store.metric = .disk
+    case ([.command], _) where event.charactersIgnoringModifiers == "q": store.quitPith()
+    case ([], 126) where list && confirming, ([], 125) where list && confirming: store.cancelQuit()
     case ([], 126) where list: store.moveSelection(-1)
     case ([], 125) where list: store.moveSelection(1)
-    case ([], 36) where list && !confirming, ([], 76) where list && !confirming:
-      store.toggleSelected()
-    case ([], 53) where !store.pinned && !confirming: close()
+    case ([], 36) where list && confirming, ([], 76) where list && confirming:
+      if store.confirmButtonInView { store.confirmQuit() }
+    case ([], 36) where list, ([], 76) where list: store.toggleSelected()
+    case ([], 53) where confirming: store.cancelQuit()
+    case ([], 53) where !store.pinned: close()
     default: return false
     }
     return true

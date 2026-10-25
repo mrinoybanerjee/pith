@@ -5,16 +5,13 @@ import SwiftUI
 /// it, its processes grouped by role, each with its count and memory. Last, Quit, when Pith may
 /// quit the app (spec 4.5).
 struct AppDetailView: View {
-  /// The scroll id of Quit and its confirms.
-  static let quitID = "pith.quit"
-
   let store: Store
   /// The row's name.
   let name: String
   let explanation: String?
   let inside: [HelperGroup]
-  /// The app's own process when Pith may quit it; nil shows no Quit.
-  let quitPID: Int32?
+  /// The process that Quit acts on, when Pith may quit the app; nil shows no Quit.
+  let quitTarget: (any QuitTarget)?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -33,48 +30,47 @@ struct AppDetailView: View {
       }
       .font(.panel(.body).monospacedDigit())
       .foregroundStyle(.secondary)
-      if let quitPID { quit(quitPID).padding(.top, 2).id(Self.quitID) }
+      if let quitTarget { quit(quitTarget).padding(.top, 2) }
     }
     .detailWell()
   }
 
   /// Quit asks first. While the app quits, the row says so; after 5 s it offers Force Quit, which
-  /// asks again (R79).
-  @ViewBuilder private func quit(_ pid: Int32) -> some View {
-    let send = { (event: QuitFlow.Event) in store.sendQuit(event, pid: pid) }
+  /// asks again (R79). The offer's button sits at the leading edge, as Quit does, away from the
+  /// confirm's default button, so one double-click cannot press both (R93).
+  @ViewBuilder private func quit(_ target: any QuitTarget) -> some View {
     let quitting = Text("Quitting \(name)…").foregroundStyle(.secondary)
     switch store.quitFlow.state {
-    case .idle: Button("Quit") { send(.tapQuit) }
+    case .idle: Button("Quit") { store.askToQuit(target) }
     case .confirming:
       Confirm(
-        question: "Quit \(name)?", detail: "It can ask you to save first.", action: "Quit",
-        confirm: .confirm, send: send)
+        store: store, question: "Quit \(name)?", detail: "It can ask you to save first.",
+        action: "Quit")
     case .waiting: quitting
     case .offerForce:
-      HStack {
+      VStack(alignment: .leading, spacing: 8) {
         quitting
-        Spacer()
-        Button("Force Quit") { send(.tapForce) }
+        Button("Force Quit") { store.offerForceQuit() }
       }
     case .confirmingForce:
       Confirm(
-        question: "Force Quit \(name)?", detail: "Unsaved changes will be lost.",
-        action: "Force Quit", confirm: .confirmForce, send: send)
+        store: store, question: "Force Quit \(name)?", detail: "Unsaved changes will be lost.",
+        action: "Force Quit")
     case .done: EmptyView()
     }
   }
 }
 
 /// A confirm inside an opened row (design section 1): the question in semibold and what follows,
-/// then Cancel and the default button. Return presses the default button and Escape cancels
-/// (R80). VoiceOver reads the sentence, then the two buttons.
+/// then Cancel and the default button. VoiceOver reads the sentence, then the two buttons. The
+/// panel's keys reach them through the store (R80 and R94): Return presses the default button
+/// only while it shows whole in the list, which the button reports.
 private struct Confirm: View {
+  let store: Store
   let question: String
   let detail: String
-  /// The default button's title, and the event it sends. Cancel sends `.cancel`.
+  /// The default button's title.
   let action: String
-  let confirm: QuitFlow.Event
-  let send: (QuitFlow.Event) -> Void
   @Environment(\.colorScheme) private var scheme
 
   var body: some View {
@@ -84,7 +80,7 @@ private struct Confirm: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       HStack(spacing: 8) {
         Button {
-          send(.cancel)
+          store.cancelQuitButton()
         } label: {
           Text("Cancel")
             .foregroundStyle(.secondary)
@@ -93,10 +89,14 @@ private struct Confirm: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .keyboardShortcut(.cancelAction)
-        Button(action) { send(confirm) }
+        Button(action) { store.confirmQuit() }
           .buttonStyle(.borderedProminent)
-          .keyboardShortcut(.defaultAction)
+          .onGeometryChange(for: Bool.self) { proxy in
+            proxy.bounds(of: .scrollView).map { $0.contains(proxy.frame(in: .local)) } ?? false
+          } action: {
+            store.confirmButtonInView = $0
+          }
+          .onDisappear { store.confirmButtonInView = false }
       }
     }
     .padding(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))

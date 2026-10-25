@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PithCore
 import Testing
@@ -25,10 +26,11 @@ extension LoginItem {
   static let stub = LoginItem(isEnabled: { false }, set: { _ in })
 }
 
-/// No app is running, so no row offers Quit.
+/// No app is running, so no row offers Quit, and Quit Pith does nothing.
 extension RunningApps {
   static let stub = RunningApps(
-    find: { _ in nil }, isRunning: { _ in false }, terminate: { _ in }, forceTerminate: { _ in })
+    app: { _ in nil }, ownerUID: { _ in nil },
+    nextCheck: { try await Task.sleep(for: .seconds(1)) }, quitPith: {})
 }
 
 @MainActor func testStore(
@@ -43,47 +45,101 @@ extension RunningApps {
     measureSystem: measure, nowNs: nowNs)
 }
 
-/// Apps that a test runs: `apps` are their own processes, running until the test says not, at the
-/// time the test sets. It records each call and never quits a real app.
-@MainActor final class FakeRunningApps {
-  var running: Set<Int32>
-  var nowNs: UInt64 = 0
-  private(set) var checks = 0
-  private(set) var terminated: [Int32] = []
-  private(set) var forced: [Int32] = []
-  private let apps: [RunningAppInfo]
+/// A running app that a test controls. Each instance records its own calls, so a call that goes
+/// to another instance, even one with the same PID, shows (R95). Its `isEqual` is identity.
+@MainActor final class FakeApp: NSObject, QuitTarget {
+  let processIdentifier: pid_t
+  let bundleURL: URL?
+  let activationPolicy: NSApplication.ActivationPolicy
+  var isTerminated = false
+  /// macOS refuses the calls, as for an app that has just ended.
+  var refuses = false
+  private(set) var terminations = 0
+  private(set) var forcedTerminations = 0
 
-  init(_ apps: [RunningAppInfo]) {
-    self.apps = apps
-    running = Set(apps.map(\.pid))
+  init(pid: pid_t, bundlePath: String, policy: NSApplication.ActivationPolicy = .regular) {
+    processIdentifier = pid
+    bundleURL = URL(fileURLWithPath: bundlePath)
+    activationPolicy = policy
+  }
+
+  func terminate() -> Bool {
+    terminations += 1
+    return !refuses
+  }
+
+  func forceTerminate() -> Bool {
+    forcedTerminations += 1
+    return !refuses
+  }
+}
+
+/// The quit flow's 1 s check, run by hand (R97): `fire()` ends the pending wait, and `waits`
+/// counts the waits begun, one for each check that the flow asks for.
+@MainActor final class ManualChecks {
+  private(set) var waits = 0
+  private var pending: [CheckedContinuation<Void, Never>] = []
+
+  func wait() async {
+    waits += 1
+    await withCheckedContinuation { pending.append($0) }
+  }
+
+  /// Ends the pending wait, then lets the flow's check run.
+  func fire() async {
+    let ended = pending
+    pending = []
+    for continuation in ended { continuation.resume() }
+    await settle()
+  }
+}
+
+/// Lets the main actor's pending tasks run, such as a check loop that has just started.
+@MainActor func settle() async {
+  for _ in 0..<10 { await Task.yield() }
+}
+
+/// The apps that a test runs, by PID, which the test adds, ends and replaces, owned by the user
+/// unless `owners` says otherwise. The time is the test's, and so are the 1 s checks. Nothing real
+/// is ever quit.
+@MainActor final class FakeRunningApps {
+  var apps: [pid_t: FakeApp]
+  var owners: [pid_t: UInt32] = [:]
+  var nowNs: UInt64 = 0
+  let checks = ManualChecks()
+  private(set) var pithQuits = 0
+
+  init(_ apps: [FakeApp]) {
+    self.apps = Dictionary(uniqueKeysWithValues: apps.map { ($0.processIdentifier, $0) })
   }
 
   var runningApps: RunningApps {
     RunningApps(
-      find: { pids in self.apps.first { pids.contains($0.pid) } },
-      isRunning: { pid in
-        self.checks += 1
-        return self.running.contains(pid)
-      },
-      terminate: { self.terminated.append($0) }, forceTerminate: { self.forced.append($0) })
+      app: { self.apps[$0] }, ownerUID: { self.owners[$0] ?? getuid() },
+      nextCheck: { await self.checks.wait() }, quitPith: { self.pithQuits += 1 })
   }
 
   func store(guide: Guide) -> Store {
     testStore(guide: guide, runningApps: runningApps, nowNs: { self.nowNs })
   }
+
+  /// Moves the time past the 0.4 s that a confirm's buttons wait (R93).
+  func passTheConfirmGuard() { nowNs += 400_000_000 }
 }
 
-/// The main process of the tight mockup's Google Chrome, which the user owns.
-let chromeProcess = RunningAppInfo(
-  pid: 410, bundlePath: "/Applications/Google Chrome.app", ownerUID: getuid())
+/// The main process of the mockups' Google Chrome.
+@MainActor func fakeChrome() -> FakeApp {
+  FakeApp(pid: 410, bundlePath: "/Applications/Google Chrome.app")
+}
 
 extension AppUsage {
   /// A one-process app. An id that is not "proc:" or "clone:" is also its bundle ID, so guide
-  /// lookups by bundle ID work. The name is the id's last part.
+  /// lookups by bundle ID work, and its bundle is in /Applications. The name is the id's last part.
   static func fake(id: String, pids: [Int32]) -> AppUsage {
     let bundled = !id.hasPrefix("proc:") && !id.hasPrefix("clone:")
+    let name = String(id.split(separator: /[.:]/).last!)
     return AppUsage(
-      id: id, name: String(id.split(separator: /[.:]/).last!), bundlePath: nil,
+      id: id, name: name, bundlePath: bundled ? "/Applications/\(name).app" : nil,
       bundleID: bundled ? id : nil, pids: pids, processCount: pids.count, memory: 100 << 20,
       cpu: .value(0.01), diskBytesPerSecond: .value(0), inside: [])
   }

@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The three settings (spec 4.6), as controls that full keyboard access reaches. The login
 /// toggle shows what macOS says, and says so when macOS refuses a change (R74). Limited grouping
-/// is a visible degraded mode (spec 6.5).
+/// is a visible degraded mode (spec 6.5). Last, a quiet Quit Pith (R91).
 struct SettingsView: View {
   @Bindable var store: Store
 
@@ -48,6 +48,16 @@ struct SettingsView: View {
           .foregroundStyle(.secondary)
           .padding(.horizontal, 4)
       }
+      // Pith's own quit, at once, with no confirm; ⌘Q does the same (R91).
+      Button {
+        store.quitPith()
+      } label: {
+        Text("Quit Pith")
+          .foregroundStyle(.secondary)
+          .padding(.horizontal, 4)
+          .contentShape(.rect)
+      }
+      .buttonStyle(.plain)
     }
     .font(.panel(.body))
     .padding(EdgeInsets(top: 0, leading: 12, bottom: 12, trailing: 12))

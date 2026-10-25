@@ -53,53 +53,147 @@ import os
   #expect(PanelType.footer.rawValue == 11.5)
 }
 
-/// R78: the opened row's quit flow starts over when the row closes, when another row opens, when
-/// the panel closes, and when the app leaves the list, so no confirm outlives its row. A quit
-/// already sent stays sent.
-@MainActor @Test func theQuitFlowStartsOverWithItsRow() {
-  let apps = FakeRunningApps([chromeProcess])
-  let store = apps.store(guide: .empty)
-  store.apply(DemoSnapshots.tight)
-  let chrome = store.rows[0].id
-  let ask = {
-    store.toggle(chrome)
-    store.sendQuit(.tapQuit, pid: 410)
-    #expect(store.quitFlow.state == .confirming)
-  }
-  ask()
-  store.toggle(store.rows[1].id)  // another row opens
-  #expect(store.quitFlow.state == .idle)
-  ask()
-  store.toggle(chrome)  // the row closes
-  #expect(store.quitFlow.state == .idle && store.expandedAppID == nil)
-  ask()
-  store.apply(remake(DemoSnapshots.tight, apps: Array(DemoSnapshots.tight.apps.dropFirst())))
-  #expect(store.quitFlow.state == .idle)
-  store.apply(DemoSnapshots.tight)
-  store.toggle(chrome)  // it was still open; this closes it
-  ask()
-  store.sendQuit(.confirm, pid: 410)
-  #expect(store.quitFlow.state == .waiting(sinceNs: 0) && apps.terminated == [410])
-  store.panelClosed()
-  #expect(store.quitFlow.state == .idle && apps.terminated == [410] && apps.forced.isEmpty)
-}
-
-/// R78: `.tick` comes once per second, only while the flow waits: it stops when Force Quit is
-/// offered and when the panel closes.
-@MainActor @Test func theQuitFlowTicksOnlyWhileItWaits() async throws {
-  let apps = FakeRunningApps([chromeProcess])
+/// The tight mockup with Google Chrome opened and asked to quit; the confirm shows.
+@MainActor private func askToQuitChrome(_ apps: FakeRunningApps) throws -> Store {
   let store = apps.store(guide: .empty)
   store.apply(DemoSnapshots.tight)
   store.toggle(store.rows[0].id)
-  store.sendQuit(.tapQuit, pid: 410)
-  store.sendQuit(.confirm, pid: 410)
-  apps.nowNs = 5_000_000_000
-  try await Task.sleep(for: .milliseconds(2300))
-  #expect(store.quitFlow.state == .offerForce && apps.checks == 1)
-  store.sendQuit(.tapForce, pid: 410)
-  store.sendQuit(.confirmForce, pid: 410)
-  #expect(store.quitFlow.state == .waiting(sinceNs: 5_000_000_000) && apps.forced == [410])
+  store.askToQuit(try #require(store.quitTarget(for: store.rows[0])))
+  #expect(store.quitFlow.state == .confirming)
+  return store
+}
+
+/// The tight mockup with Google Chrome running as `pids`.
+private func tight(chromePIDs pids: [Int32]) -> Snapshot {
+  let c = DemoSnapshots.tight.apps[0]
+  let chrome = AppUsage(
+    id: c.id, name: c.name, bundlePath: c.bundlePath, bundleID: c.bundleID, pids: pids,
+    processCount: c.processCount, memory: c.memory, cpu: c.cpu,
+    diskBytesPerSecond: c.diskBytesPerSecond, inside: c.inside)
+  return remake(DemoSnapshots.tight, apps: [chrome] + DemoSnapshots.tight.apps.dropFirst())
+}
+
+/// R78: the opened row's quit flow starts over when the row closes, when another row opens, when
+/// the panel closes, and when the app leaves the list, so no confirm outlives its row. A quit
+/// already sent stays sent.
+@MainActor @Test func theQuitFlowStartsOverWithItsRow() throws {
+  let chrome = fakeChrome()
+  let apps = FakeRunningApps([chrome])
+  var store = try askToQuitChrome(apps)
+  store.toggle(store.rows[1].id)  // another row opens
+  #expect(store.quitFlow.state == .idle)
+  store = try askToQuitChrome(apps)
+  store.toggle(store.rows[0].id)  // the row closes
+  #expect(store.quitFlow.state == .idle && store.expandedAppID == nil)
+  store = try askToQuitChrome(apps)
+  store.apply(remake(DemoSnapshots.tight, apps: Array(DemoSnapshots.tight.apps.dropFirst())))
+  #expect(store.quitFlow.state == .idle)
+  store = try askToQuitChrome(apps)
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  #expect(store.quitFlow.state == .waiting(sinceNs: 400_000_000) && chrome.terminations == 1)
   store.panelClosed()
-  try await Task.sleep(for: .milliseconds(1300))
-  #expect(apps.checks == 1)
+  #expect(store.quitFlow.state == .idle && chrome.terminations == 1)
+  #expect(chrome.forcedTerminations == 0)
+}
+
+/// R95: after a quit, the app ends and starts again with a new PID in the same row. The flow
+/// starts over, so the new launch is offered Quit afresh and nothing reaches it.
+@MainActor @Test func aRelaunchedAppStartsOverAndIsNeverCalled() throws {
+  let first = fakeChrome()
+  let apps = FakeRunningApps([first])
+  let store = try askToQuitChrome(apps)
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  #expect(first.terminations == 1)
+  first.isTerminated = true
+  let second = FakeApp(pid: 990, bundlePath: "/Applications/Google Chrome.app")
+  apps.apps = [990: second]
+  store.apply(tight(chromePIDs: [990, 991]))
+  #expect(store.quitFlow.state == .idle)
+  #expect(store.quitTarget(for: store.rows[0]) === second)
+  #expect(second.terminations == 0 && second.forcedTerminations == 0)
+  #expect(first.terminations == 1 && first.forcedTerminations == 0)
+}
+
+/// R95: when the app ends while Force Quit is offered, the next check finds it gone. The flow is
+/// done, the offer goes, and nothing is forced.
+@MainActor @Test func anAppThatEndsWhileForceQuitIsOfferedIsDone() async throws {
+  let chrome = fakeChrome()
+  let apps = FakeRunningApps([chrome])
+  let store = try askToQuitChrome(apps)
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  await settle()
+  apps.nowNs += 5_000_000_000
+  await apps.checks.fire()
+  #expect(store.quitFlow.state == .offerForce)
+  chrome.isTerminated = true
+  await apps.checks.fire()
+  #expect(store.quitFlow.state == .done && chrome.forcedTerminations == 0)
+}
+
+/// R95: a new process with the PID of the one the user asked to quit cannot take its place. At
+/// the confirm, the row has another instance, so the flow starts over and calls nothing.
+@MainActor @Test func aReusedPIDCannotRedirectAQuit() throws {
+  let asked = fakeChrome()
+  let apps = FakeRunningApps([asked])
+  let store = try askToQuitChrome(apps)
+  asked.isTerminated = true
+  let reused = fakeChrome()  // the same PID, 410
+  apps.apps = [410: reused]
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  #expect(store.quitFlow.state == .idle)
+  #expect(asked.terminations == 0 && reused.terminations == 0)
+}
+
+/// R95 and R97: the flow checks the app once per check while it quits, while Force Quit is
+/// offered and while it is asked. The checks stop when the flow is done and when the panel closes:
+/// a check that went on would begin another wait.
+@MainActor @Test func theQuitChecksRunOnlyWhileTheAppQuits() async throws {
+  let chrome = fakeChrome()
+  let apps = FakeRunningApps([chrome])
+  var store = try askToQuitChrome(apps)
+  #expect(apps.checks.waits == 0)  // asking to quit does not check
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  await settle()
+  #expect(apps.checks.waits == 1)
+  await apps.checks.fire()
+  #expect(apps.checks.waits == 2 && store.quitFlow.state == .waiting(sinceNs: 400_000_000))
+  apps.nowNs += 5_000_000_000
+  await apps.checks.fire()
+  #expect(apps.checks.waits == 3 && store.quitFlow.state == .offerForce)
+  store.offerForceQuit()
+  await apps.checks.fire()
+  #expect(apps.checks.waits == 4 && store.quitFlow.state == .confirmingForce)
+  store.panelClosed()
+  await apps.checks.fire()
+  #expect(apps.checks.waits == 4 && store.quitFlow.state == .idle)
+
+  let waits = apps.checks.waits
+  store = try askToQuitChrome(apps)
+  apps.passTheConfirmGuard()
+  store.confirmQuit()
+  await settle()
+  chrome.isTerminated = true
+  await apps.checks.fire()
+  #expect(store.quitFlow.state == .done && apps.checks.waits == waits + 1)
+  await apps.checks.fire()
+  #expect(apps.checks.waits == waits + 1)
+}
+
+/// R93: a confirm's buttons do nothing for 0.4 s after it shows, so a double-click cannot pass it.
+@MainActor @Test func aConfirmIgnoresItsButtonsForItsFirst0Point4Seconds() throws {
+  let chrome = fakeChrome()
+  let apps = FakeRunningApps([chrome])
+  let store = try askToQuitChrome(apps)
+  apps.nowNs += 399_000_000
+  store.confirmQuit()
+  store.cancelQuitButton()
+  #expect(store.quitFlow.state == .confirming && chrome.terminations == 0)
+  apps.nowNs += 1_000_000
+  store.confirmQuit()
+  #expect(chrome.terminations == 1)
 }

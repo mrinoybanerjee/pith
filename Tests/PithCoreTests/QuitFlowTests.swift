@@ -62,7 +62,8 @@ import Testing
 @Test func anEventTheStateDoesNotOfferChangesNothing() {
   let offered: [(QuitFlow.State, [QuitFlow.Event])] = [
     (.idle, [.tapQuit]), (.confirming, [.cancel, .confirm]), (.waiting(sinceNs: 0), [.tick]),
-    (.offerForce, [.tapForce]), (.confirmingForce, [.cancel, .confirmForce]), (.done, []),
+    (.offerForce, [.tapForce, .tick]), (.confirmingForce, [.cancel, .confirmForce, .tick]),
+    (.done, []),
   ]
   for (state, events) in offered {
     for event in [QuitFlow.Event.tapQuit, .cancel, .confirm, .tick, .tapForce, .confirmForce]
@@ -74,5 +75,18 @@ import Testing
         forceTerminate: { calls += 1 })
       #expect(f.state == state && calls == 0, "\(event) in \(state)")
     }
+  }
+}
+
+/// R95: while Force Quit is offered or asked, a tick that finds the app gone ends the flow, and
+/// nothing is forced. A tick that finds it running changes nothing.
+@Test func aTickWhileForceQuitIsOfferedOrAskedSeesTheAppGone() {
+  for state in [QuitFlow.State.offerForce, .confirmingForce] {
+    var f = QuitFlow(state: state)
+    var forced = 0
+    f.send(.tick, nowNs: 9, isRunning: { true }, terminate: {}, forceTerminate: { forced += 1 })
+    #expect(f.state == state)
+    f.send(.tick, nowNs: 9, isRunning: { false }, terminate: {}, forceTerminate: { forced += 1 })
+    #expect(f.state == .done && forced == 0, "\(state)")
   }
 }
