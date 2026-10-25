@@ -28,7 +28,8 @@ enum PauseReason { case sleep, screensSleep, locked }
 ///   of them is left, or when the user opens the panel;
 /// - readings run one at a time, never while paused, and a pressure change takes one at once;
 /// - a volume mount or unmount re-reads storage;
-/// - the settings stay saved, and the first launch registers the login item.
+/// - the settings stay saved, and the first launch registers the login item;
+/// - the time from launch to the first reading goes to the log, for `scripts/perf.sh` (spec 10).
 @MainActor final class Lifecycle {
   private let clock: any Ticker
   private let engine: any Sampler
@@ -52,6 +53,7 @@ enum PauseReason { case sleep, screensSleep, locked }
   private var pending = false
   /// The next reading starts on a fresh baseline (R109).
   private var resetPending = false
+  private var firstReadingLogged = false
   private var pressure: AnyObject?
   private var observers: [any NSObjectProtocol] = []
   /// Told about each pause, so a panel that waits for an open reading stops waiting (R88).
@@ -164,9 +166,19 @@ enum PauseReason { case sleep, screensSleep, locked }
           await engine.resetBaseline()
         }
         store.apply(await engine.tick(mode: mode))
+        if !firstReadingLogged { logFirstReading() }
       } while pending && !paused
       ticking = false
     }
+  }
+
+  /// From the process's start, as the kernel recorded it, to the first reading applied.
+  private func logFirstReading() {
+    firstReadingLogged = true
+    let start = try! ProcessProbe.live.rusage(getpid()).get().ri_proc_start_abstime
+    let ns = MachTimebase.current.nanoseconds(fromTicks: mach_absolute_time() - start)
+    Logger(subsystem: "com.mrinoy.pith", category: "timing").notice(
+      "launch_to_first_reading_ms=\(Double(ns) / 1e6, format: .fixed(precision: 1))")
   }
 
   private func apply(_ settings: Settings) {

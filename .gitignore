@@ -4,3 +4,5 @@ dist/
 .DS_Store
 *.xcodeproj/
 .swiftpm/
+# --render-panel output shows real process names: never committed (R129).
+**/render-*/**/*.png

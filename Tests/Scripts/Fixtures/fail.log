@@ -1,0 +1,143 @@
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:00:00
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   9.9  21M  100
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:00:10
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M  102+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:00:20
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M+ 104+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:00:30
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  20480K- 106+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:00:40
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M  108+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:00:50
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M  110+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:01:00
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M  112+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:01:10
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M  114+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:01:20
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M  116+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:01:30
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M  118+
+Processes: 412 total, 2 running, 410 sleeping, 2301 threads
+2026/10/25 09:01:40
+Load Avg: 1.10, 1.20, 1.30
+CPU usage: 3.00% user, 4.00% sys, 93.00% idle
+SharedLibs: 300M resident, 60M data, 100M linkedit.
+MemRegions: 200000 total, 4000M resident, 100M private, 900M shared.
+PhysMem: 12G used (2000M wired, 3000M compressor), 500M unused.
+VM: 280T vsize, 5000M framework vsize, 100(0) swapins, 200(0) swapouts.
+Networks: packets: 1000/1M in, 900/500K out.
+Disks: 2000/50G read, 1000/20G written.
+
+PID    %CPU MEM  IDLEW
+4242   0.3  21M  120+

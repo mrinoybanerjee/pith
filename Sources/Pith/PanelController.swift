@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import os
 
 /// Owns the panel (spec 4.2 and 4.7). It never takes focus from the app in front.
 /// - A click asks for an open reading; the panel shows once a reading taken after the click is
@@ -151,8 +152,14 @@ import SwiftUI
     }
     panel.makeKeyAndOrderFront(nil)
     // The run loop draws the panel at the end of this pass; this task runs in the next pass, after
-    // that first draw. Only then does it ask macOS about the login item, which takes up to 15 ms.
-    Task { self.store.readLoginItem() }
+    // that first draw. `scripts/perf.sh` gates the time from the click (spec 10). Only then does
+    // it ask macOS about the login item, which takes up to 15 ms.
+    Task { [clickNs] in
+      Logger(subsystem: "com.mrinoy.pith", category: "timing").notice(
+        "open_to_visible_ms=\(Double(self.uptimeNs() - clickNs) / 1e6, format: .fixed(precision: 1))"
+      )
+      self.store.readLoginItem()
+    }
   }
 
   /// Lays out and draws the panel for `store` offscreen once, then lets the view go, so the first
@@ -282,6 +289,18 @@ final class KeyPanel: NSPanel {
   override func sendEvent(_ event: NSEvent) {
     if event.type == .keyDown, onKeyDown(event) { return }
     super.sendEvent(event)
+  }
+}
+
+extension NSWindow {
+  /// The window as it draws now, as PNG data. It renders offscreen, as `screencapture` cannot run
+  /// over SSH: the tests' screenshots and `--render-panel` (R129) use it.
+  func pngData() -> Data {
+    let view = contentView!
+    view.layoutSubtreeIfNeeded()
+    let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    return bitmap.representation(using: .png, properties: [:])!
   }
 }
 

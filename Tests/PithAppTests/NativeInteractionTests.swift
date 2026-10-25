@@ -122,18 +122,18 @@ extension NativeInteractionTests {
     controller.uptimeNs = { 0 }  // the clicks come before the readings (R121)
     let w = controller.panel
     controller.toggle(under: try anchor())
-    let first = try pixels(w)
+    let first = w.pngData()
     try await Task.sleep(for: .milliseconds(300))
-    #expect(try pixels(w) == first)
+    #expect(w.pngData() == first)
     store.toggle(store.rows[0].id)
     try await Task.sleep(for: .milliseconds(300))
     controller.toggle(under: try anchor())  // closes it
     reading.snapshot = DemoSnapshots.tight  // other apps, in another order
     controller.toggle(under: try anchor())
     #expect(w.isVisible && store.expandedAppID == nil)
-    let reopened = try pixels(w)
+    let reopened = w.pngData()
     try await Task.sleep(for: .milliseconds(300))
-    #expect(try pixels(w) == reopened)
+    #expect(w.pngData() == reopened)
   }
 
   /// R88: while an open waits for its reading, a late occlusion note from the closed panel still
