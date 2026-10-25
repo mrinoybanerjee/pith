@@ -2,9 +2,9 @@
   "takenAtNs": 1000000000,
   "vanished": 0,
   "samples": [
-    {"key": {"pid": 200, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Xcode", "path": "/Applications/Xcode.app/Contents/MacOS/Xcode", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 201, "startTime": 1000}, "parent": 1, "uid": 501, "name": "SourceKitService", "path": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/sourcekitd.framework/Versions/A/XPCServices/SourceKitService.xpc/Contents/MacOS/SourceKitService", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 210, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Simulator", "path": "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app/Contents/MacOS/Simulator", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 211, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Example", "path": "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app/Contents/XPCServices/Example.xpc/Contents/MacOS/Example", "executableID": "00000000-0000-0000-0000-000000000000", "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+    {"key": {"pid": 200, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Xcode", "path": "/Applications/Xcode.app/Contents/MacOS/Xcode", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 201, "startTime": 1000}, "parent": 1, "uid": 501, "name": "SourceKitService", "path": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/sourcekitd.framework/Versions/A/XPCServices/SourceKitService.xpc/Contents/MacOS/SourceKitService", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 210, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Simulator", "path": "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app/Contents/MacOS/Simulator", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 211, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Example", "path": "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app/Contents/XPCServices/Example.xpc/Contents/MacOS/Example", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
   ]
 }
