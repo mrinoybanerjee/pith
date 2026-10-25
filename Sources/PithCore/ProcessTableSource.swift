@@ -27,10 +27,26 @@ public func listAllPIDs(
   }
 }
 
+/// xnu's `struct proc_bsdinfowithuniqid` (bsd/sys/proc_info.h), private in the SDK, laid out as the
+/// kernel copies it. Unlike the short BSD info, the kernel refuses it (EPERM) for another user's
+/// process unless the caller is root: the same check `proc_pid_rusage` makes.
+private struct BSDInfoWithUniqueID {
+  static let flavor: Int32 = 18  // PROC_PIDT_BSDINFOWITHUNIQID
+  var bsd = proc_bsdinfo()
+  var uuid: (UInt64, UInt64) = (0, 0)  // p_uuid, the Mach-O UUID that copies of a binary share
+  var uniqueID: UInt64 = 0  // p_uniqueid: an exec keeps it
+  var parentUniqueID: UInt64 = 0
+  var idVersion: Int32 = 0  // p_idversion: new at every exec, even of the same binary (R140)
+  var reserved: UInt32 = 0
+  var reserved2: (UInt64, UInt64) = (0, 0)
+}
+
 /// The libproc calls behind one sweep.
 public struct ProcessProbe: Sendable {
   public var listPIDs: @Sendable () -> [Int32]
-  public var bsdInfo: @Sendable (Int32) -> (uid: UInt32, parent: Int32, name: String)?
+  /// nil for a process that exited or is another user's. `idVersion` is `p_idversion`.
+  public var bsdInfo:
+    @Sendable (Int32) -> (uid: UInt32, parent: Int32, name: String, idVersion: Int32)?
   public var rusage: @Sendable (Int32) -> Result<rusage_info_v6, Errno>
   public var path: @Sendable (Int32) -> String?
 
@@ -49,18 +65,19 @@ public struct ProcessProbe: Sendable {
         }
       },
       bsdInfo: { pid in
-        var info = proc_bsdshortinfo()
-        let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
-        let filled = proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size)
+        var info = BSDInfoWithUniqueID()
+        let size = Int32(MemoryLayout<BSDInfoWithUniqueID>.size)
+        let filled = proc_pidinfo(pid, BSDInfoWithUniqueID.flavor, 0, &info, size)
         guard filled == size else {
           assert(
-            filled == 0 && errno == ESRCH, "proc_pidinfo(\(pid)) gave \(filled): errno \(errno)")
+            filled == 0 && (errno == ESRCH || errno == EPERM),
+            "proc_pidinfo(\(pid)) gave \(filled): errno \(errno)")
           return nil
         }
-        let name = withUnsafeBytes(of: info.pbsi_comm) {
+        let name = withUnsafeBytes(of: info.bsd.pbi_comm) {
           String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self)
         }
-        return (info.pbsi_uid, Int32(info.pbsi_ppid), name)
+        return (info.bsd.pbi_uid, Int32(info.bsd.pbi_ppid), name, info.idVersion)
       },
       rusage: { pid in
         var usage = rusage_info_v6()
@@ -79,8 +96,8 @@ public struct ProcessProbe: Sendable {
   }()
 }
 
-/// Reads the user's own processes in-process: one PID listing, then the short BSD info of each
-/// PID and `proc_pid_rusage` for those owned by `uid`. Paths are read once per `ExecutableKey`,
+/// Reads the user's own processes in-process: one PID listing, then the BSD info of each PID and
+/// `proc_pid_rusage` for those owned by `uid`. Paths are read once per `ExecutableKey`,
 /// so again after an `exec`.
 public final class LibprocProcessTable: ProcessTableReading {
   private let probe: ProcessProbe
@@ -104,7 +121,8 @@ public final class LibprocProcessTable: ProcessTableReading {
       var seen = [ExecutableKey: String](minimumCapacity: cache.count)
       var vanished = 0
       for pid in probe.listPIDs() {
-        // A PID that exited before its info read has no known owner, so it is not `vanished`.
+        // Another user's PID, or one that exited before its info read: no known owner, so it is
+        // not `vanished`.
         guard let info = probe.bsdInfo(pid), info.uid == uid else { continue }
         let usage: rusage_info_v6
         switch probe.rusage(pid) {
@@ -119,14 +137,14 @@ public final class LibprocProcessTable: ProcessTableReading {
         }
         let start = timebase.nanoseconds(fromTicks: usage.ri_proc_start_abstime) / 1_000
         let key = ProcessKey(pid: pid, startTime: start)
-        let executable = ExecutableKey(process: key, executableID: UUID(uuid: usage.ri_uuid))
+        let executable = ExecutableKey(process: key, idVersion: info.idVersion)
         // "" when the path can't be read (a deleted executable). Read once per executable.
         let path = cache[executable] ?? probe.path(pid) ?? ""
         seen[executable] = path
         samples.append(
           ProcessSample(
             key: key, parent: info.parent, uid: uid, name: info.name, path: path,
-            executableID: executable.executableID, footprint: usage.ri_phys_footprint,
+            idVersion: info.idVersion, footprint: usage.ri_phys_footprint,
             cpuTimeNs: timebase.nanoseconds(fromTicks: usage.ri_user_time + usage.ri_system_time),
             diskRead: usage.ri_diskio_bytesread, diskWritten: usage.ri_diskio_byteswritten))
       }

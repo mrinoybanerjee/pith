@@ -1,5 +1,6 @@
 import Darwin
 import Testing
+import os
 
 @testable import PithCore
 
@@ -93,4 +94,21 @@ private func engine(_ processes: any ProcessTableReading) -> Engine {
   let next = await e.tick(mode: .open)  // 5 processes × 0.1 s over 1 s on 10 cores, 30 busy of 100
   #expect(next.apps[0].cpu == .value(0.05))
   #expect(abs(next.system.value!.cpu.value! - 0.25) < 1e-9)
+}
+
+@Test func execOfTheSameBinaryFromAnotherAppRegroupsWithNoRate() async {  // R140
+  // One helper binary in two bundles: the exec keeps the PID, the start time and the Mach-O UUID
+  // (the fake's is 0), and only p_idversion changes.
+  let execed = OSAllocatedUnfairLock(initialState: false)
+  var probe = ProcessProbe.fake(pids: [10], uid: 501)
+  probe.bsdInfo = { _ in (501, 1, "Helper", execed.withLock { $0 } ? 2 : 1) }
+  probe.path = { _ in
+    "/Applications/\(execed.withLock { $0 } ? "Slack" : "Notes").app/Contents/MacOS/Helper"
+  }
+  let e = engine(LibprocProcessTable(probe: probe, uid: 501))
+  #expect(await e.tick(mode: .open).apps.map(\.id) == ["/Applications/Notes.app"])
+  execed.withLock { $0 = true }
+  let after = await e.tick(mode: .open)
+  #expect(after.apps.map(\.id) == ["/Applications/Slack.app"])
+  #expect(after.apps.map(\.cpu) == [.unavailable("first sample")])
 }

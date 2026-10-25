@@ -43,13 +43,13 @@ private func snap(
 /// A process of `/Applications/<app>.app` with 64 MB; its kernel name is `file` cut to 16 bytes.
 private func process(
   _ pid: Int32, start: UInt64 = 1_000, app: String = "Notes", file: String? = nil,
-  executable: UInt8 = 0, cpu: UInt64 = 0, read: UInt64 = 0, written: UInt64 = 0,
+  idVersion: Int32 = 0, cpu: UInt64 = 0, read: UInt64 = 0, written: UInt64 = 0,
   memory: UInt64 = 64 << 20
 ) -> ProcessSample {
   let file = file ?? app
   return ProcessSample(
     key: ProcessKey(pid: pid, startTime: start), parent: 1, uid: 501, name: String(file.prefix(16)),
-    path: "/Applications/\(app).app/Contents/MacOS/\(file)", executableID: .executable(executable),
+    path: "/Applications/\(app).app/Contents/MacOS/\(file)", idVersion: idVersion,
     footprint: memory, cpuTimeNs: cpu, diskRead: read, diskWritten: written)
 }
 
@@ -261,9 +261,9 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   // Seen on macOS 26.6.2 (MTLAssetUpgraderD): an exec keeps the PID and start time, and the new
   // executable's CPU time was lower. It counts as a new process: no rate this tick, and no trap.
   let before = table(
-    [process(300, executable: 1, cpu: 2_000_000), process(301, app: "Maps")], at: 1_000_000_000)
+    [process(300, idVersion: 1, cpu: 2_000_000), process(301, app: "Maps")], at: 1_000_000_000)
   let after = table(
-    [process(300, executable: 2, cpu: 1_000_000), process(301, app: "Maps", cpu: 100_000_000)],
+    [process(300, idVersion: 2, cpu: 1_000_000), process(301, app: "Maps", cpu: 100_000_000)],
     at: 2_000_000_000)
   let s = snap(previous: before, current: after)
   #expect(s.apps.first { $0.name == "Notes" }?.cpu == .unavailable("first sample"))
