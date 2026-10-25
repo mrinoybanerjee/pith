@@ -18,9 +18,13 @@ struct Settings: Equatable {
     return settings
   }
 
+  /// Writes only the settings that differ from what `defaults` gives now: the ones the user
+  /// changed. So a launch writes none, and a setting never changed follows each version's default
+  /// (R137).
   func save(_ defaults: UserDefaults) {
-    defaults.set(refresh.rawValue, forKey: "refresh")
-    defaults.set(amberOnCPU, forKey: "amberOnCPU")
+    let saved = Settings.load(defaults)
+    if refresh != saved.refresh { defaults.set(refresh.rawValue, forKey: "refresh") }
+    if amberOnCPU != saved.amberOnCPU { defaults.set(amberOnCPU, forKey: "amberOnCPU") }
   }
 }
 

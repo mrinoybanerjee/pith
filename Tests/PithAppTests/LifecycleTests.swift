@@ -375,6 +375,21 @@ private final class GrowingTable: ProcessTableReading {
   }
 }
 
+/// R137: a launch saves no setting, so a later version's default still reaches it. A change saves
+/// only the setting that changed, and it loads at the next launch.
+@MainActor @Test func onlyAChangedSettingIsSaved() async throws {
+  let rig = Rig()
+  defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+  try await rig.start()
+  #expect(rig.defaults.object(forKey: "refresh") == nil)
+  #expect(rig.defaults.object(forKey: "amberOnCPU") == nil)
+  rig.store.settings.refresh = .oneSecond
+  #expect(try await settled { rig.defaults.string(forKey: "refresh") == "oneSecond" })
+  #expect(rig.defaults.object(forKey: "amberOnCPU") == nil)
+  let next = Rig(nextLaunch: true)
+  #expect(Settings.load(next.defaults) == Settings(refresh: .oneSecond, amberOnCPU: true))
+}
+
 /// Rule 8: the rules start afresh when `amberOnCPU` changes.
 @MainActor @Test func changingAmberOnCPURebuildsTheRules() {
   let store = testStore()

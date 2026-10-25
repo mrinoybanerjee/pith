@@ -28,7 +28,7 @@ enum PauseReason { case sleep, screensSleep, locked }
 ///   of them is left, or when the user opens the panel;
 /// - readings run one at a time, never while paused, and a pressure change takes one at once;
 /// - a volume mount or unmount re-reads storage;
-/// - the settings stay saved, and the first launch registers the login item;
+/// - a setting the user changes is saved (R137), and the first launch registers the login item;
 /// - the time from launch to the first reading goes to the log, for `scripts/perf.sh` (spec 10).
 @MainActor final class Lifecycle {
   private let clock: any Ticker
