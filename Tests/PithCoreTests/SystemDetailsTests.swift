@@ -4,11 +4,6 @@ import os
 
 @testable import PithCore
 
-private actor Counter {
-  private(set) var value = 0
-  func bump() { value += 1 }
-}
-
 private let twoSamples = Fixture.text("top/two-samples")
 
 /// A second sample with `rows` under a header that lists `columns`.
