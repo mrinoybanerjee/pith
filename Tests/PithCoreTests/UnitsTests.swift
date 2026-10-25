@@ -84,7 +84,8 @@ import Testing
     takenAtNs: 2_000_000_000,
     mode: .open,
     totals: SystemTotals(
-      memoryUsed: .value(6 << 30), memoryTotal: 16 << 30, pressure: .value(.warning),
+      memoryUsed: .value(6 << 30), footprintTotal: .value(9 << 30), memoryTotal: 16 << 30,
+      pressure: .value(.warning),
       swapUsed: .unavailable("vm.swapusage failed: errno 5"),
       cpuBusy: .value(0.38), storageFree: .unavailable("no volume"), storageTotal: .value(500)),
     apps: [

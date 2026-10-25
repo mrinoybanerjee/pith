@@ -68,6 +68,8 @@ public enum Pressure: String, Sendable, Equatable, Codable { case normal, warnin
 
 public struct SystemTotals: Sendable, Equatable, Codable {
   public let memoryUsed: Reading<UInt64>
+  /// Memory used with each compressed page at its full size, as footprints count it (R133).
+  public let footprintTotal: Reading<UInt64>
   public let memoryTotal: UInt64  // ProcessInfo.physicalMemory, which cannot fail
   public let pressure: Reading<Pressure>
   public let swapUsed: Reading<UInt64>
@@ -76,11 +78,13 @@ public struct SystemTotals: Sendable, Equatable, Codable {
   public let storageTotal: Reading<UInt64>
 
   public init(
-    memoryUsed: Reading<UInt64>, memoryTotal: UInt64, pressure: Reading<Pressure>,
+    memoryUsed: Reading<UInt64>, footprintTotal: Reading<UInt64>, memoryTotal: UInt64,
+    pressure: Reading<Pressure>,
     swapUsed: Reading<UInt64>, cpuBusy: Reading<Double>, storageFree: Reading<UInt64>,
     storageTotal: Reading<UInt64>
   ) {
     self.memoryUsed = memoryUsed
+    self.footprintTotal = footprintTotal
     self.memoryTotal = memoryTotal
     self.pressure = pressure
     self.swapUsed = swapUsed

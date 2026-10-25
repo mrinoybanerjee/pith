@@ -5,13 +5,23 @@ import os
 @testable import PithCore
 
 @Test func usedMatchesActivityMonitorFormula() {
-  let c = VMCounts(internal: 600_000, purgeable: 100_000, wired: 150_000, compressor: 50_000)
+  let c = VMCounts(
+    internal: 600_000, purgeable: 100_000, wired: 150_000, compressor: 50_000,
+    storedInCompressor: 200_000)
   #expect(memoryUsed(c, pageSize: 16_384) == 700_000 * 16_384)
 }
 
 @Test func memoryUsedDoesNotUnderflowOnTheWay() {
-  let c = VMCounts(internal: 1, purgeable: 2, wired: 3, compressor: 0)  // internal - purgeable < 0
-  #expect(memoryUsed(c, pageSize: 1) == 2)
+  let c = VMCounts(internal: 1, purgeable: 2, wired: 3, compressor: 0, storedInCompressor: 0)
+  #expect(memoryUsed(c, pageSize: 1) == 2)  // internal - purgeable < 0
+}
+
+@Test func footprintTotalCountsCompressedPagesAtFullSize() {  // R133
+  // The compressor holds 200,000 pages of data in 50,000 pages.
+  let c = VMCounts(
+    internal: 600_000, purgeable: 100_000, wired: 150_000, compressor: 50_000,
+    storedInCompressor: 200_000)
+  #expect(footprintTotal(c, pageSize: 16_384) == 850_000 * 16_384)
 }
 
 @Test func cpuBusyAcrossCores() {
@@ -51,6 +61,7 @@ import os
   #expect(first.memoryTotal == ProcessInfo.processInfo.physicalMemory)
   let used = try #require(first.memoryUsed.value)
   #expect(used > 0 && used <= first.memoryTotal)
+  #expect(try #require(first.footprintTotal.value) > 0)
   #expect(first.pressure.value != nil && first.swapUsed.value != nil)
   #expect(first.cpuBusy == .unavailable("first sample"))
   Thread.sleep(forTimeInterval: 0.2)
