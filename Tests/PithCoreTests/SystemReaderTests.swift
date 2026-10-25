@@ -37,17 +37,21 @@ import os
   #expect(cpuBusyFraction(previous: a, current: a).isNaN)
 }
 
-@Test func pressureLevels() {
-  #expect(Pressure(kernelLevel: 1) == .normal)
-  #expect(Pressure(kernelLevel: 2) == .warning)
-  #expect(Pressure(kernelLevel: 4) == .critical)
+@Test func pressureLevels() {  // the kernel defines no level 3, so it is unknown
+  #expect(
+    [1, 2, 4, 3].map(Pressure.reading(kernelLevel:)) == [
+      .value(.normal), .value(.warning), .value(.critical),
+      .unavailable("unknown pressure level 3"),
+    ])
 }
 
 @Test func liveReadIsSane() throws {
   let r = SystemReader()
   let first = r.read()
   #expect(first.memoryTotal == ProcessInfo.processInfo.physicalMemory)
-  #expect(first.memoryUsed > 0 && first.memoryUsed <= first.memoryTotal)
+  let used = try #require(first.memoryUsed.value)
+  #expect(used > 0 && used <= first.memoryTotal)
+  #expect(first.pressure.value != nil && first.swapUsed.value != nil)
   #expect(first.cpuBusy == .unavailable("first sample"))
   Thread.sleep(forTimeInterval: 0.2)
   let busy = try #require(r.read().cpuBusy.value)

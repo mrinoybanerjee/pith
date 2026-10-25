@@ -46,6 +46,7 @@ public protocol SystemTotalsReading: Sendable {
 
 /// Reads the whole-machine totals. CPU busy is the change since the previous `read()`, so the
 /// first `read()` has none. Storage is read at most once a minute until `invalidateStorageCache()`.
+/// A failed kernel read is unavailable, never 0.
 public final class SystemReader: SystemTotalsReading {
   private struct StorageCache: Sendable {
     let at: ContinuousClock.Instant
@@ -95,7 +96,7 @@ public final class SystemReader: SystemTotalsReading {
     }
     let storage = cachedStorage()
     return SystemTotals(
-      memoryUsed: memoryUsed(Self.readVMCounts(), pageSize: Self.pageSize),
+      memoryUsed: Self.readMemoryUsed(),
       memoryTotal: ProcessInfo.processInfo.physicalMemory,
       pressure: Pressure.fromKernel(),
       swapUsed: Self.readSwapUsed(),
@@ -114,7 +115,7 @@ public final class SystemReader: SystemTotalsReading {
     }
   }
 
-  private static func readVMCounts() -> VMCounts {
+  private static func readMemoryUsed() -> Reading<UInt64> {
     var stats = vm_statistics64()
     var count = mach_msg_type_number_t(
       MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
@@ -123,18 +124,20 @@ public final class SystemReader: SystemTotalsReading {
         host_statistics64(host, HOST_VM_INFO64, $0, &count)
       }
     }
-    assert(status == KERN_SUCCESS, "host_statistics64 failed: \(status)")
-    return VMCounts(
+    guard status == KERN_SUCCESS else { return .unavailable("host_statistics64 failed: \(status)") }
+    let counts = VMCounts(
       internal: UInt64(stats.internal_page_count), purgeable: UInt64(stats.purgeable_count),
       wired: UInt64(stats.wire_count), compressor: UInt64(stats.compressor_page_count))
+    return .value(memoryUsed(counts, pageSize: pageSize))
   }
 
-  private static func readSwapUsed() -> UInt64 {
+  private static func readSwapUsed() -> Reading<UInt64> {
     var swap = xsw_usage()
     var size = MemoryLayout<xsw_usage>.size
-    let status = sysctlbyname("vm.swapusage", &swap, &size, nil, 0)
-    assert(status == 0, "sysctl vm.swapusage failed: errno \(errno)")
-    return swap.xsu_used
+    guard sysctlbyname("vm.swapusage", &swap, &size, nil, 0) == 0 else {
+      return .unavailable("vm.swapusage failed: errno \(errno)")
+    }
+    return .value(swap.xsu_used)
   }
 
   private static func readCPUTicks() -> [CPUTicks] {

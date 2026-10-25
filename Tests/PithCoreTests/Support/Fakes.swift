@@ -12,8 +12,9 @@ actor Counter {
 /// Fixed whole-machine totals: 16 GB used of 16 GB, half the CPU busy.
 struct FakeSystem: SystemTotalsReading {
   static let totals = SystemTotals(
-    memoryUsed: 16 << 30, memoryTotal: 16 << 30, pressure: .normal, swapUsed: 0,
-    cpuBusy: .value(0.5), storageFree: .unavailable("fake"), storageTotal: .unavailable("fake"))
+    memoryUsed: .value(16 << 30), memoryTotal: 16 << 30, pressure: .value(.normal),
+    swapUsed: .value(0), cpuBusy: .value(0.5), storageFree: .unavailable("fake"),
+    storageTotal: .unavailable("fake"))
 
   func read() -> SystemTotals { Self.totals }
 }

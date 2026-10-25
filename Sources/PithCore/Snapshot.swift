@@ -67,17 +67,18 @@ public struct ProcessTable: Sendable, Equatable, Codable {
 public enum Pressure: String, Sendable, Equatable, Codable { case normal, warning, critical }
 
 public struct SystemTotals: Sendable, Equatable, Codable {
-  public let memoryUsed: UInt64
-  public let memoryTotal: UInt64
-  public let pressure: Pressure
-  public let swapUsed: UInt64
+  public let memoryUsed: Reading<UInt64>
+  public let memoryTotal: UInt64  // ProcessInfo.physicalMemory, which cannot fail
+  public let pressure: Reading<Pressure>
+  public let swapUsed: Reading<UInt64>
   public let cpuBusy: Reading<Double>  // 0...1, whole machine
   public let storageFree: Reading<UInt64>
   public let storageTotal: Reading<UInt64>
 
   public init(
-    memoryUsed: UInt64, memoryTotal: UInt64, pressure: Pressure, swapUsed: UInt64,
-    cpuBusy: Reading<Double>, storageFree: Reading<UInt64>, storageTotal: Reading<UInt64>
+    memoryUsed: Reading<UInt64>, memoryTotal: UInt64, pressure: Reading<Pressure>,
+    swapUsed: Reading<UInt64>, cpuBusy: Reading<Double>, storageFree: Reading<UInt64>,
+    storageTotal: Reading<UInt64>
   ) {
     self.memoryUsed = memoryUsed
     self.memoryTotal = memoryTotal

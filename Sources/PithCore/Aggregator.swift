@@ -77,14 +77,14 @@ public enum Aggregator {
       cpu: cpu, diskBytesPerSecond: disk, inside: inside)
   }
 
-  /// Spec 6.6: what the user's own processes leave unexplained. A negative memory residual makes
-  /// the whole row a mismatch. A CPU residual less than 0.01 below 0 is rounding, so it reads 0.
+  /// Spec 6.6: what the user's own processes leave unexplained. Without memory used the whole row
+  /// is unavailable, and a negative memory residual makes it a mismatch. A CPU residual less than
+  /// 0.01 below 0 is rounding, so it reads 0.
   private static func residual(
     _ totals: SystemTotals, appMemory: UInt64, appCPU: Reading<Double>
   ) -> Reading<SystemResidual> {
-    guard appMemory <= totals.memoryUsed else {
-      return mismatch("memory used \(totals.memoryUsed), apps \(appMemory)")
-    }
+    guard let used = totals.memoryUsed.value else { return .unavailable("memory unavailable") }
+    guard appMemory <= used else { return mismatch("memory used \(used), apps \(appMemory)") }
     let cpu: Reading<Double> =
       switch (totals.cpuBusy, appCPU) {
       case (.value(let busy), .value(let apps)) where busy - apps > -0.01:
@@ -92,7 +92,7 @@ public enum Aggregator {
       case (.value(let busy), .value(let apps)): mismatch("CPU busy \(busy), apps \(apps)")
       case (.unavailable(let reason), _), (_, .unavailable(let reason)): .unavailable(reason)
       }
-    return .value(SystemResidual(memory: totals.memoryUsed - appMemory, cpu: cpu))
+    return .value(SystemResidual(memory: used - appMemory, cpu: cpu))
   }
 
   /// Shown as "—", never as 0. Debug builds log the inputs (spec 6.6).

@@ -7,35 +7,35 @@ import os
 
 extension Pressure {
   /// `kern.memorystatus_vm_pressure_level` defines only 1 (normal), 2 (warning) and 4 (critical).
-  init(kernelLevel: Int32) {
+  /// Any other level is unavailable.
+  static func reading(kernelLevel: Int32) -> Reading<Pressure> {
     switch kernelLevel {
-    case 1: self = .normal
-    case 2: self = .warning
-    case 4: self = .critical
-    default:
-      assertionFailure("Unknown memory pressure level \(kernelLevel)")
-      self = .normal
+    case 1: .value(.normal)
+    case 2: .value(.warning)
+    case 4: .value(.critical)
+    default: .unavailable("unknown pressure level \(kernelLevel)")
     }
   }
 
-  static func fromKernel() -> Pressure {
+  static func fromKernel() -> Reading<Pressure> {
     var level: Int32 = 0
     var size = MemoryLayout<Int32>.size
-    let status = sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0)
-    assert(status == 0, "sysctl kern.memorystatus_vm_pressure_level failed: errno \(errno)")
-    return Pressure(kernelLevel: level)
+    guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 else {
+      return .unavailable("pressure sysctl failed: errno \(errno)")
+    }
+    return reading(kernelLevel: level)
   }
 }
 
 /// Follows memory pressure. On each pressure event it re-reads the kernel level, updates
 /// `current`, then calls `onChange` on a background queue.
 public final class PressureMonitor: Sendable {
-  private let level: OSAllocatedUnfairLock<Pressure>
+  private let level: OSAllocatedUnfairLock<Reading<Pressure>>
   private let source: any DispatchSourceMemoryPressure
 
-  public var current: Pressure { level.withLock { $0 } }
+  public var current: Reading<Pressure> { level.withLock { $0 } }
 
-  public init(onChange: @escaping @Sendable (Pressure) -> Void) {
+  public init(onChange: @escaping @Sendable (Reading<Pressure>) -> Void) {
     let level = OSAllocatedUnfairLock(initialState: Pressure.fromKernel())
     let source = DispatchSource.makeMemoryPressureSource(eventMask: [.normal, .warning, .critical])
     source.setEventHandler {

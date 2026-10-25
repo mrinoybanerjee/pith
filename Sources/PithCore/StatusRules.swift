@@ -44,13 +44,14 @@ public struct StatusRules: Sendable {
       topCPUApp = top
     }
     if amberOnCPU, let cpu = totals.cpuBusy.value { trackCPU(cpu, nowNs: nowNs) }
-    if totals.pressure == .critical {
+    // An unavailable pressure is neither critical nor warning, so it never counts.
+    if totals.pressure == .value(.critical) {
       return Status(dot: .critical, title: "Memory is very tight", sentence: memorySentence)
     }
     if let sentence = lowStorageSentence(totals, below: 20) {
       return Status(dot: .critical, title: "Storage is almost full", sentence: sentence)
     }
-    if totals.pressure == .warning {
+    if totals.pressure == .value(.warning) {
       return Status(dot: .tight, title: "Memory is tight", sentence: memorySentence)
     }
     if cpuBusy { return Status(dot: .tight, title: "Your Mac is busy", sentence: cpuSentence) }
