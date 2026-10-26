@@ -10,6 +10,7 @@ import os
 private let responsibleFor: [String: [Int32: Int32]] = [
   "chrome": [100: 100, 101: 100, 102: 100, 103: 100, 104: 100, 105: 100],
   "clone-two-installs": [100: 100, 101: 100, 102: 102, 103: 103],
+  "clone-native-host": [100: 100, 101: 100, 102: 100],
   "xcode": [200: 200, 201: 200, 202: 200, 203: 200],
   "node-under-terminal-and-codex": [200: 200, 202: 200, 201: 200, 300: 300, 301: 300],
   "orphan": [502: 590, 501: 590, 503: 503],  // 590: a root SSH session, not in the table
@@ -101,6 +102,14 @@ private let clonePaths = [
     ProcessTable(samples: t.samples.filter { $0.key.pid != 101 }, takenAtNs: 0, vanished: 0))
   #expect([g[key(100)]?.id, g[key(103)]?.id] == clonePaths.map { "clone:\($0)" })
   #expect(g[key(102)]?.id == "/Volumes/Demo/Google Chrome.app")
+}
+
+@Test func aCloneJoinsWithAllItsProcesses() {  // R162
+  // 102 is an unbundled child of the clone with no child of its own; it follows its clone.
+  for limited in [false, true] {
+    let g = grouped("clone-native-host", limited: limited)
+    #expect(g.count == 3 && Set(g.values.map(\.id)) == ["/Applications/Google Chrome.app"])
+  }
 }
 
 @Test func helperOfAnUnjoinedCloneKeepsItsInstallation() {  // step 1 skips the clone owner
