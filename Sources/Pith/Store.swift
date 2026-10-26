@@ -22,7 +22,14 @@ enum SystemDetailsState: Equatable {
   /// Calm until the first tick, a moment after launch. It changes only when the state changes.
   private(set) var status = Status.calm
   var metric = Metric.memory {
-    didSet { rows = RowOrder.stable(previous: [], apps: snapshot?.apps ?? [], metric: metric) }
+    didSet {
+      // Another sort would move a confirm under the pointer, so it cancels it first, as ↑ and ↓
+      // do (R94, R164).
+      if metric != oldValue, [.confirming, .confirmingForce].contains(quitFlow.state) {
+        cancelQuit()
+      }
+      rows = RowOrder.stable(previous: [], apps: snapshot?.apps ?? [], metric: metric)
+    }
   }
   /// The app rows in the order shown (spec 4.2 and 4.8).
   private(set) var rows: [AppUsage] = []

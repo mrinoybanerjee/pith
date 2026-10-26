@@ -86,6 +86,16 @@ import os
   #expect(store.rows.first?.id == s.id)
 }
 
+/// R164: another metric, by click or ⌘1–⌘3, cancels a confirm first, as ↑ and ↓ do (R94), so the
+/// confirm never moves under the pointer. The metric that is already chosen changes nothing.
+@MainActor @Test func anotherMetricCancelsTheConfirm() throws {
+  let store = try askToQuitChrome(FakeRunningApps([fakeChrome()]))
+  store.metric = .memory
+  #expect(store.quitFlow.state == .confirming)
+  store.metric = .cpu
+  #expect(store.quitFlow.state == .idle && store.metric == .cpu)
+}
+
 /// The tight mockup with Google Chrome running as `pids`.
 private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   let c = DemoSnapshots.tight.apps[0]

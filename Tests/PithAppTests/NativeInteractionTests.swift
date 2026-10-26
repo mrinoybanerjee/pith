@@ -1047,6 +1047,17 @@ extension NativeInteractionTests {
     #expect(chrome.terminations == 0 && store.quitFlow.state == .confirming)
   }
 
+  /// R164: ⌘2 while a confirm shows cancels it, then sorts by CPU.
+  @Test func commandTwoCancelsAConfirm() async throws {
+    defer { clearDefaults() }
+    let (w, store, _) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
+    sendKey("2", modifiers: .command, to: w)
+    #expect(store.metric == .cpu && store.quitFlow.state == .idle)
+    #expect(try await eventually(w) { !axLabels(in: w).contains(quitSentence) })
+  }
+
   /// When Quit turns into the confirm, VoiceOver hears the confirm's sentence at once, whether or
   /// not its cursor is on it (the PR 2 council's minor).
   @Test func theConfirmIsAnnounced() async throws {
@@ -1230,7 +1241,9 @@ extension NativeInteractionTests {
     try press("Quit", in: w)
     #expect(try await eventually(w) { axLabels(in: w).contains(quitSentence) })
     apps.apps[chrome.processIdentifier] = nil
-    store.metric = .cpu  // the rows draw again, now with no process to quit
+    // The rows draw again, now with no process to quit. Another metric would cancel the confirm
+    // (R164), so the selection moves instead, as the store moves it.
+    store.moveSelection(1)
     #expect(try await eventually(w) { !axLabels(in: w).contains(quitSentence) })
     #expect(store.quitFlow.state == .confirming)
     sendKey("⎋", to: w)
