@@ -329,12 +329,17 @@ final class KeyPanel: NSPanel {
 }
 
 extension NSWindow {
-  /// The window as it draws now, as PNG data. It renders offscreen, as `screencapture` cannot run
-  /// over SSH: the tests' screenshots and `--render-panel` (R129) use it.
+  /// The window as it draws now, as PNG data at 2x in sRGB, on any screen. It renders offscreen, as
+  /// `screencapture` cannot run over SSH: the tests' screenshots and `--render-panel` (R129) use it.
   func pngData() -> Data {
     let view = contentView!
     view.layoutSubtreeIfNeeded()
-    let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+    let bitmap = NSBitmapImageRep(
+      bitmapDataPlanes: nil, pixelsWide: Int(view.bounds.width) * 2,
+      pixelsHigh: Int(view.bounds.height) * 2, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+      isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+    )!.retagging(with: .sRGB)!
+    bitmap.size = view.bounds.size
     view.cacheDisplay(in: view.bounds, to: bitmap)
     return bitmap.representation(using: .png, properties: [:])!
   }

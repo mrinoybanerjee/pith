@@ -1,7 +1,9 @@
 import PithCore
 
-/// Synthetic snapshots with the apps and numbers of the approved mockup (design section 1), for
-/// tests and screenshots. Nothing here comes from a real Mac.
+/// Synthetic snapshots with the numbers of the approved mockup (design section 1), for tests and
+/// screenshots. Nothing here comes from a real Mac. Each app is a real one, at its real path with
+/// its real bundle ID, so a capture on a Mac that has it shows its own icon. Safari, Mail and
+/// Music, which every Mac has, take the mockup's Xcode, Codex and Slack rows (R130, R153).
 enum DemoSnapshots {
   /// "All calm": 9.8 of 16 GB, CPU 14%, Google Chrome first with 3.2 GB.
   static let calm = snapshot(
@@ -14,9 +16,9 @@ enum DemoSnapshots {
           ("Main process", 1, mb(150)),
         ]),
       app("Claude", "com.anthropic.claudefordesktop", pid: 520, cpu: 0.013, (9, gb(1.5))),
-      app("Codex", "com.example.codex", pid: 610, cpu: 0.008, (6, gb(1.1))),
-      app("Slack", "com.tinyspeck.slackmacgap", pid: 730, cpu: 0.005, (7, mb(710))),
-      app("Finder", "com.apple.finder", pid: 340, cpu: 0.001, (1, mb(180))),
+      app("Mail", "com.apple.mail", in: apple, pid: 610, cpu: 0.008, (6, gb(1.1))),
+      app("Music", "com.apple.Music", in: apple, pid: 730, cpu: 0.005, (7, mb(710))),
+      app("Finder", "com.apple.finder", in: coreServices, pid: 340, cpu: 0.001, (1, mb(180))),
     ])
 
   /// "Memory is tight": 15.1 of 16 GB with 2.1 GB of swap, Google Chrome first with 6.4 GB across
@@ -30,10 +32,10 @@ enum DemoSnapshots {
           ("Tabs and sites", 34, gb(5.1)), ("Graphics", 1, mb(620)), ("Extensions", 5, mb(480)),
           ("Main process", 1, mb(210)),
         ]),
-      app("Xcode", "com.apple.dt.Xcode", pid: 880, cpu: 0.062, (14, gb(2.8))),
+      app("Safari", "com.apple.Safari", in: cryptex, pid: 880, cpu: 0.062, (14, gb(2.8))),
       app("Claude", "com.anthropic.claudefordesktop", pid: 520, cpu: 0.013, (9, gb(1.6))),
-      app("Codex", "com.example.codex", pid: 610, cpu: 0.011, (6, gb(1.1))),
-      app("Slack", "com.tinyspeck.slackmacgap", pid: 730, cpu: 0.006, (7, mb(790))),
+      app("Mail", "com.apple.mail", in: apple, pid: 610, cpu: 0.011, (6, gb(1.1))),
+      app("Music", "com.apple.Music", in: apple, pid: 730, cpu: 0.006, (7, mb(790))),
     ])
 
   /// `calm` with its first app renamed.
@@ -47,6 +49,12 @@ enum DemoSnapshots {
       takenAtNs: calm.takenAtNs, mode: .open, totals: calm.totals,
       apps: [renamed] + calm.apps.dropFirst(), system: calm.system, grouping: .full)
   }
+
+  /// Where macOS keeps its own apps, Finder and Safari. `/Applications/Safari.app` is a symlink to
+  /// Safari's folder, and its icon carries an alias badge.
+  private static let apple = "/System/Applications"
+  private static let coreServices = "/System/Library/CoreServices"
+  private static let cryptex = "/System/Cryptexes/App/System/Applications"
 
   private static func gb(_ value: Double) -> UInt64 { UInt64(value * 1_073_741_824) }
   private static func mb(_ value: Double) -> UInt64 { UInt64(value * 1_048_576) }
@@ -66,24 +74,25 @@ enum DemoSnapshots {
       grouping: .full)
   }
 
-  /// An app in `/Applications` with `count` processes and `memory` in all: its main process with
-  /// a fifth of it, and helpers with the rest.
+  /// An app in `folder` with `count` processes and `memory` in all: its main process with a fifth
+  /// of it, and helpers with the rest.
   private static func app(
-    _ name: String, _ bundleID: String, pid: Int32, cpu: Double,
-    _ total: (count: Int, memory: UInt64)
+    _ name: String, _ bundleID: String, in folder: String = "/Applications", pid: Int32,
+    cpu: Double, _ total: (count: Int, memory: UInt64)
   ) -> AppUsage {
     let main = total.count == 1 ? total.memory : total.memory / 5
     let helpers = total.count == 1 ? [] : [("Helpers", total.count - 1, total.memory - main)]
-    return app(name, bundleID, pid: pid, cpu: cpu, inside: helpers + [("Main process", 1, main)])
+    return app(
+      name, bundleID, in: folder, pid: pid, cpu: cpu, inside: helpers + [("Main process", 1, main)])
   }
 
-  /// An app in `/Applications` with the processes `inside` it, largest first, and made-up PIDs from
-  /// `pid` on.
+  /// An app in `folder` with the processes `inside` it, largest first, and made-up PIDs from `pid`
+  /// on.
   private static func app(
-    _ name: String, _ bundleID: String, pid: Int32, cpu: Double,
-    inside: [(label: String, count: Int, memory: UInt64)]
+    _ name: String, _ bundleID: String, in folder: String = "/Applications", pid: Int32,
+    cpu: Double, inside: [(label: String, count: Int, memory: UInt64)]
   ) -> AppUsage {
-    let path = "/Applications/\(name).app"
+    let path = "\(folder)/\(name).app"
     let count = inside.reduce(0) { $0 + $1.count }
     return AppUsage(
       id: path, name: name, bundlePath: path, bundleID: bundleID,

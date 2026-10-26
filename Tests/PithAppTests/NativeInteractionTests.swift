@@ -49,10 +49,16 @@ extension NativeInteractionTests {
   }
 
   /// R75: a tool for the design check and the README images, so it is skipped, not passed, unless
-  /// asked for. The last states are Google Chrome opened, asking to quit (spec 4.5).
+  /// asked for. The last states are Google Chrome opened, asking to quit (spec 4.5). Each demo app
+  /// must be on this Mac, at the row's path with the row's bundle ID, so every row shows its own
+  /// icon (R153).
   @MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["PITH_UI_SNAPSHOT_DIR"] != nil))
   func captureDesignStatesWhenRequested() async throws {
     defer { clearDefaults() }
+    let missing = (DemoSnapshots.calm.apps + DemoSnapshots.tight.apps).compactMap {
+      Bundle(path: $0.bundlePath!)?.bundleIdentifier == $0.bundleID ? nil : $0.bundlePath!
+    }
+    try #require(missing.isEmpty, "not on this Mac with the row's bundle ID")
     let dir = ProcessInfo.processInfo.environment["PITH_UI_SNAPSHOT_DIR"]!
     for scheme in [NSAppearance.Name.aqua, .darkAqua] {
       for (name, snap) in [("calm", DemoSnapshots.calm), ("tight", DemoSnapshots.tight)] {
@@ -71,6 +77,14 @@ extension NativeInteractionTests {
         try writePNG(w, to: "\(dir)/\(name)-\(scheme.rawValue).png")
       }
     }
+  }
+
+  /// R153: the offscreen capture draws at 2x on any screen, so the README images are sharp.
+  @MainActor @Test func theCaptureIsTwiceThePanelsPointSize() throws {
+    let w = try hostPanel(DemoSnapshots.calm)
+    let image = try #require(NSBitmapImageRep(data: w.pngData()))
+    let points = w.contentView!.bounds.size
+    #expect(image.pixelsWide == 720 && image.pixelsHigh == Int(points.height) * 2, "\(points)")
   }
 
   /// R145: the hook's `open` does nothing while the panel waits for its reading, so it cannot cancel
@@ -1079,12 +1093,12 @@ extension NativeInteractionTests {
 
   /// R94 and R101: Return presses the default button only while it shows whole in the list. The
   /// list scrolls as the app scrolls it, to a selected row: to Google Chrome at the top, which
-  /// takes Slack's confirm out of view, and to the last row, which brings it back. Out of view,
+  /// takes Music's confirm out of view, and to the last row, which brings it back. Out of view,
   /// Return does nothing. Back in view, the button's 0.4 s start again, and then Return quits.
   @Test func returnDoesNothingWhileTheConfirmIsScrolledAway() async throws {
     defer { clearDefaults() }
-    let (w, store, apps) = try await hostOpened("Slack", in: DemoSnapshots.calm)
-    let slack = try target(apps, store)
+    let (w, store, apps) = try await hostOpened("Music", in: DemoSnapshots.calm)
+    let music = try target(apps, store)
     try press("Quit", in: w)
     #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
     apps.passTheConfirmGuard()
@@ -1093,14 +1107,14 @@ extension NativeInteractionTests {
     #expect(
       try await eventually(w) { !showsInTheList("Quit", in: w) && !store.confirmButtonInView })
     sendKey("↩", to: w)
-    #expect(slack.terminations == 0 && store.quitFlow.state == .confirming)
+    #expect(music.terminations == 0 && store.quitFlow.state == .confirming)
     store.moveSelection(10)  // "macOS system"
     #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
     sendKey("↩", to: w)
-    #expect(slack.terminations == 0)
+    #expect(music.terminations == 0)
     apps.passTheConfirmGuard()
     sendKey("↩", to: w)
-    #expect(slack.terminations == 1)
+    #expect(music.terminations == 1)
   }
 
   /// R147: Return reads the list's scroll position from AppKit, so the list must be an NSScrollView
@@ -1108,7 +1122,7 @@ extension NativeInteractionTests {
   /// is where the window draws it.
   @Test func theListIsAnNSScrollViewInTheContentsCoordinates() async throws {
     defer { clearDefaults() }
-    let (w, store, _) = try await hostOpened("Slack", in: DemoSnapshots.calm)
+    let (w, store, _) = try await hostOpened("Music", in: DemoSnapshots.calm)
     try press("Quit", in: w)
     #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
     let document = try #require(scrollView(in: w.contentView!)?.documentView)
@@ -1156,33 +1170,33 @@ extension NativeInteractionTests {
   }
 
   /// Spec 4.5, R79 and R93: an app still running 5 s after Quit is offered Force Quit, which asks
-  /// again; only its confirm forces the quit. The list scrolls to the top row and back to Slack,
-  /// which puts Slack's opened row at the list's bottom edge, where the offer shows. Its confirm
+  /// again; only its confirm forces the quit. The list scrolls to the top row and back to Music,
+  /// which puts Music's opened row at the list's bottom edge, where the offer shows. Its confirm
   /// grows the row, which scrolls the confirm's buttons to that same edge. The offer's button is at
   /// the leading edge and the confirm's default button at the trailing edge, so one double-click
   /// cannot press both.
   @Test func anAppStillRunningAfterFiveSecondsIsOfferedForceQuit() async throws {
     defer { clearDefaults() }
-    let (w, store, apps) = try await hostOpened("Slack", in: DemoSnapshots.tight)
-    let slack = try target(apps, store)
+    let (w, store, apps) = try await hostOpened("Music", in: DemoSnapshots.tight)
+    let music = try target(apps, store)
     try press("Quit", in: w)
     #expect(try await eventually(w) { store.confirmButtonInView })
     apps.passTheConfirmGuard()
     sendKey("↩", to: w)
-    #expect(slack.terminations == 1)
+    #expect(music.terminations == 1)
     await settle()
     apps.nowNs += 5_000_000_000
     await apps.timer.fire()
     #expect(store.quitFlow.state == .offerForce)
-    #expect(try await eventually(w) { axLabels(in: w).contains("Quitting Slack…") })
+    #expect(try await eventually(w) { axLabels(in: w).contains("Quitting Music…") })
     sendKey("↓", to: w)  // Google Chrome, the first row
     #expect(try await eventually(w) { !showsInTheList("Force Quit", in: w) })
-    for _ in 0..<4 { sendKey("↓", to: w) }  // Slack
+    for _ in 0..<4 { sendKey("↓", to: w) }  // Music
     #expect(try await eventually(w) { showsInTheList("Force Quit", in: w) })
     let offer = try buttonFrame("Force Quit", in: w)
     #expect(offer.minY - (try listFrame(in: w)).minY < 30, "the offer sits at the bottom edge")
     try press("Force Quit", in: w)
-    let force = "Force Quit Slack? Unsaved changes will be lost."
+    let force = "Force Quit Music? Unsaved changes will be lost."
     #expect(try await eventually(w) { axLabels(in: w).contains(force) })
     #expect(try await eventually(w) { store.confirmButtonInView })
     let confirm = try buttonFrame("Force Quit", in: w)
@@ -1190,21 +1204,21 @@ extension NativeInteractionTests {
     let spoken = axNodes(in: w).compactMap(\.spoken)
     let sentence = try #require(spoken.firstIndex(of: force))
     #expect(Array(spoken[(sentence + 1)...].prefix(2)) == ["Cancel", "Force Quit"])
-    #expect(slack.forcedTerminations == 0)
+    #expect(music.forcedTerminations == 0)
     apps.passTheConfirmGuard()
     sendKey("↩", to: w)
-    #expect(slack.forcedTerminations == 1 && slack.terminations == 1)
+    #expect(music.forcedTerminations == 1 && music.terminations == 1)
     #expect(store.quitFlow.state == .waiting(sinceNs: apps.nowNs))
   }
 
   /// Spec 4.5: Quit shows only for an app of the user's own that macOS runs as an app: not for
-  /// another user's Slack, not for Finder, which the guide marks not quittable, and not for
+  /// another user's Music, not for Finder, which the guide marks not quittable, and not for
   /// "macOS system".
   @Test func onlyTheUsersOwnQuittableAppsShowQuit() async throws {
     defer { clearDefaults() }
     let (w, store, apps) = try await hostOpened("Google Chrome", in: DemoSnapshots.calm)
-    apps.owners[730] = getuid() + 1  // Slack
-    for name in ["Slack", "Finder", "macOS system"] {
+    apps.owners[730] = getuid() + 1  // Music
+    for name in ["Music", "Finder", "macOS system"] {
       let id =
         name == "macOS system"
         ? Store.systemRowID : try #require(store.rows.first { $0.name == name }).id
@@ -1219,7 +1233,7 @@ extension NativeInteractionTests {
   /// R92 and R98: a row opens name first. Google Chrome, here with more helper groups than fit in
   /// the tight panel's list, opens with its name at the list's top. When a confirm appears, the
   /// list scrolls the least that shows the whole confirm, so Return works at once; the row's name
-  /// may scroll away, as the confirm names the app. Slack fits with its confirm, so both show.
+  /// may scroll away, as the confirm names the app. Music fits with its confirm, so both show.
   @Test func aRowOpensNameFirstAndAConfirmShowsWhole() async throws {
     defer { clearDefaults() }
     let c = DemoSnapshots.tight.apps[0]
@@ -1235,7 +1249,7 @@ extension NativeInteractionTests {
       DemoSnapshots.tight, apps: [tallChrome] + DemoSnapshots.tight.apps.dropFirst())
     for (name, snapshot, header) in [
       ("Google Chrome", tall, "Google Chrome, 6.4 GB memory, 41 processes"),
-      ("Slack", DemoSnapshots.calm, "Slack, 710 MB memory, 7 processes"),
+      ("Music", DemoSnapshots.calm, "Music, 710 MB memory, 7 processes"),
     ] {
       let (w, store, apps) = try await hostOpened(name, in: snapshot)
       let app = try target(apps, store)
@@ -1244,14 +1258,14 @@ extension NativeInteractionTests {
         list.contains(w.convertFromScreen(try axNode(header, in: w).frame))
       }
       #expect(try headerShows(), "\(name) opens name first")
-      #expect(name == "Slack" || !showsInTheList("Quit", in: w), "Chrome is taller than the list")
+      #expect(name == "Music" || !showsInTheList("Quit", in: w), "Chrome is taller than the list")
       try press("Quit", in: w)
       #expect(
         try await eventually(w) {
           showsInTheList("Quit", in: w) && showsInTheList("Cancel", in: w)
             && store.confirmButtonInView
         }, "\(name)")
-      #expect(try headerShows() == (name == "Slack"), "\(name)")
+      #expect(try headerShows() == (name == "Music"), "\(name)")
       apps.passTheConfirmGuard()
       sendKey("↩", to: w)
       #expect(app.terminations == 1, "\(name)")
@@ -1331,30 +1345,30 @@ extension NativeInteractionTests {
   }
 
   /// R102: a row opened again shows itself, and a later reading that changes what is inside it
-  /// does not scroll the list. Tight's Slack opens at the list's bottom edge.
+  /// does not scroll the list. Tight's Music opens at the list's bottom edge.
   @Test func aReadingAfterAReopenDoesNotScroll() async throws {
     defer { clearDefaults() }
-    let (w, store, _) = try await hostOpened("Slack", in: DemoSnapshots.tight)
-    let slack = try #require(store.rows.first { $0.name == "Slack" })
-    store.toggle(slack.id)
+    let (w, store, _) = try await hostOpened("Music", in: DemoSnapshots.tight)
+    let music = try #require(store.rows.first { $0.name == "Music" })
+    store.toggle(music.id)
     #expect(try await eventually(w) { store.expandedAppID == nil })
     try await Task.sleep(for: .milliseconds(100))
-    store.toggle(slack.id)
+    store.toggle(music.id)
     #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
     try await Task.sleep(for: .milliseconds(100))
     w.contentView!.layoutSubtreeIfNeeded()
     let header = {
-      try #require(axNodes(in: w).first { $0.label?.hasPrefix("Slack,") == true }).frame
+      try #require(axNodes(in: w).first { $0.label?.hasPrefix("Music,") == true }).frame
     }
     let before = try header()
     let grown = AppUsage(
-      id: slack.id, name: slack.name, bundlePath: slack.bundlePath, bundleID: slack.bundleID,
-      pids: slack.pids, processCount: slack.processCount, memory: slack.memory, cpu: slack.cpu,
-      diskBytesPerSecond: slack.diskBytesPerSecond,
-      inside: slack.inside + [HelperGroup(label: "Utilities", count: 1, memory: 20 << 20)])
+      id: music.id, name: music.name, bundlePath: music.bundlePath, bundleID: music.bundleID,
+      pids: music.pids, processCount: music.processCount, memory: music.memory, cpu: music.cpu,
+      diskBytesPerSecond: music.diskBytesPerSecond,
+      inside: music.inside + [HelperGroup(label: "Utilities", count: 1, memory: 20 << 20)])
     store.apply(
       remake(
-        DemoSnapshots.tight, apps: DemoSnapshots.tight.apps.map { $0.id == slack.id ? grown : $0 }))
+        DemoSnapshots.tight, apps: DemoSnapshots.tight.apps.map { $0.id == music.id ? grown : $0 }))
     #expect(try await eventually(w) { axLabels(in: w).contains("Utilities, 20 MB") })
     try await Task.sleep(for: .milliseconds(100))
     w.contentView!.layoutSubtreeIfNeeded()
