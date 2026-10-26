@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import os
 
 /// Owns the panel (spec 4.2 and 4.7). It never takes focus from the app in front.
 /// - A click asks for an open reading; the panel shows once a reading taken after the click is
@@ -35,6 +36,8 @@ import SwiftUI
   private var monitors: [Any] = []
   /// Sees each scroll of the list, which can move the confirm's default button in or out of view.
   private var scrolls: (any NSObjectProtocol)?
+  /// Sees each change of the screens, which can leave a pinned panel off its screen.
+  private var screens: (any NSObjectProtocol)?
   /// The check that keeps a moved pinned panel on screen (R106).
   private var dragCheck: Task<Void, any Error>?
   /// Whether other windows cover the panel, as macOS reports it. Tests set it (R104).
@@ -83,6 +86,9 @@ import SwiftUI
     scrolls = NotificationCenter.default.addObserver(
       forName: NSView.boundsDidChangeNotification, object: nil, queue: .main
     ) { [weak self] _ in MainActor.assumeIsolated { self?.checkConfirmButton() } }
+    screens = NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+    ) { [weak self] _ in MainActor.assumeIsolated { self?.screensChanged() } }
     follow({ [store] in store.pinned }, then: { [weak self] in self?.pin($0) })
   }
 
@@ -93,7 +99,6 @@ import SwiftUI
     self.anchor = anchor
     opening = true
     clickNs = uptimeNs()
-    store.readLoginItem()
     // The lifecycle takes an open reading at once. Not shown yet, so not covered either.
     onChange(true, store.pinned, false)
   }
@@ -122,6 +127,16 @@ import SwiftUI
   /// the panel fits a short screen; the app list scrolls inside it (R120).
   private func height(in visible: CGRect) -> CGFloat {
     min(hosting.fittingSize.height.rounded(.up), Self.maxHeight, visible.height - 16)
+  }
+
+  /// The `open` of `--debug-hooks`: opens the panel unless it is open or opening (R145).
+  func open(under anchor: (itemFrame: CGRect, visibleFrame: CGRect)) {
+    if !panel.isVisible, !opening { toggle(under: anchor) }
+  }
+
+  /// The `close` of `--debug-hooks`: closes the panel when it is open or opening (R145).
+  func dismiss() {
+    if panel.isVisible || opening { close() }
   }
 
   /// A pause drops a pending open: its reading does not come, and the wake must not open the
@@ -158,6 +173,24 @@ import SwiftUI
       ]
     }
     panel.makeKeyAndOrderFront(nil)
+    // The run loop draws the panel at the end of this pass; this task runs in the next pass, after
+    // that first draw. `scripts/perf.sh` gates the time from the click (spec 10). Only then does
+    // it ask macOS about the login item, which takes up to 15 ms.
+    Task { [clickNs] in
+      Logger(subsystem: "com.mrinoy.pith", category: "timing").notice(
+        "open_to_visible_ms=\(Double(self.uptimeNs() - clickNs) / 1e6, format: .fixed(precision: 1))"
+      )
+      self.store.readLoginItem()
+    }
+  }
+
+  /// Lays out and draws the panel for `store` offscreen once, then lets the view go, so the first
+  /// click finds SwiftUI, the fonts and the row icons loaded (spec 10).
+  static func prepare(_ store: Store) {
+    let view = NSHostingView(rootView: PanelView(store: store, open: 0))
+    view.setFrameSize(CGSize(width: width, height: maxHeight))
+    view.layoutSubtreeIfNeeded()
+    view.cacheDisplay(in: view.bounds, to: view.bitmapImageRepForCachingDisplay(in: view.bounds)!)
   }
 
   /// Follows the content's height after each layout of the shown panel. The list may have just come
@@ -235,8 +268,22 @@ import SwiftUI
     }
     store.confirmButtonInView =
       store.confirmButtonFrame.map { frame in
-        list(in: hosting).map { $0.documentVisibleRect.contains(frame) } ?? false
+        list(in: hosting).map { list in
+          // Whole in the list, and on the panel's own screen, which can be shorter than the panel.
+          list.documentVisibleRect.contains(frame)
+            && ownVisibleFrame?.contains(
+              panel.convertToScreen(list.documentView!.convert(frame, to: nil))) == true
+        } ?? false
       } ?? false
+  }
+
+  /// A pinned panel refits onto its own screen when the screens change: a resolution or a display
+  /// arrangement can leave it partly off its screen, confirm and all.
+  private func screensChanged() {
+    if store.pinned, let visible = ownVisibleFrame {
+      panel.setFrame(fitted(in: visible), display: true)
+    }
+    checkConfirmButton()
   }
 
   private func close() {
@@ -297,6 +344,23 @@ final class KeyPanel: NSPanel {
   override func sendEvent(_ event: NSEvent) {
     if event.type == .keyDown, onKeyDown(event) { return }
     super.sendEvent(event)
+  }
+}
+
+extension NSWindow {
+  /// The window as it draws now, as PNG data at 2x in sRGB, on any screen. It renders offscreen, as
+  /// `screencapture` cannot run over SSH: the tests' screenshots and `--render-panel` (R129) use it.
+  func pngData() -> Data {
+    let view = contentView!
+    view.layoutSubtreeIfNeeded()
+    let bitmap = NSBitmapImageRep(
+      bitmapDataPlanes: nil, pixelsWide: Int(view.bounds.width) * 2,
+      pixelsHigh: Int(view.bounds.height) * 2, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+      isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+    )!.retagging(with: .sRGB)!
+    bitmap.size = view.bounds.size
+    view.cacheDisplay(in: view.bounds, to: bitmap)
+    return bitmap.representation(using: .png, properties: [:])!
   }
 }
 

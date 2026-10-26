@@ -33,21 +33,52 @@ public enum ModePolicy {
 /// The one timer that drives every reader (spec 9). `onTick` runs on the clock's private serial
 /// queue, never on the main thread. A lock guards the paused state; the timer is thread-safe.
 public final class Clock: Sendable {
+  private typealias Interval = (seconds: Double, leeway: Double)
+
+  private let queue: DispatchQueue
   private let timer: any DispatchSourceTimer
   private let paused = OSAllocatedUnfairLock(initialState: false)
+  /// The interval that follows a first tick with a leeway of its own. The first tick's handler
+  /// schedules it; both run on `queue`, so a new `configure` never races it.
+  private let steady: OSAllocatedUnfairLock<Interval?>
 
   public init(onTick: @escaping @Sendable () -> Void) {
-    timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.mrinoy.pith.clock"))
-    timer.setEventHandler(handler: onTick)
+    let queue = DispatchQueue(label: "com.mrinoy.pith.clock")
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    let steady = OSAllocatedUnfairLock<Interval?>(initialState: nil)
+    timer.setEventHandler {
+      if let next = steady.withLock({ $0.take() }) {
+        Self.schedule(timer, first: next, then: next.seconds)
+      }
+      onTick()
+    }
+    self.queue = queue
+    self.timer = timer
+    self.steady = steady
     timer.activate()
   }
 
-  /// Replaces the schedule. The first tick comes one interval from now.
-  public func configure(seconds: Double, leeway: Double) {
-    precondition(seconds > 0 && leeway >= 0, "seconds \(seconds), leeway \(leeway)")
+  /// Replaces the schedule. The first tick comes `first` from now, then one every `seconds`. A
+  /// timer has one leeway, so a first tick with another leeway is scheduled alone (R146).
+  public func configure(seconds: Double, leeway: Double, first: Double, firstLeeway: Double) {
+    precondition(
+      seconds > 0 && first > 0 && leeway >= 0 && firstLeeway >= 0,
+      "seconds \(seconds), leeway \(leeway), first \(first), first leeway \(firstLeeway)")
+    queue.sync {
+      let alone = firstLeeway != leeway
+      steady.withLock { $0 = alone ? (seconds, leeway) : nil }
+      Self.schedule(timer, first: (first, firstLeeway), then: alone ? nil : seconds)
+    }
+  }
+
+  /// The next tick after `first.seconds`, then one every `then`, or none when `then` is nil.
+  private static func schedule(
+    _ timer: any DispatchSourceTimer, first: Interval, then: Double?
+  ) {
     timer.schedule(
-      deadline: .now() + seconds, repeating: seconds,
-      leeway: .nanoseconds(Int(leeway * 1_000_000_000)))
+      deadline: .now() + first.seconds,
+      repeating: then.map { .nanoseconds(Int($0 * 1_000_000_000)) } ?? .never,
+      leeway: .nanoseconds(Int(first.leeway * 1_000_000_000)))
   }
 
   /// Stops ticks until `resume()`. Both are idempotent, so the suspend count stays at 0 or 1.

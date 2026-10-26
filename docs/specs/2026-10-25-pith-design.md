@@ -106,7 +106,7 @@ Clicking a row expands it in place. The expanded row shows:
 
 ### 4.5 Quit flow
 
-1. **Quit** shows an inline confirm: "Quit {App}? It can ask you to save first." [Cancel] [Quit].
+1. **Quit** shows an inline confirm: "Quit {App}? It can ask you to save first." [Cancel] [Quit]. VoiceOver announces the sentence when it appears. For an app whose guide entry says that programs run inside it (a terminal, Docker Desktop, Xcode, Simulator, Ollama), both confirms add: "Programs running inside it stop too."
 2. **Quit** calls `NSRunningApplication.terminate()`.
 3. If the app is still running after 5 s, the row offers **Force Quit**, with a second confirm. That calls `forceTerminate()`.
 4. System processes, apps owned by other users and command-line processes never show Quit.
@@ -116,7 +116,7 @@ Clicking a row expands it in place. The expanded row shows:
 | Setting | Options | Default |
 |---|---|---|
 | Launch at login | On / Off (`SMAppService.mainApp`) | On |
-| Refresh while open | 1 s / 2 s | 1 s |
+| Refresh while open | 1 s / 2 s | 2 s (R134) |
 | Dot turns amber on | Memory, CPU or storage / Memory or storage only | Memory, CPU or storage |
 
 ### 4.7 Pin
@@ -247,7 +247,7 @@ struct Snapshot: Sendable {
 
 - App CPU = Σ over the app's processes of Δ`cpuTimeNs` / (Δwall-clock ns × logical CPU count). This is the share of the whole Mac, 0–100%; it never exceeds 100%.
 - Total CPU busy = Δ(user + system + nice ticks) / Δ(all ticks), summed over all cores.
-- Opening the panel shows the last snapshot at once and runs one tick immediately. That tick has no previous table, so it fills memory right away and shows "—" for CPU and Disk until the next tick, 1 s later.
+- Opening the panel shows the last snapshot at once and runs one tick immediately. That tick has no previous table, so it fills memory right away and shows "—" for CPU and Disk until the next tick, 1 s later. The first interval after an open is always the 1 s one (doubled in Low Power Mode or a serious thermal state); then the refresh setting's interval applies (R134).
 
 ### 6.4 Memory "used"
 
@@ -338,7 +338,7 @@ The sentence is visible only while the panel is open, and opening the panel runs
 
 - Two speeds:
   - **closed:** 5 s interval, 1 s leeway, system totals only;
-  - **open:** 1 s interval (or 2 s by setting), 0.1 s leeway, full sweep.
+  - **open:** 2 s interval by default (1 s by setting), a tenth of it as leeway, full sweep. The first interval after an open is 1 s, with 0.1 s leeway (R146). At 1 s the panel measured 1.9–2.4% of one core on the mini, over the open budget (R134).
 - A pinned panel that is fully covered (`NSWindow.occlusionState`) uses the closed speed.
 - The clock stops on sleep, screen lock and display sleep, and resumes on wake.
 - Low Power Mode or `ProcessInfo.thermalState` ≥ `.serious` doubles both intervals.
@@ -380,7 +380,9 @@ Measured on each of the three Macs with `scripts/perf.sh`, which samples `top -l
    - the `top` parser on recorded output;
    - guide validation: schema, unique matches, sources on system entries, no quittable system entry.
 2. **Accuracy** (`scripts/accuracy.sh`, each Mac, each release):
-   - Pith's per-app memory must be within ±3% of the sum of `top` MEM for the same PIDs at the same moment.
+   - Pith's per-app memory must be within ±3% of the range of two `top` samples of MEM, summed over the same PIDs, one just before and one just after Pith's reading.
+   - Each app needs at least 5 counted runs. At most one counted run may fall outside ±3%, and none beyond ±10%.
+   - A run whose two `top` samples differ by more than 6% does not count.
    - Pith's CPU must be within ±2 points over a 10 s window.
    - No residual may be negative across 100 samples.
 3. **Speed gate** (`scripts/perf.sh`, each Mac, each release): every line of section 10.

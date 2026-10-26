@@ -134,7 +134,11 @@ public final class LibprocProcessTable: ProcessTableReading {
   private let probe: ProcessProbe
   private let uid: UInt32
   private let timebase: MachTimebase
-  private let pathCache = OSAllocatedUnfairLock(initialState: [ExecutableKey: String]())
+  /// The paths kept by executable, and the paths that only the last sweep read. A path is kept
+  /// once two sweeps in a row read the same one, as a new exec can briefly report its old
+  /// executable's path (R175).
+  private let paths = OSAllocatedUnfairLock(
+    initialState: (kept: [ExecutableKey: String](), once: [ExecutableKey: String]()))
 
   public init(
     probe: ProcessProbe = .live, uid: UInt32 = getuid(), timebase: MachTimebase = .current
@@ -145,11 +149,13 @@ public final class LibprocProcessTable: ProcessTableReading {
   }
 
   public func readTable() -> ProcessTable {
-    pathCache.withLock { cache in
+    paths.withLock { paths in
+      let cache = paths.kept
       let takenAtNs = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
       var samples: [ProcessSample] = []
       samples.reserveCapacity(cache.count)
-      var seen = [ExecutableKey: String](minimumCapacity: cache.count)
+      var kept = [ExecutableKey: String](minimumCapacity: cache.count)
+      var once: [ExecutableKey: String] = [:]
       var vanished = 0
       for pid in probe.listPIDs() {
         // An exec between the reads would pair one executable's identity with another's counters,
@@ -159,7 +165,11 @@ public final class LibprocProcessTable: ProcessTableReading {
         if case .execed = result { result = read(pid, cache) }
         switch result {
         case .sample(let s):
-          seen[s.executableKey] = s.path
+          if cache[s.executableKey] != nil || paths.once[s.executableKey] == s.path {
+            kept[s.executableKey] = s.path
+          } else {
+            once[s.executableKey] = s.path
+          }
           samples.append(s)
         case .vanished: vanished += 1
         case .skipped, .execed: continue
@@ -170,7 +180,7 @@ public final class LibprocProcessTable: ProcessTableReading {
       precondition(
         samples.contains { $0.key.pid == probe.ownPID },
         "the sweep found no own process (PID \(probe.ownPID)) in \(samples.count) samples")
-      cache = seen
+      paths = (kept, once)
       return ProcessTable(samples: samples, takenAtNs: takenAtNs, vanished: vanished)
     }
   }
@@ -199,7 +209,7 @@ public final class LibprocProcessTable: ProcessTableReading {
     }
     let start = timebase.nanoseconds(fromTicks: usage.ri_proc_start_abstime) / 1_000
     let key = ProcessKey(pid: pid, startTime: start)
-    // "" when the path can't be read (a deleted executable). Read once per executable.
+    // "" when the path can't be read (a deleted executable). Read until two sweeps agree.
     let path =
       cache[ExecutableKey(process: key, idVersion: info.idVersion)] ?? probe.path(pid) ?? ""
     guard probe.idVersion(pid) == info.idVersion else { return .execed }

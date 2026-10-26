@@ -10,9 +10,9 @@ import os
   var calls: [String] = []
   var real: Clock?
 
-  func configure(seconds: Double, leeway: Double) {
-    calls.append("configure \(seconds) \(leeway)")
-    real?.configure(seconds: seconds, leeway: leeway)
+  func configure(seconds: Double, leeway: Double, first: Double, firstLeeway: Double) {
+    calls.append("configure \(seconds) \(leeway) first \(first) \(firstLeeway)")
+    real?.configure(seconds: seconds, leeway: leeway, first: first, firstLeeway: firstLeeway)
   }
 
   func pause() {
@@ -32,15 +32,19 @@ import os
   var calls: [String] = []
   var holding = false
   var holdsResets = true
-  /// The CPU and the time of the readings it returns.
+  /// The CPU, the memory pressure and the time of the readings it returns.
   var cpu = Reading<Double>.unavailable("test")
+  var pressure = Reading<Pressure>.value(.normal)
   var nowNs: UInt64 = 0
+  /// When each open reading began.
+  private(set) var openTicks: [ContinuousClock.Instant] = []
   private var held: [CheckedContinuation<Void, Never>] = []
 
   func tick(mode: Mode) async -> Snapshot {
     calls.append("tick \(mode)")
+    if mode == .open { openTicks.append(.now) }
     await hold()
-    return snapshot(cpu: cpu, at: nowNs, mode: mode)
+    return snapshot(cpu: cpu, pressure: pressure, at: nowNs, mode: mode)
   }
 
   func resetBaseline() async {
@@ -75,13 +79,16 @@ import os
   }
 }
 
-/// A snapshot in which only the CPU can change the status.
-private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed) -> Snapshot {
+/// A snapshot in which only the CPU and the memory pressure can change the status.
+private func snapshot(
+  cpu: Reading<Double>, pressure: Reading<Pressure> = .value(.normal), at ns: UInt64,
+  mode: Mode = .closed
+) -> Snapshot {
   Snapshot(
     takenAtNs: ns, mode: mode,
     totals: SystemTotals(
       memoryUsed: .value(6 << 30), footprintTotal: .value(6 << 30), memoryTotal: 16 << 30,
-      pressure: .value(.normal),
+      pressure: pressure,
       swapUsed: .value(0), cpuBusy: cpu, storageFree: .unavailable("test"),
       storageTotal: .unavailable("test")),
     apps: [], system: .unavailable("test"), grouping: .full)
@@ -102,7 +109,10 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
   let defaults: UserDefaults
   let lifecycle: Lifecycle
 
-  init(loginItem: LoginItem = .stub, nextLaunch: Bool = false, test: String = #function) {
+  init(
+    loginItem: LoginItem = .none, nextLaunch: Bool = false, lowPower: Bool = false,
+    thermal: ProcessInfo.ThermalState = .nominal, test: String = #function
+  ) {
     suite = testSuite(test)
     defaults = nextLaunch ? UserDefaults(suiteName: suite)! : testDefaults(test)
     store = testStore(loginItem: loginItem)
@@ -112,7 +122,7 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
       makePressureMonitor: { [pressure] in
         pressure.onChange = $0
         return pressure
-      }, thermalState: { .nominal }, isLowPowerModeEnabled: { false })
+      }, thermalState: { thermal }, isLowPowerModeEnabled: { lowPower })
   }
 
   /// Starts the lifecycle, waits for its first reading, then clears the logs.
@@ -138,8 +148,10 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
 }
 
 /// The schedules `Lifecycle` gives the clock with Low Power Mode off and a nominal thermal state.
-private let closedSchedule = "configure 5.0 1.0"
-private let openSchedule = "configure 1.0 0.1"
+/// An open reads every 2 s by default, after a first interval of 1 s (R134).
+/// The first interval after an open is the 1 s one, with its own 0.1 s leeway (R146).
+private let closedSchedule = "configure 5.0 1.0 first 5.0 1.0"
+private let openSchedule = "configure 2.0 0.2 first 1.0 0.1"
 
 private let seconds: UInt64 = 1_000_000_000
 private let willSleep = NSWorkspace.willSleepNotification.rawValue
@@ -394,12 +406,28 @@ private final class GrowingTable: ProcessTableReading {
 
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
   for (refresh, schedule) in [
-    (RefreshSetting.twoSeconds, "configure 2.0 0.2"), (.oneSecond, openSchedule),
+    (RefreshSetting.oneSecond, "configure 1.0 0.1 first 1.0 0.1"),
+    (.twoSeconds, "configure 2.0 0.2 first 2.0 0.2"),
   ] {
     rig.store.settings.refresh = refresh
     #expect(try await settled { rig.clock.calls.last == schedule }, "\(refresh)")
     #expect(Settings.load(rig.defaults).refresh == refresh)
   }
+}
+
+/// R137: a launch saves no setting, so a later version's default still reaches it. A change saves
+/// only the setting that changed, and it loads at the next launch.
+@MainActor @Test func onlyAChangedSettingIsSaved() async throws {
+  let rig = Rig()
+  defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+  try await rig.start()
+  #expect(rig.defaults.object(forKey: "refresh") == nil)
+  #expect(rig.defaults.object(forKey: "amberOnCPU") == nil)
+  rig.store.settings.refresh = .oneSecond
+  #expect(try await settled { rig.defaults.string(forKey: "refresh") == "oneSecond" })
+  #expect(rig.defaults.object(forKey: "amberOnCPU") == nil)
+  let next = Rig(nextLaunch: true)
+  #expect(Settings.load(next.defaults) == Settings(refresh: .oneSecond, amberOnCPU: true))
 }
 
 /// Rule 8: the rules start afresh when `amberOnCPU` changes.
@@ -415,6 +443,40 @@ private final class GrowingTable: ProcessTableReading {
   store.apply(snapshot(cpu: .value(0.9), at: 180 * seconds))
   store.apply(snapshot(cpu: .value(0.9), at: 240 * seconds))
   #expect(store.status.dot == .tight)
+}
+
+/// R134: with the 2 s default, the first interval after an open is 1 s, so CPU and Disk show 1 s
+/// after the click; then a reading comes every 2 s.
+@MainActor @Test func afterAnOpenTheNextReadingComesIn1sThenEvery2s() async throws {
+  let rig = Rig()
+  defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+  rig.clock.real = Clock { [weak lifecycle = rig.lifecycle] in
+    Task { @MainActor in lifecycle?.tick() }
+  }
+  try await rig.start()
+
+  rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
+  for _ in 0..<500 where rig.engine.openTicks.count < 3 {
+    try await Task.sleep(for: .milliseconds(10))
+  }
+  let t = rig.engine.openTicks
+  try #require(t.count == 3)
+  let (first, second) = (t[0].duration(to: t[1]), t[1].duration(to: t[2]))
+  #expect(first > .milliseconds(900) && first < .milliseconds(1400), "\(first)")
+  #expect(second > .milliseconds(1800) && second < .milliseconds(2500), "\(second)")
+}
+
+/// R146: Low Power Mode or a serious thermal state doubles the first interval after an open and
+/// its leeway, as it doubles the steady one.
+@MainActor @Test func lowPowerAndHeatDoubleTheFirstIntervalAndItsLeeway() async throws {
+  for rig in [Rig(lowPower: true), Rig(thermal: .serious)] {
+    defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+    rig.lifecycle.start()
+    #expect(try await settled { rig.engine.calls == ["tick closed"] })
+    rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
+    #expect(
+      rig.clock.calls == ["configure 10.0 2.0 first 10.0 2.0", "configure 4.0 0.4 first 2.0 0.2"])
+  }
 }
 
 /// R65: a suspended timer keeps the fire it missed and delivers it on resume. The wake reschedules
@@ -488,6 +550,29 @@ extension NativeInteractionTests {
       })
     panel.toggle(under: (.zero, .zero))
     #expect(rig.clock.calls.last == closedSchedule)
+  }
+
+  /// R171: while the panel is closed, a reading that changes the status only changes the dot: calm
+  /// to tight, tight to critical, and a reading that a pressure change brings never open the panel.
+  @Test func aStatusChangeWhileClosedNeverOpensThePanel() async throws {
+    let rig = Rig()
+    defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+    try await rig.start()
+    let panel = PanelController(
+      store: rig.store, defaults: rig.defaults,
+      onChange: rig.lifecycle.panelChanged(visible:pinned:occluded:))
+    #expect(rig.store.status.dot == .calm)
+    for (n, pressure, dot) in [(1, Pressure.warning, DotState.tight), (2, .critical, .critical)] {
+      rig.engine.nowNs = UInt64(n) * seconds
+      rig.engine.pressure = .value(pressure)
+      rig.lifecycle.tick()
+      #expect(try await settled { rig.store.status.dot == dot && !panel.panel.isVisible })
+    }
+    rig.engine.nowNs = 3 * seconds
+    rig.engine.pressure = .value(.normal)
+    await rig.pressure.change()
+    #expect(try await settled { rig.store.status.dot == .calm && !panel.panel.isVisible })
+    #expect(!rig.engine.calls.contains("tick open") && !rig.engine.calls.contains("resetBaseline"))
   }
 
   /// R88: a pause while an open waits for its reading drops the open, so neither the reading that

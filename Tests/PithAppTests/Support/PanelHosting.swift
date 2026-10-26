@@ -1,5 +1,6 @@
 import AppKit
 import PithCore
+import PithTestSupport
 import SwiftUI
 import Testing
 
@@ -115,19 +116,9 @@ import Testing
       charactersIgnoringModifiers: characters ?? typed, isARepeat: false, keyCode: code)!)
 }
 
-/// The panel as it draws now, as PNG data. It renders offscreen, as `screencapture` cannot run
-/// over SSH.
-@MainActor func pixels(_ window: NSWindow) throws -> Data {
-  let view = try #require(window.contentView)
-  view.layoutSubtreeIfNeeded()
-  let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-  view.cacheDisplay(in: view.bounds, to: bitmap)
-  return try #require(bitmap.representation(using: .png, properties: [:]))
-}
-
 @MainActor func writePNG(_ window: NSWindow, to path: String) throws {
   let url = URL(fileURLWithPath: path)
   try FileManager.default.createDirectory(
     at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-  try pixels(window).write(to: url)
+  try window.pngData().write(to: url)
 }

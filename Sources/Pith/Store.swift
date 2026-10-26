@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import PithCore
+import SwiftUI
 import os
 
 /// What the "macOS system" row shows (spec 4.4).
@@ -22,7 +23,20 @@ enum SystemDetailsState: Equatable {
   /// Calm until the first tick, a moment after launch. It changes only when the state changes.
   private(set) var status = Status.calm
   var metric = Metric.memory {
-    didSet { rows = RowOrder.stable(previous: [], apps: snapshot?.apps ?? [], metric: metric) }
+    didSet {
+      // The metric already shown changes nothing, so its sort never moves a confirm.
+      guard metric != oldValue else { return }
+      // Another sort would move a confirm under the pointer, so it cancels it first, as ↑ and ↓
+      // do (R94, R164).
+      if [.confirming, .confirmingForce].contains(quitFlow.state) { cancelQuit() }
+      rows = RowOrder.stable(previous: [], apps: snapshot?.apps ?? [], metric: rowOrder)
+    }
+  }
+  /// The metric that orders the rows: the chosen one, but Memory while the open's reading has no
+  /// CPU and disk rates yet, which would all read "—" (R165).
+  private var rowOrder: Metric {
+    metric == .memory || snapshot?.apps.contains(where: { !$0.cpu.isFirstSample }) == true
+      ? metric : .memory
   }
   /// The app rows in the order shown (spec 4.2 and 4.8).
   private(set) var rows: [AppUsage] = []
@@ -65,6 +79,12 @@ enum SystemDetailsState: Equatable {
   let runningApps: RunningApps
   /// Called after each open snapshot is applied. The panel shows on the first one after a click.
   @ObservationIgnored var appliedOpenSnapshot: () -> Void = {}
+  /// Says `sentence` through VoiceOver at once, as when a confirm appears. Tests set it.
+  @ObservationIgnored var announce: (_ sentence: String) -> Void = { sentence in
+    NSAccessibility.post(
+      element: NSApp!, notification: .announcementRequested,
+      userInfo: [.announcement: sentence, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+  }
   @ObservationIgnored private var rules: StatusRules
   @ObservationIgnored private let loginItem: LoginItem
   @ObservationIgnored private let measureSystem: @Sendable () async throws -> SystemBreakdown
@@ -108,8 +128,24 @@ enum SystemDetailsState: Equatable {
     let status = rules.evaluate(snapshot, nowNs: snapshot.takenAtNs)
     if status != self.status { self.status = status }
     guard snapshot.mode == .open else { return }
+    let shownOrder = rowOrder
     self.snapshot = snapshot
-    rows = RowOrder.stable(previous: rows.map(\.id), apps: snapshot.apps, metric: metric)
+    // While a quit flow runs, the rows keep their order and set, so the confirm's button stays
+    // where the user saw it; the order follows the readings again once the flow ends.
+    let apps = Dictionary(uniqueKeysWithValues: snapshot.apps.map { ($0.id, $0) })
+    if quitFlow.state != .idle {
+      rows = rows.compactMap { apps[$0.id] }
+    } else if rowOrder == shownOrder {
+      rows = RowOrder.stable(previous: rows.map(\.id), apps: snapshot.apps, metric: rowOrder)
+    } else {
+      // The open's first rates sort the rows by the chosen metric afresh, at once, not animated
+      // from Memory order (R165).
+      var instant = Transaction()
+      instant.disablesAnimations = true
+      withTransaction(instant) {
+        rows = RowOrder.stable(previous: [], apps: snapshot.apps, metric: rowOrder)
+      }
+    }
     // The icons kept are those of the rows shown now, whatever the view drew before (R112).
     AppIcons.keep(Set(rows.compactMap(\.bundlePath)))
     if !flowTargetHolds { resetQuit() }
@@ -280,7 +316,7 @@ enum SystemDetailsState: Equatable {
     }
   }
 
-  /// When the panel opens: what macOS says now, and no old refusal (R74).
+  /// Once the panel shows: what macOS says now, and no old refusal (R74).
   func readLoginItem() {
     launchesAtLogin = loginItem.isEnabled()
     loginItemFailed = false

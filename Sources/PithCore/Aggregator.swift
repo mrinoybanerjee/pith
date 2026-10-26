@@ -6,6 +6,27 @@ public enum Aggregator {
   /// The previous table's samples by executable, and the wall-clock time since it was taken.
   private typealias Baseline = (samples: [ExecutableKey: ProcessSample], wallNs: Double)
 
+  /// One process as its app's row counts it: its footprint, and its CPU share of the whole Mac
+  /// since the previous table, when it ran the same executable in both.
+  public struct ProcessUsage: Sendable, Equatable, Codable {
+    public let footprint: UInt64
+    public let cpu: Double?
+  }
+
+  /// Each process of `current` by PID, from the same code as the rows, so each row's memory and
+  /// CPU are the sums over its PIDs (R143). For `--snapshot-json`, whose per-process values the
+  /// accuracy gate compares with `top`.
+  public static func processes(
+    previous: ProcessTable, current: ProcessTable, cpuCount: Int
+  ) -> [Int32: ProcessUsage] {
+    let baseline = Self.baseline(previous, current)
+    return Dictionary(
+      uniqueKeysWithValues: current.samples.map { s in
+        let cpu = delta(s, baseline).map { share($0.cpuNs, baseline.wallNs, cpuCount) }
+        return (s.key.pid, ProcessUsage(footprint: s.footprint, cpu: cpu))
+      })
+  }
+
   /// Rows are keyed by app id. CPU and disk rates come only from processes in both tables with
   /// the same executable, so a new process, or one that ran `exec`, adds memory but no rate this
   /// tick. An app with no process in `previous` has no
@@ -22,14 +43,7 @@ public enum Aggregator {
         grouping: grouping)
     }
     guard let current else { preconditionFailure("an open snapshot needs a current table") }
-    let baseline = previous.map { p -> Baseline in
-      precondition(
-        current.takenAtNs > p.takenAtNs, "takenAtNs \(p.takenAtNs) -> \(current.takenAtNs)")
-      return (
-        Dictionary(uniqueKeysWithValues: p.samples.map { ($0.executableKey, $0) }),
-        Double(current.takenAtNs - p.takenAtNs)
-      )
-    }
+    let baseline = previous.map { Self.baseline($0, current) }
     let apps = Dictionary(grouping: current.samples) { groups[$0.key]!.id }.values
       .map { usage($0, groups, baseline, cpuCount, guide) }
       .sorted { $0.memory != $1.memory ? $0.memory > $1.memory : $0.id < $1.id }
@@ -52,25 +66,14 @@ public enum Aggregator {
     let identity = groups[members[0].key]!
     var cpu = Reading<Double>.firstSample
     var disk = cpu
-    let continuing = members.compactMap { s in
-      baseline?.samples[s.executableKey].map { ($0, s) }
-    }
-    if let wallNs = baseline?.wallNs, !continuing.isEmpty {
-      var cpuNs: UInt64 = 0
-      var bytes: UInt64? = 0
-      // An exec keeps the PID and start time and can lower the CPU time (seen on macOS 26.6.2), so
-      // the baseline is per executable: an exec starts a new one (R132). Within one executable
-      // only the CPU time and bytes read are monotonic, and a CPU time that goes backwards traps.
-      // The disk total can step back when a process reads during the kernel's lock-free update of
-      // it, also across zero; then the app has no disk rate this tick (R155). So the difference
-      // wraps and is signed: a negative one is a step back, never a gain of nearly 2^64 (R166).
-      for (p, s) in continuing {
-        cpuNs += s.cpuTimeNs - p.cpuTimeNs
-        let d = s.diskBytes &- p.diskBytes
-        bytes = bytes.flatMap { Int64(bitPattern: d) < 0 ? nil : $0 + d }
+    let deltas = baseline.map { b in members.compactMap { delta($0, b) } } ?? []
+    if let wallNs = baseline?.wallNs, !deltas.isEmpty {
+      let cpuNs = deltas.reduce(0) { $0 + $1.cpuNs }
+      // A disk total that went down leaves the app with no disk rate this tick (R155).
+      let bytes = deltas.reduce(UInt64?(0)) { sum, d in sum.flatMap { t in d.bytes.map { t + $0 } }
       }
       // Where a scan reads each process can push a saturated Mac a little past 100% (spec 6.3).
-      let share = Double(cpuNs) / (wallNs * Double(cpuCount))
+      let share = Self.share(cpuNs, wallNs, cpuCount)
       assert(share <= 1.02, "\(identity.id) CPU share \(share)")
       cpu = .value(min(share, 1))
       disk =
@@ -120,6 +123,37 @@ public enum Aggregator {
         .error("accounting mismatch: \(inputs, privacy: .public)")
     #endif
     return .unavailable("accounting mismatch")
+  }
+
+  private static func baseline(_ previous: ProcessTable, _ current: ProcessTable) -> Baseline {
+    precondition(
+      current.takenAtNs > previous.takenAtNs,
+      "takenAtNs \(previous.takenAtNs) -> \(current.takenAtNs)")
+    return (
+      Dictionary(uniqueKeysWithValues: previous.samples.map { ($0.executableKey, $0) }),
+      Double(current.takenAtNs - previous.takenAtNs)
+    )
+  }
+
+  /// A process's CPU time and disk bytes since its baseline sample, when it ran the same
+  /// executable then. An exec keeps the PID and start time and can lower the CPU time (seen on
+  /// macOS 26.6.2), so the baseline is per executable: an exec starts a new one (R132). Within one
+  /// executable only the CPU time and bytes read are monotonic, and a CPU time that goes backwards
+  /// traps. The disk total can step back when a process reads during the kernel's lock-free update
+  /// of it, also across zero; then `bytes` is nil (R155). So the difference wraps and is signed: a
+  /// negative one is a step back, never a gain of nearly 2^64 (R166).
+  private static func delta(
+    _ s: ProcessSample, _ baseline: Baseline
+  ) -> (cpuNs: UInt64, bytes: UInt64?)? {
+    baseline.samples[s.executableKey].map { p in
+      let bytes = s.diskBytes &- p.diskBytes
+      return (s.cpuTimeNs - p.cpuTimeNs, Int64(bitPattern: bytes) < 0 ? nil : bytes)
+    }
+  }
+
+  /// CPU time as a share of the whole Mac over `wallNs` (spec 6.3).
+  private static func share(_ cpuNs: UInt64, _ wallNs: Double, _ cpuCount: Int) -> Double {
+    Double(cpuNs) / (wallNs * Double(cpuCount))
   }
 
   private static func footprint(_ samples: [ProcessSample]) -> UInt64 {

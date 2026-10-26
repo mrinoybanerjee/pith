@@ -14,20 +14,28 @@ let package = Package(
   targets: [
     .target(
       name: "PithCore",
-      resources: [.copy("Resources/guide.json")]
+      // Not a SwiftPM resource: Bundle.module would compile this Mac's .build path into the app.
+      // scripts/build-app.sh copies guide.json into Contents/Resources; tests read it here.
+      exclude: ["Resources/guide.json"]
     ),
     .executableTarget(
       name: "Pith",
       dependencies: ["PithCore"]
     ),
+    // Test-only helpers. No product and neither app target depends on it, so it never ships.
+    .target(
+      name: "PithTestSupport",
+      dependencies: ["PithCore"],
+      path: "Tests/PithTestSupport"
+    ),
     .testTarget(
       name: "PithCoreTests",
-      dependencies: ["PithCore"],
+      dependencies: ["PithCore", "PithTestSupport"],
       resources: [.copy("Fixtures")]
     ),
     .testTarget(
       name: "PithAppTests",
-      dependencies: ["Pith", "PithCore"]
+      dependencies: ["Pith", "PithCore", "PithTestSupport"]
     ),
   ],
   swiftLanguageModes: [.v6]

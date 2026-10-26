@@ -26,7 +26,8 @@ struct AppRowView: View {
       ) { store.toggle(app.id) }
       if expanded {
         AppDetailView(
-          store: store, name: name, explanation: entry?.explanation, inside: app.inside,
+          store: store, name: name, explanation: entry?.explanation,
+          programsInside: entry?.programsInside == true, inside: app.inside,
           quitTarget: store.quitTarget(for: app))
       }
     }
@@ -187,17 +188,38 @@ func rowSentence(_ name: String, _ value: RowValue, _ metric: Metric, processes:
 /// rest at each open snapshot (R112). A process outside any app shows the icon of a command-line
 /// tool, and an app whose bundle is gone the generic one (R69).
 @MainActor enum AppIcons {
-  private static let tool = NSWorkspace.shared.icon(for: .unixExecutable)
-  private static let app = NSWorkspace.shared.icon(for: .applicationBundle)
+  private static let tool = small(NSWorkspace.shared.icon(for: .unixExecutable))
+  private static let app = small(NSWorkspace.shared.icon(for: .applicationBundle))
   private(set) static var icons: [String: NSImage] = [:]
 
   static func icon(forFile path: String?) -> NSImage {
     guard let path else { return tool }
     if let icon = icons[path] { return icon }
     let icon =
-      FileManager.default.fileExists(atPath: path) ? NSWorkspace.shared.icon(forFile: path) : app
+      FileManager.default.fileExists(atPath: path)
+      ? small(NSWorkspace.shared.icon(forFile: path)) : app
     icons[path] = icon
     return icon
+  }
+
+  /// `icon` drawn once at the rows' 24 pt, at 1x and 2x. The image keeps only these bitmaps, about
+  /// 11 KB, so a later draw reads none of the icon store's files, as a first open did (R172).
+  private static func small(_ icon: NSImage) -> NSImage {
+    let size = NSSize(width: 24, height: 24)
+    let image = NSImage(size: size)
+    for scale in [1, 2] {
+      let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: 24 * scale, pixelsHigh: 24 * scale, bitsPerSample: 8,
+        samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+        bytesPerRow: 0, bitsPerPixel: 0)!
+      bitmap.size = size
+      NSGraphicsContext.saveGraphicsState()
+      NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+      icon.draw(in: NSRect(origin: .zero, size: size))
+      NSGraphicsContext.restoreGraphicsState()
+      image.addRepresentation(bitmap)
+    }
+    return image
   }
 
   /// Keeps only the icons of `paths`, the rows that show now.

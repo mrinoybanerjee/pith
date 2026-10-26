@@ -179,7 +179,23 @@ import os
   #expect([shell.path, python.path] == ["/bin/zsh", "/usr/bin/python3"])
 }
 
-@Test func pathIsReadOncePerKeyAndEvictedWhenGone() {
+@Test func aNewExecsFirstPathIsNotKept() {  // R175 (a)
+  // Right after an exec, the path call can still report the old executable's path.
+  let reads = OSAllocatedUnfairLock(initialState: 0)
+  var probe = ProcessProbe.fake(pids: [10], uid: 501)
+  probe.path = { _ in
+    reads.withLock {
+      $0 += 1
+      return $0 == 1 ? "/bin/zsh" : "/usr/bin/python3"
+    }
+  }
+  let table = LibprocProcessTable(probe: probe, uid: 501)
+  let paths = (0..<4).map { _ in table.readTable().samples[0].path }
+  #expect(paths == ["/bin/zsh", "/usr/bin/python3", "/usr/bin/python3", "/usr/bin/python3"])
+  #expect(reads.withLock { $0 } == 3)  // kept once two sweeps read the same path
+}
+
+@Test func pathIsKeptOncePerKeyAndEvictedWhenGone() {
   let pids = OSAllocatedUnfairLock(initialState: [Int32]([10, 11]))
   let reads = OSAllocatedUnfairLock(initialState: [Int32]())
   var probe = ProcessProbe.fake(pids: [10], uid: 501)
@@ -190,12 +206,13 @@ import os
   }
   let table = LibprocProcessTable(probe: probe, uid: 501)
   _ = table.readTable()
-  _ = table.readTable()  // both paths come from the cache
+  _ = table.readTable()  // the same paths again, so both are kept
+  _ = table.readTable()  // both come from the cache
   pids.withLock { $0 = [10] }
   _ = table.readTable()  // 11 is evicted
   pids.withLock { $0 = [10, 11] }
   _ = table.readTable()  // so its path is read again
-  #expect(reads.withLock { $0 } == [10, 11, 11])
+  #expect(reads.withLock { $0 } == [10, 11, 10, 11, 11])
 }
 
 @Test func unreadablePathKeepsTheSampleWithAnEmptyPath() {
@@ -207,9 +224,10 @@ import os
   }
   let table = LibprocProcessTable(probe: probe, uid: 501)
   _ = table.readTable()
+  _ = table.readTable()
   let t = table.readTable()
   #expect(t.samples.map(\.path) == [""] && t.vanished == 0)
-  #expect(reads.withLock { $0 } == 1)  // the empty path is cached too
+  #expect(reads.withLock { $0 } == 2)  // the empty path is kept too, once two sweeps agree
 }
 
 @Test func missingBSDInfoIsSkippedNotCounted() {

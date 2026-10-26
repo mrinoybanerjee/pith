@@ -9,7 +9,7 @@ private let guide = Guide(entries: [
 private func helper(_ pattern: String, _ title: String) -> GuideEntry {
   GuideEntry(
     match: .helperPattern(pattern), title: title, explanation: "e", kind: .helper,
-    quittable: false, source: nil)
+    quittable: false, source: nil, programsInside: nil)
 }
 
 /// Aggregates `current` against `previous`, grouped by `AppGrouper` in `.limited` mode.
@@ -325,6 +325,30 @@ func aWriteCountThatStepsBackGivesNoTrap(written: (UInt64, UInt64, Reading<Doubl
   )
   #expect(s.apps[0].cpu == .unavailable("first sample"))
   #expect(s.apps[0].diskBytesPerSecond == .unavailable("first sample"))
+}
+
+@Test func eachProcessSumsToItsRow() {  // R143: the values the accuracy gate checks
+  let before = table(
+    [
+      process(300, cpu: 0), process(301, file: "Notes Helper", cpu: 0),
+      process(302, file: "Notes Worker", idVersion: 1, cpu: 0), process(400, app: "Maps", cpu: 0),
+    ], at: 1_000_000_000)
+  let after = table(
+    [
+      process(300, cpu: 300_000_000, memory: 64 << 20),
+      process(301, file: "Notes Helper", cpu: 120_000_000, memory: 32 << 20),
+      process(302, file: "Notes Worker", idVersion: 2, cpu: 5_000_000, memory: 8 << 20),  // exec
+      process(400, app: "Maps", cpu: 70_000_000, memory: 16 << 20),
+    ], at: 2_000_000_000)
+  let s = snap(previous: before, current: after)
+  let processes = Aggregator.processes(previous: before, current: after, cpuCount: 10)
+  #expect(Set(processes.keys) == [300, 301, 302, 400])
+  #expect(processes[302]?.cpu == nil && processes[302]?.footprint == 8 << 20)
+  for app in s.apps {
+    #expect(app.pids.reduce(0) { $0 + processes[$1]!.footprint } == app.memory, "\(app.name)")
+    let cpu = app.pids.compactMap { processes[$0]!.cpu }.reduce(0, +)
+    #expect(abs(cpu - app.cpu.value!) < 1e-9, "\(app.name): \(cpu) vs \(app.cpu)")
+  }
 }
 
 @Test func anExecThatLowersTheCPUTimeStartsAFreshBaseline() {  // R132

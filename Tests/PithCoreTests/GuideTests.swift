@@ -1,11 +1,13 @@
 import Foundation
+import PithTestSupport
 import Testing
 
 @testable import PithCore
 
 private func entry(_ match: GuideMatch, _ title: String) -> GuideEntry {
   GuideEntry(
-    match: match, title: title, explanation: "e", kind: .app, quittable: true, source: nil)
+    match: match, title: title, explanation: "e", kind: .app, quittable: true, source: nil,
+    programsInside: nil)
 }
 
 @Test func bundledGuideIsValid() throws {
@@ -14,6 +16,16 @@ private func entry(_ match: GuideMatch, _ title: String) -> GuideEntry {
   #expect(Set(g.entries.map(\.match)).count == g.entries.count)
   #expect(g.entries.filter { $0.kind == .system }.allSatisfy { !$0.quittable && $0.source != nil })
   #expect(g.entries.filter { $0.kind == .helper }.allSatisfy { !$0.quittable })  // R84
+}
+
+/// The app's loader (`bundled(in: .main)`) reads only the bundle it is given. Every other guide
+/// test reads the source folder through the same loader.
+@Test func bundleWithoutGuideIsAMissingResource() throws {
+  let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+  try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: dir) }
+  let bundle = try #require(Bundle(url: dir))
+  #expect(throws: GuideError.missingResource("guide.json")) { try Guide.bundled(in: bundle) }
 }
 
 @Test func guideCoversCommonProcesses() throws {
@@ -151,4 +163,13 @@ func invalidMatchIsRejected(json: String) {
   #expect(Guide.empty.entries.isEmpty)
   #expect(Guide.empty.entry(name: "mds_stores", bundleID: nil, path: nil) == nil)
   #expect(Guide.empty.helperLabel(processName: "Slack Helper") == nil)
+}
+
+/// The apps whose quit also stops the programs that run inside them, which their confirm says.
+@Test func theGuideMarksTheAppsThatRunPrograms() throws {
+  let marked = try Guide.bundled().entries.filter { $0.programsInside == true }.map(\.title)
+  #expect(
+    Set(marked) == [
+      "Terminal", "iTerm2", "Warp", "Ghostty", "Docker Desktop", "Xcode", "Simulator", "Ollama",
+    ])
 }

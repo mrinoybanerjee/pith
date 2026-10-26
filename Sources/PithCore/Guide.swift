@@ -63,6 +63,8 @@ public struct GuideEntry: Codable, Sendable, Equatable {
   public let kind: GuideKind
   public let quittable: Bool
   public let source: String?
+  /// True for an app that runs other programs, such as a terminal: quitting it stops them too.
+  public let programsInside: Bool?
 }
 
 /// The built-in guide (spec 7). Immutable; the lookups are indexed once, in `init`.
@@ -74,8 +76,8 @@ public struct Guide: Sendable, Equatable {
   private let pathPrefixes: [GuideEntry]  // longest first
   private let helperPatterns: [GuideEntry]  // longest first
 
-  /// Traps on two entries with the same match, as a backstop for hand-built guides. `bundled()`
-  /// reports a duplicate as an error before it gets here.
+  /// Traps on two entries with the same match, as a backstop for hand-built guides.
+  /// `bundled(in:)` reports a duplicate as an error before it gets here.
   public init(entries: [GuideEntry]) {
     self.entries = entries
     byMatch = Dictionary(uniqueKeysWithValues: entries.map { ($0.match, $0) })
@@ -83,8 +85,10 @@ public struct Guide: Sendable, Equatable {
     helperPatterns = Self.longestFirst(entries, .helperPattern)
   }
 
-  public static func bundled() throws -> Guide {
-    guard let url = Bundle.module.url(forResource: "guide", withExtension: "json") else {
+  /// The app passes `.main`: scripts/build-app.sh puts guide.json in its Contents/Resources.
+  /// Tests pass the source folder (their `Guide.bundled()`).
+  public static func bundled(in bundle: Bundle) throws -> Guide {
+    guard let url = bundle.url(forResource: "guide", withExtension: "json") else {
       throw GuideError.missingResource("guide.json")
     }
     return try decode(Data(contentsOf: url))

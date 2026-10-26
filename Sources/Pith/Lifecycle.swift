@@ -4,7 +4,7 @@ import os
 
 /// The clock's controls, so a test can record them. `Clock` is the real one.
 @MainActor protocol Ticker: AnyObject {
-  func configure(seconds: Double, leeway: Double)
+  func configure(seconds: Double, leeway: Double, first: Double, firstLeeway: Double)
   func pause()
   func resume()
 }
@@ -28,8 +28,9 @@ enum PauseReason { case sleep, screensSleep, locked }
 ///   of them is left, or when the user opens the panel;
 /// - readings run one at a time, never while paused, and a pressure change takes one at once;
 /// - a volume mount or unmount re-reads storage;
-/// - the settings and the "Using the most" choice stay saved (R161), and the first launch registers
-///   the login item.
+/// - a setting the user changes and the "Using the most" choice are saved (R137, R161), and the
+///   first launch registers the login item;
+/// - the time from launch to the first reading goes to the log, for `scripts/perf.sh` (spec 10).
 @MainActor final class Lifecycle {
   private let clock: any Ticker
   private let engine: any Sampler
@@ -53,6 +54,7 @@ enum PauseReason { case sleep, screensSleep, locked }
   private var pending = false
   /// The next reading starts on a fresh baseline (R109).
   private var resetPending = false
+  private var firstReadingLogged = false
   private var pressure: AnyObject?
   private var observers: [any NSObjectProtocol] = []
   /// Told about each pause, so a panel that waits for an open reading stops waiting (R88).
@@ -138,7 +140,7 @@ enum PauseReason { case sleep, screensSleep, locked }
     let newMode = ModePolicy.mode(panelVisible: visible, pinned: pinned, occluded: occluded)
     guard newMode != mode else { return }
     mode = newMode
-    configure()
+    configure(fresh: mode == .open)
     // R109: an open reading never measures across the closed time. Each opening, attached,
     // pinned or uncovered, resets the baseline in the same reading as the open tick.
     if mode == .open {
@@ -167,9 +169,19 @@ enum PauseReason { case sleep, screensSleep, locked }
           await engine.resetBaseline()
         }
         store.apply(await engine.tick(mode: mode))
+        if !firstReadingLogged { logFirstReading() }
       } while pending && !paused
       ticking = false
     }
+  }
+
+  /// From the process's start, as the kernel recorded it, to the first reading applied.
+  private func logFirstReading() {
+    firstReadingLogged = true
+    let start = try! ProcessProbe.live.rusage(getpid()).get().ri_proc_start_abstime
+    let ns = MachTimebase.current.nanoseconds(fromTicks: mach_absolute_time() - start)
+    Logger(subsystem: "com.mrinoy.pith", category: "timing").notice(
+      "launch_to_first_reading_ms=\(Double(ns) / 1e6, format: .fixed(precision: 1))")
   }
 
   private func apply(_ settings: Settings) {
@@ -177,12 +189,21 @@ enum PauseReason { case sleep, screensSleep, locked }
     configure()
   }
 
-  private func configure() {
+  /// Sets the clock's speed. When the panel is open and readings restart on a `fresh` baseline,
+  /// after an open or a wake, the first interval is the 1 s one with its own leeway, so CPU and
+  /// Disk show 1 s after the click; then the setting's (R134, R146).
+  private func configure(fresh: Bool = false) {
     let thermal = thermalState()
-    let interval = SamplingPolicy.interval(
-      mode: mode, refresh: store.settings.refresh, lowPower: isLowPowerModeEnabled(),
-      thermalSerious: thermal == .serious || thermal == .critical)
-    clock.configure(seconds: interval.seconds, leeway: interval.leeway)
+    let interval = { (refresh: RefreshSetting) in
+      SamplingPolicy.interval(
+        mode: self.mode, refresh: refresh, lowPower: self.isLowPowerModeEnabled(),
+        thermalSerious: thermal == .serious || thermal == .critical)
+    }
+    let steady = interval(store.settings.refresh)
+    let first = fresh ? interval(.oneSecond) : steady
+    clock.configure(
+      seconds: steady.seconds, leeway: steady.leeway, first: first.seconds,
+      firstLeeway: first.leeway)
   }
 
   private func pause(_ reason: PauseReason) {
@@ -208,7 +229,7 @@ enum PauseReason { case sleep, screensSleep, locked }
       store.resetCPUTimer()
       guard pauseReasons.isEmpty else { return }
       paused = false
-      configure()
+      configure(fresh: mode == .open)
       clock.resume()
       tick()
     }

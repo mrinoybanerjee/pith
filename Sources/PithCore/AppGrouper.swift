@@ -10,9 +10,12 @@ public struct AppGrouper: Sendable {
   private let responsible: (@Sendable (Int32) -> Int32?)?
   private let bundleInfo: @Sendable (String) -> BundleInfo?
   private var cache: [ExecutableKey: AppIdentity] = [:]
+  /// Each new key's grouping and the path it was grouped by. It is kept once the next table has the
+  /// same path, as a new exec can briefly report its old executable's path (R175).
+  private var unconfirmed: [ExecutableKey: (path: String, app: AppIdentity)] = [:]
 
   /// What an `.app` says about itself: its bundle ID, its name and its main executable's file name.
-  public typealias BundleInfo = (bundleID: String, name: String, executable: String?)
+  public typealias BundleInfo = (bundleID: String?, name: String, executable: String?)
 
   /// `responsible` is nil when the responsibility call is missing. `bundleInfo` reads an `.app`.
   public init(
@@ -37,20 +40,24 @@ public struct AppGrouper: Sendable {
         return owner == -1 ? nil : owner
       }
     }
-    return AppGrouper(
-      responsible: responsible,
-      bundleInfo: { appPath in
-        guard let bundle = Bundle(path: appPath), let id = bundle.bundleIdentifier else {
-          return nil
-        }
-        let name =
-          bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-          ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
-        return (
-          id, name ?? FilePath(appPath).stem!,
-          bundle.object(forInfoDictionaryKey: "CFBundleExecutable") as? String
-        )
-      })
+    return AppGrouper(responsible: responsible, bundleInfo: readBundle)
+  }
+
+  /// What the `.app` at `appPath` says about itself in its `Contents/Info.plist`, or in its top
+  /// `Info.plist` for a flat bundle such as the inner Wrapper/*.app of an iPhone or iPad app. Nil
+  /// when neither can be read, as in the middle of an update. `Bundle(path:)` would keep a bundle
+  /// that it could not read for the process's life. A bundle with no bundle ID is still read (R175).
+  static func readBundle(_ appPath: String) -> BundleInfo? {
+    let app = URL(fileURLWithPath: appPath)
+    guard
+      let plist = NSDictionary(contentsOf: app.appending(path: "Contents/Info.plist"))
+        ?? NSDictionary(contentsOf: app.appending(path: "Info.plist"))
+    else { return nil }
+    let name = plist["CFBundleDisplayName"] as? String ?? plist["CFBundleName"] as? String
+    return (
+      plist["CFBundleIdentifier"] as? String, name ?? FilePath(appPath).stem!,
+      plist["CFBundleExecutable"] as? String
+    )
   }
 
   /// Whether `path` lies in a Chromium code-sign clone: a `code_sign_clone.<suffix>` folder, then
@@ -75,8 +82,9 @@ public struct AppGrouper: Sendable {
       .map { String(path[..<$0.endIndex]) }
   }
 
-  /// The app of each process in `t`. Each `ExecutableKey` is grouped once, and keys not in `t`
-  /// leave the cache, so it holds only live processes. A reused PID has a new start time and an
+  /// The app of each process in `t`. Each `ExecutableKey` is grouped once, and kept once two tables
+  /// in a row have its path (R175); keys not in `t` leave the cache, so it holds only live
+  /// processes. A reused PID has a new start time and an
   /// `exec` a new ID version, so either is a new key. A PID that appears twice in `t` traps. A
   /// grouping that missed a process, or could not read a bundle, is not kept, as the next table
   /// may hold the process and the next read may succeed (R157 and R168).
@@ -91,12 +99,20 @@ public struct AppGrouper: Sendable {
     let table = Dictionary(uniqueKeysWithValues: t.samples.map { ($0.key.pid, $0) })
     var groups = [ProcessKey: AppIdentity](minimumCapacity: t.samples.count)
     var live = [ExecutableKey: AppIdentity](minimumCapacity: t.samples.count)
+    var seenOnce: [ExecutableKey: (path: String, app: AppIdentity)] = [:]
     for s in t.samples {
-      let (app, complete) = cache[s.executableKey].map { ($0, true) } ?? group(s, table)
-      groups[s.key] = app
-      if complete { live[s.executableKey] = app }
+      let key = s.executableKey
+      if let app = cache[key] ?? unconfirmed[key].flatMap({ $0.path == s.path ? $0.app : nil }) {
+        groups[s.key] = app
+        live[key] = app
+      } else {
+        let (app, complete) = group(s, table)
+        groups[s.key] = app
+        if complete { seenOnce[key] = (s.path, app) }
+      }
     }
     cache = live
+    unconfirmed = seenOnce
     let clones = Dictionary(
       grouping: t.samples.filter {
         groups[$0.key]!.bundlePath == nil && groups[$0.key]!.bundleID != nil
@@ -173,10 +189,12 @@ public struct AppGrouper: Sendable {
     let info = bundleInfo(app)
     guard !Self.isCodeSignClone(app) else {
       return (
-        info.map {
-          AppIdentity(
-            id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID,
-            executable: $0.executable)
+        info.flatMap { i in
+          i.bundleID.map {
+            AppIdentity(
+              id: "clone:\(app)", name: i.name, bundlePath: nil, bundleID: $0,
+              executable: i.executable)
+          }
         }, info != nil
       )
     }

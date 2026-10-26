@@ -7,10 +7,10 @@ import Testing
   let d = testDefaults()
   defer { clearDefaults() }
   var s = Settings.load(d)
-  #expect(s == Settings())
-  s.refresh = .twoSeconds
+  #expect(s == Settings() && s.refresh == .twoSeconds)  // R134: 2 s while open by default
+  s.refresh = .oneSecond
   s.save(d)
-  #expect(Settings.load(d).refresh == .twoSeconds)
+  #expect(Settings.load(d).refresh == .oneSecond)
 }
 
 @Test func everySettingAndThePinnedFrameSurviveASaveAndReload() {
