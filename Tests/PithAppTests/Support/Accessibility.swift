@@ -1,11 +1,10 @@
 import AppKit
 import Testing
 
+@testable import Pith
+
 /// One element of a window's accessibility tree, read as VoiceOver reads it.
 @MainActor struct AXNode {
-  /// Points of a 13 pt system font's line, to tell a heading's font size from its height.
-  private static let lineHeightPerPoint =
-    NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 13)) / 13
 
   let element: NSObject
   let role: String
@@ -51,7 +50,7 @@ import Testing
     frame = Self.call(element, "accessibilityFrame", as: CGRect.self) ?? .zero
     fontSizes =
       role == "AXHeading"
-      ? [frame.height / Self.lineHeightPerPoint] : Self.fontSizes(element, of: value ?? label)
+      ? [frame.height / lineHeightPerPoint] : Self.fontSizes(element, of: value ?? label)
     children = (object("accessibilityChildren") as? [NSObject] ?? []).map(AXNode.init)
   }
 
@@ -133,11 +132,18 @@ private let interactiveRoles: Set<String> = [
   return all.min() ?? 0
 }
 
-/// The frames of the rows' values and process counts, in the window's coordinates.
-@MainActor func valueColumnFrames(in window: NSWindow) -> [CGRect] {
-  let frames = axNodes(in: window).filter { $0.identifier == "pith.value" }.map {
-    window.convertFromScreen($0.frame)
-  }
+/// The frames of the rows' values and process counts, as the rows recorded them (R148).
+@MainActor func valueColumnFrames() -> [CGRect] {
+  let frames = RowTextFrames.recorded!.filter { !$0.key.hasSuffix(" | name") }.map(\.value)
   #expect(frames.count >= 5, "found \(frames.count) values")
   return frames
 }
+
+/// The point size of each row text that the rows recorded, from its one line's height (R148).
+@MainActor func rowTextPointSizes() -> [CGFloat] {
+  RowTextFrames.recorded!.values.map { $0.height / lineHeightPerPoint }
+}
+
+/// Points of a 13 pt system font's line, to tell a one-line text's font size from its height.
+private let lineHeightPerPoint =
+  NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: 13)) / 13

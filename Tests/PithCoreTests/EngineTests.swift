@@ -120,7 +120,8 @@ private func engine(_ processes: any ProcessTableReading) -> Engine {
   // (the fake's is 0), and only p_idversion changes.
   let execed = OSAllocatedUnfairLock(initialState: false)
   var probe = ProcessProbe.fake(pids: [10], uid: 501)
-  probe.bsdInfo = { _ in (501, 1, "Helper", execed.withLock { $0 } ? 2 : 1) }
+  probe.bsdInfo = { _ in (501, 1, "Helper", execed.withLock { $0 } ? 2 : 1, 10, 1) }
+  probe.idVersion = { _ in execed.withLock { $0 } ? 2 : 1 }
   probe.path = { _ in
     "/Applications/\(execed.withLock { $0 } ? "Slack" : "Notes").app/Contents/MacOS/Helper"
   }

@@ -79,7 +79,8 @@ extension ProcessProbe {
   static func fake(pids: [Int32], uid: UInt32) -> ProcessProbe {
     ProcessProbe(
       listPIDs: { pids },
-      bsdInfo: { _ in (uid, 1, "fake", 1) },
+      bsdInfo: { pid in (uid, 1, "fake", 1, UInt64(pid), 1) },
+      idVersion: { _ in 1 },
       rusage: { _ in .success(.fake(footprint: 1)) },
       path: { _ in "/Applications/Fake.app/Contents/MacOS/Fake" })
   }

@@ -155,13 +155,30 @@ private let clonePaths = [
 @Test func execIsRegrouped() {  // an exec keeps the PID and start time: an SSH shell runs Python
   let shell = Fixture.table("orphan").samples[0]  // zsh, ID version 0
   let python = ProcessSample(
-    key: shell.key, parent: shell.parent, uid: 501, name: "python3", path: "/usr/bin/python3",
+    key: shell.key, parent: shell.parent, uniqueID: shell.uniqueID,
+    parentUniqueID: shell.parentUniqueID, uid: 501, name: "python3", path: "/usr/bin/python3",
     idVersion: 1, footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
   var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
   let ids = [shell, python].map {
     a.assign(ProcessTable(samples: [$0], takenAtNs: 0, vanished: 0))[$0.key]?.id
   }
   #expect(ids == ["proc:zsh", "proc:python3"])
+}
+
+@Test func aReusedParentPIDIsNotFollowed() {  // R151
+  // The tool's parent exited, and a newer Slack took its PID. Slack's unique ID is not the tool's
+  // parent's, so the walk stops at that edge and the tool stands alone.
+  let slack = ProcessSample(
+    key: ProcessKey(pid: 600, startTime: 5_000), parent: 1, uniqueID: 5_600, parentUniqueID: 1,
+    uid: 501, name: "Slack", path: "/Applications/Slack.app/Contents/MacOS/Slack", idVersion: 0,
+    footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
+  let tool = ProcessSample(
+    key: ProcessKey(pid: 601, startTime: 1_000), parent: 600, uniqueID: 1_601,
+    parentUniqueID: 1_600, uid: 501, name: "example-tool", path: "/usr/local/bin/example-tool",
+    idVersion: 0, footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
+  var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
+  let groups = a.assign(ProcessTable(samples: [slack, tool], takenAtNs: 0, vanished: 0))
+  #expect(groups[tool.key]?.id == "proc:example-tool")
 }
 
 @Test func sameNameDifferentPathsStayApart() {  // Review Focus 4 and R52
@@ -227,7 +244,8 @@ private let clonePaths = [
   let runner = try #require(a.assign(t)[me.key])
   #expect(runner.id.count > "proc:".count)
   let finder = ProcessSample(
-    key: ProcessKey(pid: 99_999, startTime: 1), parent: 1, uid: 501, name: "Finder",
+    key: ProcessKey(pid: 99_999, startTime: 1), parent: 1, uniqueID: 100_000, parentUniqueID: 1,
+    uid: 501, name: "Finder",
     path: "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder",
     idVersion: 0, footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
   #expect(

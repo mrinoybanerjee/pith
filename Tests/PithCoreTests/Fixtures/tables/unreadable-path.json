@@ -2,9 +2,9 @@
   "takenAtNs": 1000000000,
   "vanished": 0,
   "samples": [
-    {"key": {"pid": 600, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Slack", "path": "/Applications/Slack.app/Contents/MacOS/Slack", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 601, "startTime": 1000}, "parent": 600, "uid": 501, "name": "worker", "path": "", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 602, "startTime": 1000}, "parent": 1, "uid": 501, "name": "gone", "path": "", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 603, "startTime": 1000}, "parent": 1, "uid": 501, "name": "Brave Browser", "path": "/private/var/folders/xx/T/code_sign_clone.XyZ789/Brave Browser.app.bundle/Contents/MacOS/Brave Browser", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+    {"key": {"pid": 600, "startTime": 1000}, "parent": 1, "uniqueID": 1600, "parentUniqueID": 1, "uid": 501, "name": "Slack", "path": "/Applications/Slack.app/Contents/MacOS/Slack", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 601, "startTime": 1000}, "parent": 600, "uniqueID": 1601, "parentUniqueID": 1600, "uid": 501, "name": "worker", "path": "", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 602, "startTime": 1000}, "parent": 1, "uniqueID": 1602, "parentUniqueID": 1, "uid": 501, "name": "gone", "path": "", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
+    {"key": {"pid": 603, "startTime": 1000}, "parent": 1, "uniqueID": 1603, "parentUniqueID": 1, "uid": 501, "name": "Brave Browser", "path": "/private/var/folders/xx/T/code_sign_clone.XyZ789/Brave Browser.app.bundle/Contents/MacOS/Brave Browser", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
   ]
 }

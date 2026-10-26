@@ -1,3 +1,4 @@
+import Darwin
 import Dispatch
 import Testing
 import os
@@ -80,14 +81,23 @@ private func countingClock() -> (clock: Clock, ticks: @Sendable () -> Int) {
   #expect(ticks() >= 2)
 }
 
-@Test func configureReschedules() async throws {
-  let (c, ticks) = countingClock()
-  c.configure(seconds: 60, leeway: 1, first: 60)
-  c.configure(seconds: 0.5, leeway: 0.05, first: 0.5)
-  try await Task.sleep(for: .milliseconds(100))
-  #expect(ticks() == 0)  // the first tick comes one interval after `configure`
-  try await Task.sleep(for: .milliseconds(600))
-  #expect(ticks() >= 1)
+/// The first tick comes `first` after the last `configure`, never sooner, and well before the 60 s
+/// it replaced. A loaded test run can make it later, so the test waits for it and compares its
+/// time, rather than counting ticks after a sleep.
+@Test(.timeLimit(.minutes(1))) func configureReschedules() async {
+  let first = OSAllocatedUnfairLock<CheckedContinuation<UInt64, Never>?>(initialState: nil)
+  let c = Clock(onTick: {
+    first.withLock { $0.take() }?.resume(returning: clock_gettime_nsec_np(CLOCK_UPTIME_RAW))
+  })
+  var configuredNs: UInt64 = 0
+  let tickNs = await withCheckedContinuation { continuation in
+    first.withLock { $0 = continuation }
+    c.configure(seconds: 60, leeway: 1, first: 60)
+    configuredNs = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+    c.configure(seconds: 0.5, leeway: 0.05, first: 0.5)
+  }
+  let seconds = Double(tickNs - configuredNs) / 1e9
+  #expect(seconds >= 0.5 && seconds < 30, "first tick \(seconds) s after configure")
 }
 
 @Test func theFirstTickCanComeSoonerThanTheInterval() async throws {  // R134

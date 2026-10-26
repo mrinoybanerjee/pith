@@ -49,11 +49,12 @@ run_tests() {
             return 1
         fi
         # Swift 6.2 adds "in N suites" to the summary; Swift 6.0 and 6.1 do not. A skipped test
-        # also ends in a passing summary, so the skips are counted apart.
+        # also ends in a passing summary, so the skips are counted apart. Swift 6.2 marks a skip
+        # with ➜, and Swift 6.0 and 6.1 with ✘ (R149).
         if grep -Eq '^✔ Test run with [0-9]+ tests? (in [0-9]+ suites? )?passed' "$log"; then
             local total skipped
             total="$(grep -E '^✔ Test run with' "$log" | grep -oE '[0-9]+' | head -1)"
-            skipped="$(grep -cE '^➜ Test .* skipped' "$log" || true)"
+            skipped="$(grep -cE '^(➜|✘) Test .* skipped' "$log" || true)"
             printf '%s: %s passed, %s skipped\n' "$name" "$((total - skipped))" "$skipped"
             return 0
         fi

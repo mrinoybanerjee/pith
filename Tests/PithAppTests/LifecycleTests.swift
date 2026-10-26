@@ -302,7 +302,8 @@ private final class GrowingTable: ProcessTableReading {
       return $0
     }
     let example = ProcessSample(
-      key: ProcessKey(pid: 4242, startTime: 1), parent: 1, uid: getuid(), name: "Example",
+      key: ProcessKey(pid: 4242, startTime: 1), parent: 1, uniqueID: 4_243, parentUniqueID: 1,
+      uid: getuid(), name: "Example",
       path: "/Applications/Example.app/Contents/MacOS/Example",
       idVersion: 1,
       footprint: 50 << 20, cpuTimeNs: n * 10_000_000, diskRead: 0, diskWritten: n << 20)
