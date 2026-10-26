@@ -72,6 +72,13 @@ PASS cpu_60s_max 0.30 <= 5.00
 PASS mem_max 21.0 <= 45.0
 PASS idlew_per_s 0.20 <= 2.00" "$PERF" --evaluate open "$FIXTURES/fail.log"
 
+# Memory is read at the moment, so the first sample's counts: 100 MB there fails the closed budget.
+sed '13s/21M /100M/' "$FIXTURES/pass.log" >"$TMP/first-memory.log"
+check 1 "PASS cpu_mean 0.04 <= 0.10
+PASS cpu_60s_max 0.05 <= 1.00
+FAIL mem_max 100.0 > 30.0
+PASS idlew_per_s 0.20 <= 0.50" "$PERF" --evaluate closed "$TMP/first-memory.log"
+
 # Three samples (13 lines each) give no 60 s window.
 head -n 39 "$FIXTURES/pass.log" >"$TMP/short.log"
 check 2 "" "$PERF" --evaluate closed "$TMP/short.log"
@@ -363,6 +370,17 @@ jq '.snapshot.apps[1].cpu = {unavailable: "first sample"}' "$TMP/nocpu/cpu-1.jso
 mv "$TMP/nocpu/c.json" "$TMP/nocpu/cpu-1.json"
 check_lines 1 "$ACCURACY" --evaluate "$TMP/nocpu" <<<"FAIL sums, cpu-1.json: Example Notes: memory 73400320 but the sum is 73400320, CPU null but the sum is 0.002
 FAIL"
+
+# A saturated app: its PIDs' shares add to 1.01, and the row shows 1.0, as Aggregator.usage caps it.
+accuracy_run "$TMP/saturated"
+jq '.processes["4101"].cpu = 0.6 | .processes["4102"].cpu = 0.41 | .snapshot.apps[0].cpu.value = 1' \
+    "$TMP/saturated/cpu-1.json" >"$TMP/saturated/c.json"
+mv "$TMP/saturated/c.json" "$TMP/saturated/cpu-1.json"
+{ top_sample %CPU 4101:0.0 4102:0.0 4201:0.0; top_sample %CPU 4101:600.0 4102:410.0 4201:2.0; } \
+    >"$TMP/saturated/cpu-1.txt"
+check_lines 0 "$ACCURACY" --evaluate "$TMP/saturated" <<<"PASS sums: in all 111 readings, each app is the sum of its PIDs
+PASS Example Editor, window 1: CPU 101.00% vs top 101.00% of the Mac over 10 s (+0.00 points), PIDs 2, left out 1
+PASS"
 
 # R142: readings with no app of 50 MB or more compare nothing, which fails.
 accuracy_run "$TMP/empty"

@@ -45,7 +45,8 @@ gate() {
 }
 
 # evaluate <closed | open> <log>: the budgets of spec 10 that a top log measures. The first sample
-# covers no interval, so its CPU is dropped. A 60 s window is 6 samples of 10 s. IDLEW is a count
+# covers no interval, so its CPU is dropped; memory is read at the moment, so mem_max counts every
+# sample. A 60 s window is 6 samples of 10 s. IDLEW is a count
 # since Pith started (top's default event mode, "-c n"), so its rate is the change over the run.
 evaluate() {
     local budgets measures failed=0
@@ -62,10 +63,8 @@ evaluate() {
             if (n != samples) error(samples " samples but " n " rows of Pith: did it exit?")
             if (n < 7) error(n " samples, fewer than the 7 that one 60 s window needs")
             if ((t[n] - t[1]) / (n - 1) < 9 || (t[n] - t[1]) / (n - 1) > 11) error("samples are not 10 s apart")
-            for (i = 2; i <= n; i++) {
-                sum += cpu[i]
-                if (mem[i] > most) most = mem[i]
-            }
+            for (i = 2; i <= n; i++) sum += cpu[i]
+            for (i = 1; i <= n; i++) if (mem[i] > most) most = mem[i]
             for (i = 2; i + 5 <= n; i++) {
                 w = 0
                 for (j = i; j < i + 6; j++) w += cpu[j]

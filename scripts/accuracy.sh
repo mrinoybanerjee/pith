@@ -46,12 +46,12 @@ app_processes() {
 }
 
 # check_sums <reading.json>: a line for each app whose memory or CPU is not the sum over its PIDs
-# (CPU within 1e-9; a row with no CPU fails when its PIDs have shares, and the reverse), or one
-# line when the reading has no app.
+# (CPU within 1e-9, with the sum capped at 1 as Aggregator.usage caps the app; a row with no CPU
+# fails when its PIDs have shares, and the reverse), or one line when the reading has no app.
 check_sums() {
     jq -r '.processes as $p | .snapshot.apps | if length == 0 then "no app in the reading" else .[]
         | ([.pids[] | $p[tostring].footprint] | add) as $memory
-        | ([.pids[] | $p[tostring].cpu | select(. != null)] | add) as $cpu
+        | ([.pids[] | $p[tostring].cpu | select(. != null)] | add | if . > 1 then 1 else . end) as $cpu
         | select($memory != .memory or ((.cpu.value == null) != ($cpu == null))
             or (.cpu.value != null and $cpu != null
                 and (($cpu - .cpu.value) | if . < 0 then -. else . end) > 1e-9))
