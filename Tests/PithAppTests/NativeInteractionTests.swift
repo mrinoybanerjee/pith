@@ -202,6 +202,18 @@ extension NativeInteractionTests {
         == RowOrder.stable(previous: [], apps: rated.apps, metric: .cpu).map(\.id))
   }
 
+  /// R172: a row's icon is kept as two small bitmaps, the rows' 24 pt at 1x and 2x, drawn once
+  /// from the app's icon, so no open reads the icon store's files again. The same holds for the
+  /// generic icons of a tool and of an app whose bundle is gone.
+  @Test func rowIconsAreKeptAsSmallBitmaps() {
+    for path in ["/System/Applications/Calculator.app", nil, "/Applications/Gone Example.app"] {
+      let icon = AppIcons.icon(forFile: path)
+      #expect(icon.size == NSSize(width: 24, height: 24), "\(path ?? "tool")")
+      #expect(icon.representations.allSatisfy { $0 is NSBitmapImageRep }, "\(path ?? "tool")")
+      #expect(Set(icon.representations.map(\.pixelsWide)) == [24, 48], "\(path ?? "tool")")
+    }
+  }
+
   /// R88: while an open waits for its reading, a late occlusion note from the closed panel still
   /// reports it shown and not covered, so the speed stays open, attached or pinned.
   @Test func aLateOcclusionNoteKeepsAPendingOpenOpen() throws {
