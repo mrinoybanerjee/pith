@@ -28,7 +28,8 @@ enum PauseReason { case sleep, screensSleep, locked }
 ///   of them is left, or when the user opens the panel;
 /// - readings run one at a time, never while paused, and a pressure change takes one at once;
 /// - a volume mount or unmount re-reads storage;
-/// - a setting the user changes is saved (R137), and the first launch registers the login item;
+/// - a setting the user changes and the "Using the most" choice are saved (R137, R161), and the
+///   first launch registers the login item;
 /// - the time from launch to the first reading goes to the log, for `scripts/perf.sh` (spec 10).
 @MainActor final class Lifecycle {
   private let clock: any Ticker
@@ -88,10 +89,12 @@ enum PauseReason { case sleep, screensSleep, locked }
     self.isLowPowerModeEnabled = isLowPowerModeEnabled
   }
 
-  /// Follows the settings and the system, registers the login item on the first launch only
-  /// (spec 4.6 and 12), and takes the first reading.
+  /// Follows the settings and the system, restores the saved metric, registers the login item on
+  /// the first launch only (spec 4.6 and 12), and takes the first reading.
   func start() {
     follow({ [store] in store.settings }, then: { [weak self] in self?.apply($0) })
+    store.metric = defaults.metric
+    follow({ [store] in store.metric }, then: { [weak self] in self?.defaults.metric = $0 })
     if !defaults.loginItemOfferedOnce {
       defaults.loginItemOfferedOnce = true
       store.setLaunchAtLogin(true)

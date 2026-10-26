@@ -89,6 +89,8 @@ struct RowLayout<Icon: View, Name: View>: View {
     )
     .contentShape(.rect)
     .onTapGesture(perform: action)
+    // The click that brings a panel forward must open the row, as it presses a button (R163).
+    .allowsWindowActivationEvents(true)
     .onHover { hovering = $0 }
     .overlay {
       Color.clear

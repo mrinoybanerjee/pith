@@ -968,6 +968,18 @@ private let quitSentence = "Quit Google Chrome? It can ask you to save first."
     try #require(axInteractiveElements(in: w).first { $0.label == label }, "no \(label)").frame)
 }
 
+/// A left click at the middle of `frame`, in the window's coordinates, as mouse-down and mouse-up
+/// events through the window, as AppKit delivers a real click (R154).
+@MainActor private func click(_ frame: CGRect, in window: NSWindow) {
+  for (type, pressure) in [(NSEvent.EventType.leftMouseDown, Float(1)), (.leftMouseUp, 0)] {
+    window.sendEvent(
+      NSEvent.mouseEvent(
+        with: type, location: CGPoint(x: frame.midX, y: frame.midY), modifierFlags: [],
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        context: nil, eventNumber: 0, clickCount: 1, pressure: pressure)!)
+  }
+}
+
 /// The visible part of the panel's list, in the window's coordinates.
 @MainActor private func listFrame(in w: NSWindow) throws -> CGRect {
   let list = try #require(scrollView(in: w.contentView!))
@@ -1086,6 +1098,35 @@ extension NativeInteractionTests {
         axLabels(in: w).contains(
           "Quit Terminal? It can ask you to save first. Programs running inside it stop too.")
       })
+  }
+
+  /// R154 and R163: a real click, as the window gets it from the mouse, opens a row. A row's
+  /// VoiceOver button is a clear overlay (R148) that must leave the click to the row. Another
+  /// window is key, so the click is one that would activate the panel, and a row must accept it
+  /// as a button does. Quit is then pressed by its accessibility action: a version of this test
+  /// that clicked it did not end on the macos-15 runner.
+  @Test func aMouseClickOpensARowAndPressesQuit() async throws {
+    defer { clearDefaults() }
+    let snapshot = DemoSnapshots.calm
+    let apps = FakeRunningApps(
+      snapshot.apps.map {
+        FakeApp(pid: $0.pids[0], bundlePath: $0.bundlePath!, bundleID: $0.bundleID)
+      })
+    let (w, store) = try hostPanelWithStore(snapshot, store: apps.store(guide: Guide.bundled()))
+    let other = NSWindow(
+      contentRect: CGRect(x: 0, y: 0, width: 100, height: 100), styleMask: .titled,
+      backing: .buffered, defer: false)
+    other.isReleasedWhenClosed = false
+    other.makeKeyAndOrderFront(nil)
+    defer { other.close() }
+    #expect(!w.isKeyWindow)
+    let chrome = try #require(store.rows.first { $0.name == "Google Chrome" })
+    let row = try #require(axNodes(in: w).first { $0.label?.hasPrefix("Google Chrome,") == true })
+    click(w.convertFromScreen(row.frame), in: w)
+    #expect(try await eventually(w) { store.expandedAppID == chrome.id })
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { store.quitFlow.state == .confirming })
   }
 
   /// The process that Quit acts on for the opened row.

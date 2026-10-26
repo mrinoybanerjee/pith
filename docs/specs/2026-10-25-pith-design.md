@@ -271,7 +271,7 @@ For each new `ExecutableKey` (PID, start time and `p_idversion`, so an `exec` is
 Rules:
 - Cache results by `ExecutableKey` (PID, start time and `p_idversion`), so neither a reused PID nor an `exec` inherits an old group. Evict keys that no longer appear.
 - Do not cache a result that depended on a process missing from the table: the responsible process, or the parent where the walk stopped without an app (other than `launchd`). The next tick groups it again (R157).
-- A Chromium main process runs from a temporary code-sign clone (`*.app.bundle`). It joins the one installation with its bundle ID that holds its own child processes (their `p_puniqueid` is its `p_uniqueid`). With none or several, it stays apart (R156).
+- A Chromium main process runs from a temporary code-sign clone (`*.app.bundle`). It joins the one installation with its bundle ID that holds its own child processes (their `p_puniqueid` is its `p_uniqueid`). With none or several, it stays apart (R156). Every other process that groups to the clone, such as an unbundled child, joins with it (R162).
 - If `dlsym` cannot find the responsibility call, `GroupingQuality` becomes `.limited`. Grouping then continues with methods 2–3, and Settings shows "App grouping is limited on this macOS version." This is a visible degraded mode, not a silent fallback.
 
 ### 6.6 "macOS system" residual
