@@ -149,7 +149,7 @@ Clicking a row expands it in place. The expanded row shows:
 | `Clock` | PithCore | Fires ticks at the current speed with leeway. It pauses on sleep, screen lock and display sleep. | `DispatchSourceTimer`, `NSWorkspace` notifications (passed in by the app) |
 | `SystemReader` | PithCore | Reads memory totals, pressure (event source), swap, CPU busy and storage | Mach host APIs, sysctl, `DispatchSource`, `URL` resource values |
 | `ProcessTableSource` | PithCore | Reads a raw process table for the user's own processes, using one buffer that is reused | libproc |
-| `AppGrouper` | PithCore | Maps each process to an app identity (section 6.5) and caches by `ProcessKey` | libproc, `dlsym` for the responsibility call, bundle paths |
+| `AppGrouper` | PithCore | Maps each process to an app identity (section 6.5) and caches by `ExecutableKey` | libproc, `dlsym` for the responsibility call, bundle paths |
 | `Aggregator` | PithCore | Takes the previous and current tables plus totals and returns a `Snapshot` (CPU %, rates, per-app sums, residual). It is a pure function. | — |
 | `StatusRules` | PithCore | Turns a `Snapshot` and the recent history into a `Status` (dot state + sentence) with hysteresis. It is pure. | — |
 | `Guide` | PithCore | Loads `guide.json` and matches names, bundle IDs, path prefixes and helper patterns | Bundle resource |
@@ -170,9 +170,11 @@ struct ProcessKey: Hashable, Sendable { let pid: pid_t; let startTime: UInt64 } 
 
 struct ProcessSample: Sendable {
   let key: ProcessKey; let parent: pid_t; let name: String; let path: String
+  let uniqueID: UInt64; let parentUniqueID: UInt64  // p_uniqueid, p_puniqueid (R151)
+  let idVersion: Int32           // p_idversion: new at every exec (R140)
   let footprint: UInt64          // ri_phys_footprint, bytes
   let cpuTimeNs: UInt64          // ri_user_time + ri_system_time, converted from Mach ticks
-  let diskRead: UInt64; let diskWritten: UInt64
+  let diskBytes: UInt64          // ri_diskio_bytesread &+ ri_diskio_byteswritten, total I/O (R155)
 }
 
 enum Pressure: Sendable { case normal, warning, critical }
@@ -212,7 +214,7 @@ struct Snapshot: Sendable {
 ### 5.4 Concurrency
 
 - Swift 6 strict concurrency.
-- `Engine` is an actor on its own executor.
+- `Engine` is an actor with the default executor: its work runs on the shared concurrency pool, off the main actor.
 - The UI touches only `Store` on the main actor.
 - Snapshots are immutable values. Nothing is shared and mutable across actors.
 
@@ -223,8 +225,9 @@ struct Snapshot: Sendable {
 | Reading | API | Privilege | When |
 |---|---|---|---|
 | Process list | `proc_listallpids` | none | open, each tick |
-| Name, parent, user | `proc_pidinfo(PROC_PIDT_SHORTBSDINFO)` | none (all users) | open, each tick (cached by `ProcessKey`) |
-| Path | `proc_pidpath` | none | first sight of a `ProcessKey` |
+| Name, parent, user, unique IDs, exec identity | `proc_pidinfo(PROC_PIDT_BSDINFOWITHUNIQID)` (flavor 18, private in the SDK) | same user only (EPERM for others, which the sweep skips) | open, each tick |
+| Exec identity again, after the counters (R150) | `proc_pidinfo(PROC_PIDUNIQIDENTIFIERINFO)` (flavor 17, private) | none | open, each tick |
+| Path | `proc_pidpath` | none | first sight of an `ExecutableKey` (PID, start time, `p_idversion`) |
 | Footprint, CPU time, disk I/O | `proc_pid_rusage(RUSAGE_INFO_V6)` | same user only (EPERM for others, verified on the Air 2026-10-25) | open, each tick |
 | Memory totals | `host_statistics64(HOST_VM_INFO64)`, `hw.memsize` | none | each tick |
 | Memory pressure | `DispatchSource.makeMemoryPressureSource` + `kern.memorystatus_vm_pressure_level` read on event | none | event-driven |
@@ -232,7 +235,7 @@ struct Snapshot: Sendable {
 | CPU busy | `host_processor_info(PROCESSOR_CPU_LOAD_INFO)` tick deltas | none | each tick |
 | Storage | `URL.resourceValues` `.volumeAvailableCapacityForImportantUsageKey`, `.volumeTotalCapacityKey` on `/` | none | every 60 s, and on volume mount/unmount |
 | App name and icon | `NSRunningApplication`, `Bundle(path:)`, `NSWorkspace.icon(forFile:)` | none | first sight of an app; icons cached |
-| System details | `/usr/bin/top -l 2 -s 1 -n 20 -o mem -stats pid,command,cpu,mem,uid` (setuid root on macOS) | none needed by Pith | only when "macOS system" is opened; cached 10 s |
+| System details | `/usr/bin/top -l 2 -s 1 -o mem -stats pid,command,cpu,mem,uid` (setuid root on macOS) | none needed by Pith | only when "macOS system" is opened; cached 10 s |
 
 ### 6.2 Units
 
@@ -253,7 +256,7 @@ struct Snapshot: Sendable {
 
 ### 6.5 App grouping
 
-For each new `ProcessKey`, Pith tries three methods in order:
+For each new `ExecutableKey` (PID, start time and `p_idversion`, so an `exec` is grouped again), Pith tries three methods in order:
 
 1. **Responsible process:**
    - Call `responsibility_get_pid_responsible_for_pid` (resolved once with `dlsym`).
@@ -261,18 +264,21 @@ For each new `ProcessKey`, Pith tries three methods in order:
 2. **Enclosing bundle:** walk up from `proc_pidpath` to the outermost `*.app` directory. Helpers inside `App.app/Contents/Frameworks/...` resolve to `App.app`.
 3. **Parent chain:**
    - Follow parent PIDs (up to 5 levels) until a process with an enclosing `.app` is found.
+   - An edge counts only while the parent's `p_uniqueid` is the child's `p_puniqueid`, so a reused PID is never followed (R151).
    - Stop at `launchd` (pid 1).
    - If nothing is found, the process is its own group, `proc:<name>`. Command-line tools (`node`, `python3`) therefore group under their parent app when one exists (for example Terminal or Codex), and otherwise stand alone.
 
 Rules:
-- Cache results by `ProcessKey` (pid + start time), so a reused PID never inherits an old group. Evict keys that no longer appear.
+- Cache results by `ExecutableKey` (PID, start time and `p_idversion`), so neither a reused PID nor an `exec` inherits an old group. Evict keys that no longer appear.
+- Do not cache a result that depended on a process missing from the table: the responsible process, or the parent where the walk stopped without an app (other than `launchd`). The next tick groups it again (R157).
+- A Chromium main process runs from a temporary code-sign clone (`*.app.bundle`). It joins the one installation with its bundle ID that holds its own child processes (their `p_puniqueid` is its `p_uniqueid`). With none or several, it stays apart (R156).
 - If `dlsym` cannot find the responsibility call, `GroupingQuality` becomes `.limited`. Grouping then continues with methods 2–3, and Settings shows "App grouping is limited on this macOS version." This is a visible degraded mode, not a silent fallback.
 
 ### 6.6 "macOS system" residual
 
 - Memory residual = (internal − purgeable + wired + pages stored in the compressor) × page size − Σ footprint of the user's own processes. Footprints count a compressed page at its full size, so the residual uses the compressor's uncompressed count (`total_uncompressed_pages_in_compressor`), not `compressor_page_count` (R133). The Memory tile keeps memory used (6.4).
-- CPU residual = total busy − Σ the user's process CPU.
-- If a residual is negative, it is shown as "—" with the reason "accounting mismatch". Debug builds log the inputs. The accuracy test (step 2) fails on any negative residual.
+- CPU residual = total busy − Σ the user's process CPU. The two readings come from different calls a moment apart, so a CPU residual less than 0.01 (one point of the whole Mac) below 0 is rounding and reads 0.
+- Any other negative residual is shown as "—" with the reason "accounting mismatch". Debug builds log the inputs. The accuracy test (step 2) fails on any accounting mismatch.
 
 ### 6.7 System details
 
@@ -280,7 +286,7 @@ Rules:
 - Pith parses the second sample. The first `top` sample is cumulative and is discarded.
 - `mem` values can carry `K`/`M`/`G` and trailing `+`/`-`; the parser handles both.
 - Keeps rows whose UID is not the user's.
-- On a non-zero exit, a timeout (3 s) or a parse failure, the row shows "Couldn't measure system details" with Retry. Raw output is logged in debug builds.
+- On a non-zero exit, a timeout (5 s; `top` is then terminated, and killed if it still runs 1 s later) or a parse failure, the row shows "Couldn't measure system details" with Retry. Raw output is logged in debug builds.
 
 ## 7. Built-in guide
 
@@ -337,7 +343,7 @@ The sentence is visible only while the panel is open, and opening the panel runs
 - The clock stops on sleep, screen lock and display sleep, and resumes on wake.
 - Low Power Mode or `ProcessInfo.thermalState` ≥ `.serious` doubles both intervals.
 - No tools are launched except the on-demand `top`.
-- One reused buffer serves the process list. Paths and names are cached per `ProcessKey`. Strings are formatted only for visible rows.
+- One reused buffer serves the process list. Paths are cached per `ExecutableKey`. Strings are formatted only for visible rows.
 - Drawing:
   - bars are plain SwiftUI shapes; no `Canvas`, no Swift Charts;
   - no animation runs while the panel is hidden.

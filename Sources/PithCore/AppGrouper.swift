@@ -60,32 +60,36 @@ public struct AppGrouper: Sendable {
 
   /// The app of each process in `t`. Each `ExecutableKey` is grouped once, and keys not in `t`
   /// leave the cache, so it holds only live processes. A reused PID has a new start time and an
-  /// `exec` a new ID version, so either is a new key. A PID that appears twice in `t` traps.
+  /// `exec` a new ID version, so either is a new key. A PID that appears twice in `t` traps. A
+  /// grouping that missed a process is not kept, as the next table may hold it (R157).
   ///
   /// Then a Chromium clone (the only identity with a bundle ID and no path) takes the identity of
-  /// the one installation in `t` with its bundle ID; with none or several, it stays apart. That
-  /// depends on the whole table, so it runs on every call, and the cache keeps the clone itself.
+  /// the one installation with its bundle ID that holds its own child processes, whose parent
+  /// unique ID is the clone's; with none or several, it stays apart (R156). That depends on the
+  /// whole table, so it runs on every call, and the cache keeps the clone itself.
   public mutating func assign(_ t: ProcessTable) -> [ProcessKey: AppIdentity] {
     let table = Dictionary(uniqueKeysWithValues: t.samples.map { ($0.key.pid, $0) })
     var groups = [ProcessKey: AppIdentity](minimumCapacity: t.samples.count)
     var live = [ExecutableKey: AppIdentity](minimumCapacity: t.samples.count)
     for s in t.samples {
-      let app = cache[s.executableKey] ?? group(s, table)
+      let (app, complete) = cache[s.executableKey].map { ($0, true) } ?? group(s, table)
       groups[s.key] = app
-      live[s.executableKey] = app
+      if complete { live[s.executableKey] = app }
     }
     cache = live
-    let clones = groups.filter { $0.value.bundlePath == nil && $0.value.bundleID != nil }
-    guard !clones.isEmpty else { return groups }
-    let cloneIDs = Set(clones.values.map(\.bundleID))
-    var installations: [String?: [String: AppIdentity]] = [:]  // by bundle ID, then by id
-    for app in groups.values where app.bundlePath != nil && cloneIDs.contains(app.bundleID) {
-      installations[app.bundleID, default: [:]][app.id] = app
+    let clones = t.samples.filter {
+      groups[$0.key]!.bundlePath == nil && groups[$0.key]!.bundleID != nil
     }
-    for (key, clone) in clones {
-      if let only = installations[clone.bundleID], only.count == 1 {
-        groups[key] = only.first!.value
-      }
+    guard !clones.isEmpty else { return groups }
+    let assigned = groups
+    let children = Dictionary(grouping: t.samples, by: \.parentUniqueID)
+    for clone in clones {
+      let bundleID = assigned[clone.key]!.bundleID
+      let homes = Dictionary(
+        (children[clone.uniqueID] ?? []).map { assigned[$0.key]! }
+          .filter { $0.bundlePath != nil && $0.bundleID == bundleID }.map { ($0.id, $0) }
+      ) { first, _ in first }
+      if homes.count == 1 { groups[clone.key] = homes.first!.value }
     }
     return groups
   }
@@ -99,23 +103,36 @@ public struct AppGrouper: Sendable {
   ///    at launchd. An edge holds only while the parent's unique ID is the one that the child
   ///    recorded, as a reused PID has a new one (R151).
   /// Otherwise the process stands alone, named by its file name.
-  private func group(_ s: ProcessSample, _ table: [Int32: ProcessSample]) -> AppIdentity {
+  ///
+  /// `complete` is false when the answer depended on a process that is not in the table: the
+  /// responsible owner, or the parent PID where the walk stopped without an app (R157).
+  private func group(_ s: ProcessSample, _ table: [Int32: ProcessSample]) -> (
+    app: AppIdentity, complete: Bool
+  ) {
     let responsiblePID = responsible?(s.key.pid)
-    if let owner = responsiblePID.flatMap({ table[$0] }), owner.key.startTime <= s.key.startTime,
+    let owner = responsiblePID.flatMap { table[$0] }
+    if let owner, owner.key.startTime <= s.key.startTime,
       let app = Self.appPaths(owner.path).last, !app.hasSuffix(".app.bundle")
     {
-      return identity(app)!
+      return (identity(app)!, true)
     }
+    let ownerSeen = responsiblePID == nil || owner != nil
     let own = Self.appPaths(s.path)
-    let parents = sequence(first: s) { child in
-      child.parent == 1
-        ? nil : table[child.parent].flatMap { $0.uniqueID == child.parentUniqueID ? $0 : nil }
-    }.dropFirst()
+    let parents = Array(
+      sequence(first: s) { child in
+        child.parent == 1
+          ? nil : table[child.parent].flatMap { $0.uniqueID == child.parentUniqueID ? $0 : nil }
+      }.dropFirst().prefix(5))
     let apps =
       [responsiblePID == s.key.pid ? own.last : own.first]
-      + parents.prefix(5).map { Self.enclosingAppPath($0.path) }
-    for case let app? in apps { if let found = identity(app) { return found } }
-    return AppIdentity(id: "proc:\(s.fileName)", name: s.fileName, bundlePath: nil, bundleID: nil)
+      + parents.map { Self.enclosingAppPath($0.path) }
+    for case let app? in apps { if let found = identity(app) { return (found, ownerSeen) } }
+    let last = parents.last ?? s
+    let walked = parents.count == 5 || last.parent == 1 || table[last.parent] != nil
+    return (
+      AppIdentity(id: "proc:\(s.fileName)", name: s.fileName, bundlePath: nil, bundleID: nil),
+      ownerSeen && walked
+    )
   }
 
   /// An app's id is its path. A Chromium clone runs from a temporary path, so it has no path and

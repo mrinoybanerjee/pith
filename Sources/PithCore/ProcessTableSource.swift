@@ -62,6 +62,8 @@ public struct ProcessProbe: Sendable {
   public var idVersion: @Sendable (Int32) -> Int32?
   public var rusage: @Sendable (Int32) -> Result<rusage_info_v6, Errno>
   public var path: @Sendable (Int32) -> String?
+  /// The process that sweeps, which every table holds (R158).
+  public var ownPID: Int32
 
   public static let live: ProcessProbe = {
     // The buffer size that fit last time carries over, so a steady sweep lists once.
@@ -82,7 +84,8 @@ public struct ProcessProbe: Sendable {
         let size = Int32(MemoryLayout<BSDInfoWithUniqueID>.size)
         let filled = proc_pidinfo(pid, BSDInfoWithUniqueID.flavor, 0, &info, size)
         guard filled == size else {
-          assert(
+          // Any other result, such as a changed layout, would skip every process (R158).
+          precondition(
             filled == 0 && (errno == ESRCH || errno == EPERM),
             "proc_pidinfo(\(pid)) gave \(filled): errno \(errno)")
           return nil
@@ -100,7 +103,7 @@ public struct ProcessProbe: Sendable {
         let size = Int32(MemoryLayout<UniqueIdentifierInfo>.size)
         let filled = proc_pidinfo(pid, UniqueIdentifierInfo.flavor, 0, &info, size)
         guard filled == size else {
-          assert(
+          precondition(
             filled == 0 && errno == ESRCH, "proc_pidinfo(\(pid)) gave \(filled): errno \(errno)")
           return nil
         }
@@ -119,7 +122,8 @@ public struct ProcessProbe: Sendable {
         var buffer = [UInt8](repeating: 0, count: 4 * Int(MAXPATHLEN))  // PROC_PIDPATHINFO_MAXSIZE
         let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
         return length > 0 ? String(decoding: buffer.prefix(Int(length)), as: UTF8.self) : nil
-      })
+      },
+      ownPID: getpid())
   }()
 }
 
@@ -161,6 +165,11 @@ public final class LibprocProcessTable: ProcessTableReading {
         case .skipped, .execed: continue
         }
       }
+      // Pith's own process is always its user's. A table without it means that the listing failed
+      // (proc_listallpids returns 0 then) or that every read did (R158).
+      precondition(
+        samples.contains { $0.key.pid == probe.ownPID },
+        "the sweep found no own process (PID \(probe.ownPID)) in \(samples.count) samples")
       cache = seen
       return ProcessTable(samples: samples, takenAtNs: takenAtNs, vanished: vanished)
     }

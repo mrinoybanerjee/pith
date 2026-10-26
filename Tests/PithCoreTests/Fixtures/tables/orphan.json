@@ -2,8 +2,8 @@
   "takenAtNs": 1000000000,
   "vanished": 0,
   "samples": [
-    {"key": {"pid": 502, "startTime": 1000}, "parent": 590, "uniqueID": 1502, "parentUniqueID": 590, "uid": 501, "name": "zsh", "path": "/bin/zsh", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 501, "startTime": 1000}, "parent": 502, "uniqueID": 1501, "parentUniqueID": 1502, "uid": 501, "name": "python3", "path": "/usr/bin/python3", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0},
-    {"key": {"pid": 503, "startTime": 1000}, "parent": 1, "uniqueID": 1503, "parentUniqueID": 1, "uid": 501, "name": "example-long-too", "path": "/usr/local/bin/example-long-tool-name", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+    {"key": {"pid": 502, "startTime": 1000}, "parent": 590, "uniqueID": 1502, "parentUniqueID": 590, "uid": 501, "name": "zsh", "path": "/bin/zsh", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0},
+    {"key": {"pid": 501, "startTime": 1000}, "parent": 502, "uniqueID": 1501, "parentUniqueID": 1502, "uid": 501, "name": "python3", "path": "/usr/bin/python3", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0},
+    {"key": {"pid": 503, "startTime": 1000}, "parent": 1, "uniqueID": 1503, "parentUniqueID": 1, "uid": 501, "name": "example-long-too", "path": "/usr/local/bin/example-long-tool-name", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0}
   ]
 }
