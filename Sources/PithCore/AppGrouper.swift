@@ -61,7 +61,8 @@ public struct AppGrouper: Sendable {
   /// The app of each process in `t`. Each `ExecutableKey` is grouped once, and keys not in `t`
   /// leave the cache, so it holds only live processes. A reused PID has a new start time and an
   /// `exec` a new ID version, so either is a new key. A PID that appears twice in `t` traps. A
-  /// grouping that missed a process is not kept, as the next table may hold it (R157).
+  /// grouping that missed a process, or could not read a bundle, is not kept, as the next table
+  /// may hold the process and the next read may succeed (R157 and R168).
   ///
   /// Then a Chromium clone (the only identity with a bundle ID and no path) takes the identity of
   /// the one installation with its bundle ID that holds its own child processes, whose parent
@@ -108,7 +109,9 @@ public struct AppGrouper: Sendable {
   /// Otherwise the process stands alone, named by its file name.
   ///
   /// `complete` is false when the answer depended on a process that is not in the table: the
-  /// responsible owner, or the parent PID where the walk stopped without an app (R157).
+  /// responsible owner, or the parent PID where the walk stopped without an app (R157). It is
+  /// also false when an app's bundle could not be read, as an app in the middle of an update
+  /// cannot (R168).
   private func group(_ s: ProcessSample, _ table: [Int32: ProcessSample]) -> (
     app: AppIdentity, complete: Bool
   ) {
@@ -117,7 +120,8 @@ public struct AppGrouper: Sendable {
     if let owner, owner.key.startTime <= s.key.startTime,
       let app = Self.appPaths(owner.path).last, !app.hasSuffix(".app.bundle")
     {
-      return (identity(app)!, true)
+      let (found, readable) = identity(app)
+      return (found!, readable)
     }
     let ownerSeen = responsiblePID == nil || owner != nil
     let own = Self.appPaths(s.path)
@@ -129,26 +133,37 @@ public struct AppGrouper: Sendable {
     let apps =
       [responsiblePID == s.key.pid ? own.last : own.first]
       + parents.map { Self.enclosingAppPath($0.path) }
-    for case let app? in apps { if let found = identity(app) { return (found, ownerSeen) } }
+    var readable = true
+    for case let app? in apps {
+      let (found, read) = identity(app)
+      readable = readable && read
+      if let found { return (found, ownerSeen && readable) }
+    }
     let last = parents.last ?? s
     let walked = parents.count == 5 || last.parent == 1 || table[last.parent] != nil
     return (
       AppIdentity(id: "proc:\(s.fileName)", name: s.fileName, bundlePath: nil, bundleID: nil),
-      ownerSeen && walked
+      ownerSeen && walked && readable
     )
   }
 
   /// An app's id is its path. A Chromium clone runs from a temporary path, so it has no path and
   /// its id is "clone:" and its `.app.bundle` path until `assign` joins it to its installation.
   /// So clones of two installations stay apart. A clone whose bundle can't be read is no app.
-  private func identity(_ app: String) -> AppIdentity? {
+  /// `readable` is false when `bundleInfo` failed (R168).
+  private func identity(_ app: String) -> (identity: AppIdentity?, readable: Bool) {
     let info = bundleInfo(app)
     guard !app.hasSuffix(".app.bundle") else {
-      return info.map {
-        AppIdentity(id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID)
-      }
+      return (
+        info.map {
+          AppIdentity(id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID)
+        }, info != nil
+      )
     }
-    return AppIdentity(
-      id: app, name: info?.name ?? FilePath(app).stem!, bundlePath: app, bundleID: info?.bundleID)
+    return (
+      AppIdentity(
+        id: app, name: info?.name ?? FilePath(app).stem!, bundlePath: app, bundleID: info?.bundleID),
+      info != nil
+    )
   }
 }
