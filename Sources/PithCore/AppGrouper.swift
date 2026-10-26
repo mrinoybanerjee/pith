@@ -65,7 +65,9 @@ public struct AppGrouper: Sendable {
   ///
   /// Then a Chromium clone (the only identity with a bundle ID and no path) takes the identity of
   /// the one installation with its bundle ID that holds its own child processes, whose parent
-  /// unique ID is the clone's; with none or several, it stays apart (R156). That depends on the
+  /// unique ID is the clone's; with none or several, it stays apart (R156). That is decided once
+  /// for each clone identity, from the children of all its processes. Then every process of the
+  /// identity moves with it, such as an unbundled child of the clone (R162). That depends on the
   /// whole table, so it runs on every call, and the cache keeps the clone itself.
   public mutating func assign(_ t: ProcessTable) -> [ProcessKey: AppIdentity] {
     let table = Dictionary(uniqueKeysWithValues: t.samples.map { ($0.key.pid, $0) })
@@ -77,19 +79,20 @@ public struct AppGrouper: Sendable {
       if complete { live[s.executableKey] = app }
     }
     cache = live
-    let clones = t.samples.filter {
-      groups[$0.key]!.bundlePath == nil && groups[$0.key]!.bundleID != nil
-    }
+    let clones = Dictionary(
+      grouping: t.samples.filter {
+        groups[$0.key]!.bundlePath == nil && groups[$0.key]!.bundleID != nil
+      }, by: { groups[$0.key]!.id })
     guard !clones.isEmpty else { return groups }
     let assigned = groups
     let children = Dictionary(grouping: t.samples, by: \.parentUniqueID)
-    for clone in clones {
-      let bundleID = assigned[clone.key]!.bundleID
+    for members in clones.values {
+      let bundleID = assigned[members[0].key]!.bundleID
       let homes = Dictionary(
-        (children[clone.uniqueID] ?? []).map { assigned[$0.key]! }
+        members.flatMap { children[$0.uniqueID] ?? [] }.map { assigned[$0.key]! }
           .filter { $0.bundlePath != nil && $0.bundleID == bundleID }.map { ($0.id, $0) }
       ) { first, _ in first }
-      if homes.count == 1 { groups[clone.key] = homes.first!.value }
+      if homes.count == 1 { for member in members { groups[member.key] = homes.first!.value } }
     }
     return groups
   }

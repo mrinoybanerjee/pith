@@ -154,6 +154,12 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   #expect(s.apps[0].processCount == 3 && s.apps[0].memory == 3 * 64 << 20)
 }
 
+@Test func aCloneWithAnUnbundledChildIsOneRowOfAllItsProcesses() {  // R162
+  let apps = snap(fixture: "clone-native-host").apps
+  #expect(apps.map(\.id) == ["/Applications/Google Chrome.app"])
+  #expect(apps[0].processCount == 3 && apps[0].memory == 3 << 20)
+}
+
 @Test func rowCopiesItsIdentity() {  // the clone main process comes first
   let chrome = snap(fixture: "chrome-usage").apps[0]
   #expect(chrome.id == "/Applications/Google Chrome.app" && chrome.name == "Google Chrome")
