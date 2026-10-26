@@ -177,6 +177,31 @@ extension NativeInteractionTests {
     #expect(w.pngData() == reopened)
   }
 
+  /// R165: with CPU chosen, an open's first reading keeps Memory order, and the next one, with
+  /// rates, sorts the rows by CPU at once: the capture right after it and the one 300 ms later are
+  /// the same pixels.
+  @Test func theFirstRatesSortTheRowsWithoutAnimation() async throws {
+    let store = testStore(guide: try Guide.bundled())
+    store.metric = .cpu
+    let rated = reversingCPU(DemoSnapshots.tight)
+    let first = remake(rated, firstTick: true)
+    let controller = PanelController(
+      store: store, defaults: testDefaults(),
+      onChange: { visible, _, _ in if visible { store.apply(first) } })
+    controller.uptimeNs = { 0 }  // the click comes before the reading (R121)
+    let w = controller.panel
+    controller.toggle(under: try anchor())
+    #expect(w.isVisible)
+    store.apply(rated)
+    w.contentView!.layoutSubtreeIfNeeded()
+    let sorted = w.pngData()
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(w.pngData() == sorted)
+    #expect(
+      store.rows.map(\.id)
+        == RowOrder.stable(previous: [], apps: rated.apps, metric: .cpu).map(\.id))
+  }
+
   /// R88: while an open waits for its reading, a late occlusion note from the closed panel still
   /// reports it shown and not covered, so the speed stays open, attached or pinned.
   @Test func aLateOcclusionNoteKeepsAPendingOpenOpen() throws {

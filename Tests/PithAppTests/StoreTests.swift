@@ -96,6 +96,21 @@ import os
   #expect(store.quitFlow.state == .idle && store.metric == .cpu)
 }
 
+/// R165: with CPU chosen, an open's first reading has no rates, so every row would read "—" and
+/// sort by id. The rows keep Memory order until the first rates, then sort by CPU.
+@MainActor @Test func aCPUChoiceKeepsMemoryOrderUntilTheFirstRates() {
+  let store = testStore()
+  store.metric = .cpu
+  let rated = reversingCPU(DemoSnapshots.tight)
+  let byMemory = RowOrder.stable(previous: [], apps: rated.apps, metric: .memory).map(\.id)
+  let byCPU = RowOrder.stable(previous: [], apps: rated.apps, metric: .cpu).map(\.id)
+  #expect(byMemory != byCPU)
+  store.apply(remake(rated, firstTick: true))
+  #expect(store.rows.map(\.id) == byMemory)
+  store.apply(rated)
+  #expect(store.rows.map(\.id) == byCPU)
+}
+
 /// The tight mockup with Google Chrome running as `pids`.
 private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   let c = DemoSnapshots.tight.apps[0]

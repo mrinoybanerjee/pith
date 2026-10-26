@@ -252,6 +252,18 @@ func remake(
     grouping: grouping ?? snapshot.grouping)
 }
 
+/// `snapshot` with its apps' CPU rates in reverse order, so that its CPU order is not its memory
+/// order (R165).
+func reversingCPU(_ snapshot: Snapshot) -> Snapshot {
+  let apps = zip(snapshot.apps, snapshot.apps.map(\.cpu).reversed()).map { a, cpu in
+    AppUsage(
+      id: a.id, name: a.name, bundlePath: a.bundlePath, bundleID: a.bundleID, pids: a.pids,
+      processCount: a.processCount, memory: a.memory, cpu: cpu,
+      diskBytesPerSecond: a.diskBytesPerSecond, inside: a.inside)
+  }
+  return remake(snapshot, apps: apps)
+}
+
 /// What a closed tick of `snapshot`'s Mac reads: its totals, no apps and no residual.
 func closed(_ snapshot: Snapshot) -> Snapshot {
   Snapshot(
