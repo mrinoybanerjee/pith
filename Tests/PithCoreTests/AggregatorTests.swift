@@ -48,7 +48,9 @@ private func process(
 ) -> ProcessSample {
   let file = file ?? app
   return ProcessSample(
-    key: ProcessKey(pid: pid, startTime: start), parent: 1, uid: 501, name: String(file.prefix(16)),
+    key: ProcessKey(pid: pid, startTime: start), parent: 1, uniqueID: UInt64(pid),
+    parentUniqueID: 1,
+    uid: 501, name: String(file.prefix(16)),
     path: "/Applications/\(app).app/Contents/MacOS/\(file)", idVersion: idVersion,
     footprint: memory, cpuTimeNs: cpu, diskRead: read, diskWritten: written)
 }
@@ -127,7 +129,8 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
 @Test func aProcessOutsideAnyAppKeepsItsFileName() {  // R86: no bundle, so no "Main process"
   let node = (0..<5).map { i in
     ProcessSample(
-      key: ProcessKey(pid: 900 + Int32(i), startTime: 1_000), parent: 1, uid: 501, name: "node",
+      key: ProcessKey(pid: 900 + Int32(i), startTime: 1_000), parent: 1,
+      uniqueID: 1_900 + UInt64(i), parentUniqueID: 1, uid: 501, name: "node",
       path: "/usr/local/bin/node", idVersion: 0, footprint: 64 << 20,
       cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
   }

@@ -58,7 +58,8 @@ extension ProcessTable {
   private static func chromeUsage(at ns: UInt64, cpuNs: UInt64) -> ProcessTable {
     let samples = Fixture.table("chrome-usage").samples.map {
       ProcessSample(
-        key: $0.key, parent: $0.parent, uid: $0.uid, name: $0.name, path: $0.path,
+        key: $0.key, parent: $0.parent, uniqueID: $0.uniqueID, parentUniqueID: $0.parentUniqueID,
+        uid: $0.uid, name: $0.name, path: $0.path,
         idVersion: $0.idVersion, footprint: $0.footprint, cpuTimeNs: cpuNs, diskRead: 0,
         diskWritten: 0)
     }
