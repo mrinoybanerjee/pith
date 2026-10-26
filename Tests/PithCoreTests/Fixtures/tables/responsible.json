@@ -1,0 +1,8 @@
+{
+  "takenAtNs": 1000000000,
+  "vanished": 0,
+  "samples": [
+    {"key": {"pid": 400, "startTime": 1000}, "parent": 1, "uniqueID": 1400, "parentUniqueID": 1, "uid": 501, "name": "Claude", "path": "/Applications/Claude.app/Contents/MacOS/Claude", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0},
+    {"key": {"pid": 401, "startTime": 1000}, "parent": 1, "uniqueID": 1401, "parentUniqueID": 1, "uid": 501, "name": "Example Agent", "path": "/System/Library/PrivateFrameworks/Example.framework/Versions/A/Resources/Example Agent.app/Contents/MacOS/Example Agent", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0}
+  ]
+}

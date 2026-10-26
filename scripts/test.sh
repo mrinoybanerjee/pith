@@ -8,10 +8,13 @@ cd "$ROOT"
 # Without Xcode, SwiftPM 6.2 finds Testing.framework in the Command Line Tools but passes
 # -I instead of -F (UserToolchain.deriveSwiftTestingPath), so `import Testing` fails and
 # the test bundle cannot load the framework. Add both paths there; Xcode needs neither.
+# The Command Line Tools also ship no _Testing_Foundation module, so a test file that imports
+# Foundation and Testing fails to compile; disabling the cross-import overlay avoids that.
 build=(swift build --build-tests)
 frameworks="$(xcode-select -p)/Library/Developer/Frameworks"
 if [[ -d "$frameworks/Testing.framework" ]]; then
     build+=(-Xswiftc -F -Xswiftc "$frameworks" -Xlinker -rpath -Xlinker "$frameworks")
+    build+=(-Xswiftc -Xfrontend -Xswiftc -disable-cross-import-overlays)
 fi
 "${build[@]}"
 

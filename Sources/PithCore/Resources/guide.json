@@ -1,1 +1,152 @@
-[]
+[
+  {
+    "match": { "name": "mds_stores" },
+    "title": "Spotlight indexing",
+    "explanation": "Builds the search index after files change. Normal for a few minutes after big copies or updates.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:mds(8)"
+  },
+  {
+    "match": { "name": "WindowServer" },
+    "title": "Window server",
+    "explanation": "Manages the windows on your screen, combines them into one picture and routes your clicks and key presses to the right app.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:WindowServer(8)"
+  },
+  {
+    "match": { "name": "photoanalysisd" },
+    "title": "Photos analysis",
+    "explanation": "Analyzes your photo library in the background for Memories, People, and search by scene or object.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:photoanalysisd(8)"
+  },
+  {
+    "match": { "name": "kernel_task" },
+    "title": "CPU heat management",
+    "explanation": "Helps manage CPU temperature by making the CPU less available to busy processes. It reacts to heat and does not cause it.",
+    "kind": "system",
+    "quittable": false,
+    "source": "https://support.apple.com/en-us/102172"
+  },
+  {
+    "match": { "name": "backupd" },
+    "title": "Time Machine backup",
+    "explanation": "Creates Time Machine backups and manages their history.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:backupd(8)"
+  },
+  {
+    "match": { "name": "mdworker_shared" },
+    "title": "Spotlight file scanning",
+    "explanation": "Scans and indexes files for Spotlight when a disk is mounted or a file changes.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:mdworker(8)"
+  },
+  {
+    "match": { "name": "softwareupdated" },
+    "title": "Software updates",
+    "explanation": "The main part of macOS that runs software updates.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:softwareupdated(8)"
+  },
+  {
+    "match": { "name": "cloudd" },
+    "title": "iCloud (CloudKit)",
+    "explanation": "Supports CloudKit, the feature that lets apps store their data in iCloud.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:cloudd(8)"
+  },
+  {
+    "match": { "name": "bird" },
+    "title": "iCloud documents",
+    "explanation": "Supports Documents in the Cloud, the feature that stores your documents in iCloud.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:bird(8)"
+  },
+  {
+    "match": { "name": "nsurlsessiond" },
+    "title": "Background network tasks",
+    "explanation": "Performs network tasks for apps that set them to run in the background.",
+    "kind": "system",
+    "quittable": false,
+    "source": "man:nsurlsessiond(8)"
+  },
+  {
+    "match": { "helperPattern": "Helper (Renderer)" },
+    "title": "Tabs and sites",
+    "explanation": "Draws the pages, tabs and windows of the app. Each open tab or site often runs in its own.",
+    "kind": "helper",
+    "quittable": false
+  },
+  {
+    "match": { "helperPattern": "Helper (GPU)" },
+    "title": "Graphics",
+    "explanation": "Draws the app's graphics and video with the graphics chip. An app usually has one.",
+    "kind": "helper",
+    "quittable": false
+  },
+  {
+    "match": { "helperPattern": "Helper (Plugin)" },
+    "title": "Extensions",
+    "explanation": "Runs the app's extensions and plug-ins apart from the main app.",
+    "kind": "helper",
+    "quittable": false
+  },
+  {
+    "match": { "helperPattern": "Helper" },
+    "title": "Helpers",
+    "explanation": "Does background jobs for the app. Its memory and CPU count toward the app.",
+    "kind": "helper",
+    "quittable": false
+  },
+  {
+    "match": { "bundleID": "com.google.Chrome" },
+    "title": "Google Chrome",
+    "explanation": "Google's web browser. Tabs, extensions and graphics run as separate helper processes that count toward Chrome.",
+    "kind": "app",
+    "quittable": true
+  },
+  {
+    "match": { "bundleID": "com.apple.Safari" },
+    "title": "Safari",
+    "explanation": "Apple's web browser. Web pages and tabs run as separate processes that count toward Safari.",
+    "kind": "app",
+    "quittable": true
+  },
+  {
+    "match": { "bundleID": "com.tinyspeck.slackmacgap" },
+    "title": "Slack",
+    "explanation": "Team chat app. It is built like a web browser, so it runs several helper processes and can use a lot of memory.",
+    "kind": "app",
+    "quittable": true
+  },
+  {
+    "match": { "bundleID": "com.apple.dt.Xcode" },
+    "title": "Xcode",
+    "explanation": "Apple's app for building software. Builds, indexing and previews can use a lot of memory and CPU.",
+    "kind": "app",
+    "quittable": true
+  },
+  {
+    "match": { "bundleID": "com.anthropic.claudefordesktop" },
+    "title": "Claude",
+    "explanation": "The Claude chat app. It is built like a web browser, so it runs several helper processes.",
+    "kind": "app",
+    "quittable": true
+  },
+  {
+    "match": { "bundleID": "com.apple.finder" },
+    "title": "Finder",
+    "explanation": "Shows your files and folders and draws the desktop. macOS restarts it at once if it quits.",
+    "kind": "app",
+    "quittable": false
+  }
+]

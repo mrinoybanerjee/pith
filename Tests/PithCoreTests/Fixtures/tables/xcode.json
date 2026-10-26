@@ -1,0 +1,10 @@
+{
+  "takenAtNs": 1000000000,
+  "vanished": 0,
+  "samples": [
+    {"key": {"pid": 200, "startTime": 1000}, "parent": 1, "uniqueID": 1200, "parentUniqueID": 1, "uid": 501, "name": "Xcode", "path": "/Applications/Xcode.app/Contents/MacOS/Xcode", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0},
+    {"key": {"pid": 201, "startTime": 1000}, "parent": 1, "uniqueID": 1201, "parentUniqueID": 1, "uid": 501, "name": "SourceKitService", "path": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/sourcekitd.framework/Versions/A/XPCServices/SourceKitService.xpc/Contents/MacOS/SourceKitService", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0},
+    {"key": {"pid": 202, "startTime": 1000}, "parent": 1, "uniqueID": 1202, "parentUniqueID": 1, "uid": 501, "name": "com.apple.dt.SKA", "path": "/Applications/Xcode.app/Contents/SharedFrameworks/SourceKit.framework/Versions/A/XPCServices/com.apple.dt.SKAgent.xpc/Contents/MacOS/com.apple.dt.SKAgent", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0},
+    {"key": {"pid": 203, "startTime": 1000}, "parent": 200, "uniqueID": 1203, "parentUniqueID": 1200, "uid": 501, "name": "swift-frontend", "path": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0}
+  ]
+}
