@@ -1,4 +1,5 @@
 import Darwin
+import Foundation
 import Testing
 import os
 
@@ -250,6 +251,43 @@ private let clonePaths = [
   let t = ProcessTable(samples: [notes], takenAtNs: 0, vanished: 0)
   #expect(a.assign(t)[notes.key]?.bundleID == nil)
   #expect(a.assign(t)[notes.key]?.bundleID == "com.example.Notes")
+}
+
+@Test func aGroupingIsKeptOnlyOnceTwoTablesHaveItsPath() {  // R175 (a)
+  // A new exec's first path can be its old one: the key is grouped again on the next table.
+  let notes = Fixture.table("same-name").samples[0]
+  let slack = ProcessSample(
+    key: notes.key, parent: notes.parent, uniqueID: notes.uniqueID,
+    parentUniqueID: notes.parentUniqueID, uid: notes.uid, name: "Slack",
+    path: "/Applications/Slack.app/Contents/MacOS/Slack", idVersion: notes.idVersion,
+    footprint: 1, cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
+  var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
+  let ids = [notes, slack, slack].map {
+    a.assign(ProcessTable(samples: [$0], takenAtNs: 0, vanished: 0))[$0.key]?.id
+  }
+  #expect(ids == ["/Applications/Notes.app", "/Applications/Slack.app", "/Applications/Slack.app"])
+}
+
+/// R175 (b, c): the bundle reader reads `Contents/Info.plist` itself. An unreadable bundle is read
+/// again on the next call, as `Bundle(path:)` would keep it unreadable for the process's life, and
+/// a bundle without a bundle ID still counts as read.
+@Test func theBundleReaderReadsInfoPlistEachTime() throws {
+  let app = FileManager.default.temporaryDirectory.appending(path: "pith-\(UUID()).app")
+  defer { try? FileManager.default.removeItem(at: app) }
+  let contents = app.appending(path: "Contents")
+  try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+  #expect(AppGrouper.readBundle(app.path) == nil)  // no Info.plist yet, as in an update
+  var plist: [String: String] = ["CFBundleName": "Example Tool", "CFBundleExecutable": "tool"]
+  func write() throws {
+    try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+      .write(to: contents.appending(path: "Info.plist"))
+  }
+  try write()
+  let read = try #require(AppGrouper.readBundle(app.path))
+  #expect(read.bundleID == nil && read.name == "Example Tool" && read.executable == "tool")
+  plist["CFBundleIdentifier"] = "com.example.tool"
+  try write()
+  #expect(AppGrouper.readBundle(app.path)?.bundleID == "com.example.tool")
 }
 
 @Test func missingResponsibilityCallIsLimited() {
