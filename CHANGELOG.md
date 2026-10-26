@@ -4,7 +4,7 @@ Notable changes to Pith, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-10-25
+## [0.1.0] - 2026-10-26
 
 The first release. Pith is built from source; there is no download.
 
@@ -40,27 +40,33 @@ default 2 s refresh. The Mac mini and the MacBook Air have 16 GB of memory; the 
 
 | Measure | Budget | Mac mini M4 | MacBook Air M4 | MacBook Pro M5 Max |
 |---|---|---|---|---|
-| CPU, panel closed | ≤ 0.1% | 0.03% | <!-- fill: air --> | <!-- fill: pro --> |
-| CPU, panel closed, worst 60 s | ≤ 1% | 0.07% | <!-- fill: air --> | <!-- fill: pro --> |
-| CPU, panel open | ≤ 1.5% | 1.09% | <!-- fill: air --> | <!-- fill: pro --> |
-| CPU, panel open, worst 60 s | ≤ 5% | 1.48% | <!-- fill: air --> | <!-- fill: pro --> |
-| Memory, panel closed | ≤ 30 MB | 21 MB | <!-- fill: air --> | <!-- fill: pro --> |
-| Memory, panel open | ≤ 45 MB | 25 MB | <!-- fill: air --> | <!-- fill: pro --> |
-| Wakeups per second, closed | ≤ 0.5 | 0.10 | <!-- fill: air --> | <!-- fill: pro --> |
-| Wakeups per second, open | ≤ 2 | 0.52 | <!-- fill: air --> | <!-- fill: pro --> |
-| Tools started | 0 | 0 | <!-- fill: air --> | <!-- fill: pro --> |
-| One reading of all processes, mean of 200 | ≤ 3 ms | 0.87 ms | <!-- fill: air --> | <!-- fill: pro --> |
-| Launch to first reading | ≤ 300 ms | 125 ms | <!-- fill: air --> | <!-- fill: pro --> |
-| Click to panel on screen, slowest of 10 | ≤ 100 ms | 55 ms | <!-- fill: air --> | <!-- fill: pro --> |
-| macOS | 15 or later | 26.6.2 | <!-- fill: air --> | <!-- fill: pro --> |
+| CPU, panel closed | ≤ 0.1% | 0.03% | 0.03% | 0.02% |
+| CPU, panel closed, worst 60 s | ≤ 1% | 0.05% | 0.03% | 0.03% |
+| CPU, panel open | ≤ 1.5% | 0.98% | 1.15% | 0.95% |
+| CPU, panel open, worst 60 s | ≤ 5% | 1.13% | 1.23% | 1.42% |
+| Memory, panel closed | ≤ 30 MB | 27 MB | 27 MB | 28 MB |
+| Memory, panel open | ≤ 45 MB | 26 MB | 25 MB | 33 MB |
+| Wakeups per second, closed | ≤ 0.5 | 0.03 | 0.10 | 0.00 |
+| Wakeups per second, open | ≤ 2 | 0.13 | 0.30 | 0.00 |
+| Tools started | 0 | 0 | 0 | 0 |
+| One reading of all processes, mean of 200 | ≤ 3 ms | 1.27 ms | 1.15 ms | 2.02 ms |
+| Launch to first reading | ≤ 300 ms | 182 ms | 117 ms | 108 ms |
+| Click to panel on screen: first open / slowest of the others | ≤ 100 ms | 81 / 68 ms | 59 / 64 ms | 230 ms* |
+| macOS | 15 or later | 26.6.2 | 26.6.2 | 26.6 |
 
 Accuracy, with `scripts/accuracy.sh`: Pith against `top`, for the same processes at the same
 moment, for every app of 50 MB or more. CPU points are shares of the whole Mac.
 
 | Check | Pass rule | Mac mini M4 | MacBook Air M4 | MacBook Pro M5 Max |
 |---|---|---|---|---|
-| Memory per app | within ±3% | pass, 2 of 2 runs | <!-- fill: air --> | <!-- fill: pro --> |
-| CPU per app, over 10 s | within ±2 points | pass, largest gap 0.16 | <!-- fill: air --> | <!-- fill: pro --> |
-| "macOS system" | never below zero | 100 of 100 readings | <!-- fill: air --> | <!-- fill: pro --> |
+| Memory per app | within ±3% | pass, 2 of 2 runs | pass, 19 apps | pass, 2 of 2 runs |
+| CPU per app, over 10 s | within ±2 points | pass, 2 of 2 runs | pass, largest gap 0.12 | pass, largest gap 0.22 |
+| "macOS system" | never below zero | 100 of 100 readings | 100 of 100 readings | 100 of 100 readings |
+
+\* The MacBook Pro's numbers are from build `a68ea3c`; the Mac mini's and the MacBook Air's are from
+the release build. The Pro locks its screen 3 minutes after the last input and Pith pauses while the
+screen is locked, so its gates cannot run unattended. Its gate's first open ran behind a locked
+screen under heavy disk load; a later probe measured 43–85 ms for 15 first opens after launch.
+No 24-hour soak was run for 0.1.0.
 
 [0.1.0]: https://github.com/mrinoybanerjee/pith/releases/tag/v0.1.0
