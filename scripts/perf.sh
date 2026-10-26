@@ -3,8 +3,9 @@
 # --debug-hooks (R128) and samples it with `top` every 10 s: <minutes> closed, then <minutes> with
 # the panel open, opened and closed through the hook's notification. It opens the panel 9 more
 # times, samples 2 more minutes closed, runs one sweep benchmark, and reads the launch and open
-# timings and any close of the panel during its open minutes from the unified log (R145). On any
-# exit it relaunches Pith without the hooks. It prints one line per budget, then PASS or FAIL,
+# timings and the closes of the panel from the unified log: none during its open minutes (R145),
+# and the 10 that it makes after them, which prove the close line is logged (N4). Once it has quit
+# the running Pith, on any exit it relaunches Pith without the hooks. It prints one line per budget, then PASS or FAIL,
 # and exits 1 if any budget fails. The logs are kept; their path is printed first.
 # --evaluate checks one `top -l ... -stats pid,cpu,mem,idlew` log against the closed or open
 # budgets, and exits 2 if the log cannot be read. --evaluate-run checks the recorded files of a
@@ -13,7 +14,7 @@
 # Usage: scripts/perf.sh [--minutes <minutes, default 10>]
 #        scripts/perf.sh --evaluate <closed | open> <log>
 #        scripts/perf.sh --evaluate-run <dir with closed.log, open.log, after.log, children.txt,
-#                        closes.txt, sweep.txt, timing.txt>
+#                        closes.txt, closes-after.txt, sweep.txt, timing.txt>
 
 set -euo pipefail
 
@@ -83,7 +84,7 @@ evaluate() {
 
 # evaluate_run <dir>: every budget line of a run from its recorded files; returns 1 on any FAIL.
 evaluate_run() {
-    local dir="$1" failed=0 launches opens
+    local dir="$1" failed=0 launches opens control
     echo "closed:"
     evaluate closed "$dir/closed.log" || failed=1
     echo "open:"
@@ -94,6 +95,13 @@ evaluate_run() {
     gate children "$(sort -u "$dir/children.txt" | grep -c . || true)" 0 %d || failed=1
     gate panel_closes_while_open "$(grep -c 'panel closed' "$dir/closes.txt" || true)" 0 %d ||
         failed=1
+    control="$(grep -c 'panel closed' "$dir/closes-after.txt" || true)"
+    if [[ "$control" == 10 ]]; then
+        echo "PASS panel_closes_after_open 10, the control"
+    else
+        echo "FAIL panel_closes_after_open $control, want 10: the close line may not be logged"
+        failed=1
+    fi
     cat "$dir/sweep.txt"
     gate sweep_mean_ms "$(grep -oE 'mean_ms=[0-9.]+' "$dir/sweep.txt" | cut -d= -f2 || true)" \
         3.00 %.2f || failed=1
@@ -164,9 +172,9 @@ pith_log() {
         "subsystem == \"com.mrinoy.pith\" AND category == \"$1\" AND processID == $PID"
 }
 
-# On any exit, even after a failed step or with the helpers gone, the helpers stop and Pith runs
-# again without the hooks. Launch Services can still list the copy that just quit and send it
-# the open (error -600), so `-n`.
+# On any exit after the running Pith quit, even after a failed step or with the helpers gone, the
+# helpers stop and Pith runs again without the hooks. Launch Services can still list the copy that
+# just quit and send it the open (error -600), so `-n`.
 relaunch() {
     set +e
     kill "${awake:-}" "${watcher:-}" 2>/dev/null
@@ -180,8 +188,9 @@ echo "logs: $LOGS"
 caffeinate -d -i -w $$ >/dev/null 2>&1 &
 awake=$!
 disown
-trap relaunch EXIT
+# A Pith that does not quit is left as it is: relaunching would start a second copy (N3).
 quit_pith || { echo "error: Pith did not quit" >&2; exit 2; }
+trap relaunch EXIT
 since="$(date '+%Y-%m-%d %H:%M:%S')"
 open -n -a "$APP" --args --debug-hooks
 for _ in {1..50}; do
@@ -215,4 +224,5 @@ kill "$watcher"
 "$APP/Contents/MacOS/Pith" --benchmark-sweep 200 >"$LOGS/sweep.txt"
 pith_log timing "$since" >"$LOGS/timing.txt"
 pith_log debug-hooks "$open_start" "$open_end" >"$LOGS/closes.txt"
+pith_log debug-hooks "$open_end" >"$LOGS/closes-after.txt"
 evaluate_run "$LOGS"

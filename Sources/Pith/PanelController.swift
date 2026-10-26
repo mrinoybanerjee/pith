@@ -124,8 +124,6 @@ import os
     min(hosting.fittingSize.height.rounded(.up), Self.maxHeight, visible.height - 16)
   }
 
-  /// A pause drops a pending open: its reading does not come, and the wake must not open the
-  /// panel by itself (R88).
   /// The `open` of `--debug-hooks`: opens the panel unless it is open or opening (R145).
   func open(under anchor: (itemFrame: CGRect, visibleFrame: CGRect)) {
     if !panel.isVisible, !opening { toggle(under: anchor) }
@@ -136,6 +134,8 @@ import os
     if panel.isVisible || opening { close() }
   }
 
+  /// A pause drops a pending open: its reading does not come, and the wake must not open the
+  /// panel by itself (R88).
   func cancelOpening() {
     guard opening else { return }
     opening = false

@@ -83,6 +83,12 @@ perf_run() {
     for phase in closed open after; do cp "$FIXTURES/pass.log" "$1/$phase.log"; done
     : >"$1/children.txt"
     echo "Timestamp               Ty Process[PID:TID]" >"$1/closes.txt"
+    {
+        echo "Timestamp               Ty Process[PID:TID]"
+        for _ in {1..10}; do
+            echo "2026-10-25 09:20:01.000 Df Pith[4242:1] [com.mrinoy.pith:debug-hooks] panel closed"
+        done
+    } >"$1/closes-after.txt"
     echo "sweep n=200 processes=330 mean_ms=0.868 max_ms=1.299" >"$1/sweep.txt"
     {
         echo "2026-10-25 09:00:00.100 Df Pith[4242:1] [com.mrinoy.pith:timing] launch_to_first_reading_ms=125.4"
@@ -111,6 +117,7 @@ PASS idlew_per_s 0.20 <= 0.50
 always:
 PASS children 0 <= 0
 PASS panel_closes_while_open 0 <= 0
+PASS panel_closes_after_open 10, the control
 sweep n=200 processes=330 mean_ms=0.868 max_ms=1.299
 PASS sweep_mean_ms 0.87 <= 3.00
 PASS launch_to_first_reading_ms 125.4 <= 300
@@ -133,6 +140,12 @@ echo "2026-10-25 09:15:00.000 Df Pith[4242:1] [com.mrinoy.pith:debug-hooks] pane
     >>"$TMP/closed/closes.txt"
 check_lines 1 "$PERF" --evaluate-run "$TMP/closed" <<<"FAIL panel_closes_while_open 1 > 0"
 
+# N4: the closes after the open minutes are the control that the close line is logged at all.
+perf_run "$TMP/control"
+sed -i '' '$d' "$TMP/control/closes-after.txt"
+check_lines 1 "$PERF" --evaluate-run "$TMP/control" <<<"FAIL panel_closes_after_open 9, want 10: the close line may not be logged
+FAIL"
+
 perf_run "$TMP/opens"
 sed -i '' '$d' "$TMP/opens/timing.txt"
 check_lines 1 "$PERF" --evaluate-run "$TMP/opens" <<<"FAIL timings: want 1 launch and 10 opens in $TMP/opens/timing.txt"
@@ -150,6 +163,19 @@ PATH="$TMP/bin:$PATH" "$PERF" --minutes 1 >/dev/null 2>"$TMP/stderr" || code=$?
 [[ "$code" == 2 && "$(cat "$TMP/opened")" == "-n -a /Applications/Pith.app --args --debug-hooks
 -n /Applications/Pith.app" ]] || fail "$(printf 'perf.sh after a failed start: exit %s, opened\n%s\n%s' \
     "$code" "$(cat "$TMP/opened")" "$(cat "$TMP/stderr")")"
+passed=$((passed + 1))
+
+# N3: when the user's Pith does not quit, the script stops and opens no second copy.
+mkdir "$TMP/stuck"
+printf '#!/bin/bash\nexit 0\n' >"$TMP/stuck/caffeinate"
+printf '#!/bin/bash\nexit 0\n' >"$TMP/stuck/pkill"
+printf '#!/bin/bash\nexit 0\n' >"$TMP/stuck/pgrep"
+printf '#!/bin/bash\necho "$*" >>%q\n' "$TMP/stuck-opened" >"$TMP/stuck/open"
+chmod +x "$TMP/stuck"/*
+code=0
+PATH="$TMP/stuck:$PATH" "$PERF" --minutes 1 >/dev/null 2>"$TMP/stderr" || code=$?
+[[ "$code" == 2 && ! -e "$TMP/stuck-opened" ]] || fail "$(printf 'perf.sh when Pith does not quit: exit %s, opened\n%s\n%s' \
+    "$code" "$(cat "$TMP/stuck-opened" 2>/dev/null)" "$(cat "$TMP/stderr")")"
 passed=$((passed + 1))
 
 # --- accuracy.sh --evaluate
@@ -185,7 +211,7 @@ EDITOR='{"name": "Example Editor", "pids": [[4101, 206, null], [4102, 101, null]
 NOTES='{"name": "Example Notes", "pids": [[4201, 70, null]]}'
 TINY='{"name": "Example Tiny", "pids": [[4301, 1, null]]}'
 
-# accuracy_run <dir>: a passing run of 5 memory runs, 1 CPU window and 3 residual snapshots on 10
+# accuracy_run <dir>: a passing run of 5 memory runs, 1 CPU window and 100 residual snapshots on 10
 # CPUs. Example Editor's PID 4103 is in Pith and in `top` before, but not after, so it is left out
 # on both sides: 206 + 101 MB against 297 to 305 MB passes inside the 3% bracket. In the window,
 # 4103 is new and has no share. Example Tiny, under 50 MB, is not compared.
@@ -201,7 +227,8 @@ accuracy_run() {
         {"name": "Example Notes", "pids": [[4201, 70, 0.002]]}]'
     { top_sample %CPU 4101:0.0 4102:0.0 4201:0.0; top_sample %CPU 4101:40.0 4102:10.0 4201:2.0; } \
         >"$1/cpu-1.txt"
-    for i in {1..3}; do reading "$1/residual-$i.json" "[$EDITOR, $NOTES]"; done
+    reading "$1/residual-1.json" "[$EDITOR, $NOTES]"
+    for i in {2..100}; do cp "$1/residual-1.json" "$1/residual-$i.json"; done
 }
 
 memory_lines() {
@@ -213,13 +240,13 @@ memory_lines() {
 
 accuracy_run "$TMP/accuracy"
 # The CPU units: 4% + 1% of the Mac in Pith against (40% + 10%) of one core / 10 CPUs in top.
-check 0 "PASS sums: in all 9 readings, each app is the sum of its PIDs
+check 0 "PASS sums: in all 106 readings, each app is the sum of its PIDs
 $(memory_lines)
 PASS Example Editor: memory within 3% in all 5 counted runs
 PASS Example Notes: memory within 3% in all 5 counted runs
 PASS Example Editor, window 1: CPU 5.00% vs top 5.00% of the Mac over 10 s (+0.00 points), PIDs 2, left out 1
 PASS Example Notes, window 1: CPU 0.20% vs top 0.20% of the Mac over 10 s (+0.00 points), PIDs 1, left out 0
-PASS residual: all 3 snapshots have a memory and a CPU residual
+PASS residual: all 100 snapshots have a memory and a CPU residual
 PASS" "$ACCURACY" --evaluate "$TMP/accuracy"
 
 # A value outside the bracket widened by 3% fails, here under its low edge: 70 < 73 x 0.97.
@@ -258,8 +285,27 @@ accuracy_run "$TMP/residual"
 jq '.snapshot.system = {unavailable: "accounting mismatch"}' "$TMP/residual/residual-2.json" \
     >"$TMP/residual/r.json"
 mv "$TMP/residual/r.json" "$TMP/residual/residual-2.json"
-check_lines 1 "$ACCURACY" --evaluate "$TMP/residual" <<<"FAIL residual: 2 of 3 snapshots have a memory and a CPU residual
+check_lines 1 "$ACCURACY" --evaluate "$TMP/residual" <<<"FAIL residual: 99 of 100 snapshots have a memory and a CPU residual
   1 accounting mismatch
+FAIL"
+
+# N1: 100 snapshots, no fewer, and an empty reading fails in both checks.
+accuracy_run "$TMP/fewer"
+rm "$TMP/fewer/residual-100.json"
+check_lines 1 "$ACCURACY" --evaluate "$TMP/fewer" <<<"FAIL residual: 99 snapshots, want 100
+FAIL"
+accuracy_run "$TMP/blank"
+: >"$TMP/blank/residual-7.json"
+check_lines 1 "$ACCURACY" --evaluate "$TMP/blank" <<<"FAIL sums, residual-7.json: empty reading
+FAIL residual: 99 of 100 snapshots have a memory and a CPU residual
+  1 empty reading
+FAIL"
+
+# N5: a row with no CPU value whose PIDs have shares fails the sums.
+accuracy_run "$TMP/nocpu"
+jq '.snapshot.apps[1].cpu = {unavailable: "first sample"}' "$TMP/nocpu/cpu-1.json" >"$TMP/nocpu/c.json"
+mv "$TMP/nocpu/c.json" "$TMP/nocpu/cpu-1.json"
+check_lines 1 "$ACCURACY" --evaluate "$TMP/nocpu" <<<"FAIL sums, cpu-1.json: Example Notes: memory 73400320 but the sum is 73400320, CPU null but the sum is 0.002
 FAIL"
 
 # R142: readings with no app of 50 MB or more compare nothing, which fails.

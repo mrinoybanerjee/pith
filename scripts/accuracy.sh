@@ -11,7 +11,7 @@
 # - CPU, over a 10 s window: 3 times, `Pith --snapshot-json 10` beside `top -l 2 -s 10`, started
 #   together. An app passes within 2 points, as a share of the whole Mac (R135).
 # - The apps are those of 50 MB or more in the first memory reading.
-# - Residual: each of 100 snapshots (`--snapshot-json 1`) has a memory and a CPU residual.
+# - Residual: each of exactly 100 snapshots (`--snapshot-json 1`) has a memory and a CPU residual.
 # A comparison of nothing is a FAIL, and a tool error stops the script. It prints one line per app
 # and comparison, then PASS or FAIL, and exits 1 on FAIL. It takes about 3 minutes. The lines name
 # this Mac's apps: never commit them. --evaluate checks the recorded files of a run, for the test.
@@ -26,6 +26,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 USAGE="usage: scripts/accuracy.sh [--evaluate <dir>]"
 PITH=/Applications/Pith.app/Contents/MacOS/Pith
 MIN_BYTES=52428800  # 50 MB
+RESIDUALS=100
 
 # top_column <log> <sample> <out>: the PID and the first column after it of every row in one
 # sample of a `top -l` log, tab-separated.
@@ -44,13 +45,15 @@ app_processes() {
 }
 
 # check_sums <reading.json>: a line for each app whose memory or CPU is not the sum over its PIDs
-# (CPU within 1e-9), or one line when the reading has no app.
+# (CPU within 1e-9; a row with no CPU fails when its PIDs have shares, and the reverse), or one
+# line when the reading has no app.
 check_sums() {
     jq -r '.processes as $p | .snapshot.apps | if length == 0 then "no app in the reading" else .[]
         | ([.pids[] | $p[tostring].footprint] | add) as $memory
         | ([.pids[] | $p[tostring].cpu | select(. != null)] | add) as $cpu
-        | select($memory != .memory or (.cpu.value != null
-            and ((($cpu // 0) - .cpu.value) | if . < 0 then -. else . end) > 1e-9))
+        | select($memory != .memory or ((.cpu.value == null) != ($cpu == null))
+            or (.cpu.value != null and $cpu != null
+                and (($cpu - .cpu.value) | if . < 0 then -. else . end) > 1e-9))
         | "\(.name): memory \(.memory) but the sum is \($memory), CPU \(.cpu.value) but the sum is \($cpu)"
         end' "$1"
 }
@@ -107,7 +110,8 @@ evaluate() {
     cpus="$(cat "$dir/cpus")"
     [[ "$cpus" =~ ^[1-9][0-9]*$ ]] || { echo "error: $dir/cpus holds no CPU count" >&2; exit 2; }
     for reading in "$dir"/*.json; do
-        problems="$(check_sums "$reading")"
+        # jq reads an empty file as no input and says nothing (N1).
+        if [[ -s "$reading" ]]; then problems="$(check_sums "$reading")"; else problems="empty reading"; fi
         readings=$((readings + 1))
         if [[ -n "$problems" ]]; then
             sed "s|^|FAIL sums, ${reading##*/}: |" <<<"$problems"
@@ -168,17 +172,25 @@ evaluate() {
     done
     [[ "$windows" -gt 0 ]] || { echo "FAIL CPU: no window"; failed=1; }
 
-    # A snapshot counts only with a memory and a CPU residual; any other reason is printed.
-    for reading in "$dir"/residual-*.json; do
-        jq -r '.snapshot.system
-            | if (.value.memory | type) == "number" and (.value.cpu.value | type) == "number"
-              then "ok" else (.unavailable // .value.cpu.unavailable // "no residual") end' \
-            "$reading"
+    # Exactly 100 snapshots, and each counts only with a memory and a CPU residual; any other
+    # reason is printed (N1).
+    local residuals=("$dir"/residual-*.json) total valid
+    for reading in "${residuals[@]}"; do
+        if [[ -s "$reading" ]]; then
+            jq -r '.snapshot.system
+                | if (.value.memory | type) == "number" and (.value.cpu.value | type) == "number"
+                  then "ok" else (.unavailable // .value.cpu.unavailable // "no residual") end' \
+                "$reading"
+        else
+            echo "empty reading"
+        fi
     done >"$work/residuals"
-    local total valid
-    total="$(grep -c . "$work/residuals" || true)"
+    total="${#residuals[@]}"
     valid="$(grep -cx ok "$work/residuals" || true)"
-    if [[ "$total" -gt 0 && "$valid" == "$total" ]]; then
+    if [[ "$total" != "$RESIDUALS" ]]; then
+        echo "FAIL residual: $total snapshots, want $RESIDUALS"
+        failed=1
+    elif [[ "$valid" == "$total" ]]; then
         echo "PASS residual: all $total snapshots have a memory and a CPU residual"
     else
         echo "FAIL residual: $valid of $total snapshots have a memory and a CPU residual"
@@ -210,5 +222,5 @@ for i in {1..3}; do
     top -l 2 -s 10 -stats pid,cpu >"$RUN/cpu-$i.txt"
     wait $!
 done
-for i in {1..100}; do "$PITH" --snapshot-json 1 >"$RUN/residual-$i.json"; done
+for ((i = 1; i <= RESIDUALS; i++)); do "$PITH" --snapshot-json 1 >"$RUN/residual-$i.json"; done
 evaluate "$RUN"
