@@ -10,9 +10,9 @@ import os
   var calls: [String] = []
   var real: Clock?
 
-  func configure(seconds: Double, leeway: Double, first: Double) {
-    calls.append("configure \(seconds) \(leeway) first \(first)")
-    real?.configure(seconds: seconds, leeway: leeway, first: first)
+  func configure(seconds: Double, leeway: Double, first: Double, firstLeeway: Double) {
+    calls.append("configure \(seconds) \(leeway) first \(first) \(firstLeeway)")
+    real?.configure(seconds: seconds, leeway: leeway, first: first, firstLeeway: firstLeeway)
   }
 
   func pause() {
@@ -105,7 +105,10 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
   let defaults: UserDefaults
   let lifecycle: Lifecycle
 
-  init(loginItem: LoginItem = .stub, nextLaunch: Bool = false, test: String = #function) {
+  init(
+    loginItem: LoginItem = .stub, nextLaunch: Bool = false, lowPower: Bool = false,
+    thermal: ProcessInfo.ThermalState = .nominal, test: String = #function
+  ) {
     suite = testSuite(test)
     defaults = nextLaunch ? UserDefaults(suiteName: suite)! : testDefaults(test)
     store = testStore(loginItem: loginItem)
@@ -115,7 +118,7 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
       makePressureMonitor: { [pressure] in
         pressure.onChange = $0
         return pressure
-      }, thermalState: { .nominal }, isLowPowerModeEnabled: { false })
+      }, thermalState: { thermal }, isLowPowerModeEnabled: { lowPower })
   }
 
   /// Starts the lifecycle, waits for its first reading, then clears the logs.
@@ -142,8 +145,9 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
 
 /// The schedules `Lifecycle` gives the clock with Low Power Mode off and a nominal thermal state.
 /// An open reads every 2 s by default, after a first interval of 1 s (R134).
-private let closedSchedule = "configure 5.0 1.0 first 5.0"
-private let openSchedule = "configure 2.0 0.2 first 1.0"
+/// The first interval after an open is the 1 s one, with its own 0.1 s leeway (R146).
+private let closedSchedule = "configure 5.0 1.0 first 5.0 1.0"
+private let openSchedule = "configure 2.0 0.2 first 1.0 0.1"
 
 private let seconds: UInt64 = 1_000_000_000
 private let willSleep = NSWorkspace.willSleepNotification.rawValue
@@ -367,8 +371,8 @@ private final class GrowingTable: ProcessTableReading {
 
   rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
   for (refresh, schedule) in [
-    (RefreshSetting.oneSecond, "configure 1.0 0.1 first 1.0"),
-    (.twoSeconds, "configure 2.0 0.2 first 2.0"),
+    (RefreshSetting.oneSecond, "configure 1.0 0.1 first 1.0 0.1"),
+    (.twoSeconds, "configure 2.0 0.2 first 2.0 0.2"),
   ] {
     rig.store.settings.refresh = refresh
     #expect(try await settled { rig.clock.calls.last == schedule }, "\(refresh)")
@@ -425,6 +429,19 @@ private final class GrowingTable: ProcessTableReading {
   let (first, second) = (t[0].duration(to: t[1]), t[1].duration(to: t[2]))
   #expect(first > .milliseconds(900) && first < .milliseconds(1400), "\(first)")
   #expect(second > .milliseconds(1800) && second < .milliseconds(2500), "\(second)")
+}
+
+/// R146: Low Power Mode or a serious thermal state doubles the first interval after an open and
+/// its leeway, as it doubles the steady one.
+@MainActor @Test func lowPowerAndHeatDoubleTheFirstIntervalAndItsLeeway() async throws {
+  for rig in [Rig(lowPower: true), Rig(thermal: .serious)] {
+    defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+    rig.lifecycle.start()
+    #expect(try await settled { rig.engine.calls == ["tick closed"] })
+    rig.lifecycle.panelChanged(visible: true, pinned: false, occluded: false)  // opened
+    #expect(
+      rig.clock.calls == ["configure 10.0 2.0 first 10.0 2.0", "configure 4.0 0.4 first 2.0 0.2"])
+  }
 }
 
 /// R65: a suspended timer keeps the fire it missed and delivers it on resume. The wake reschedules

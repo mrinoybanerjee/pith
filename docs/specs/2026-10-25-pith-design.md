@@ -332,7 +332,7 @@ The sentence is visible only while the panel is open, and opening the panel runs
 
 - Two speeds:
   - **closed:** 5 s interval, 1 s leeway, system totals only;
-  - **open:** 2 s interval by default (1 s by setting), a tenth of it as leeway, full sweep. The first interval after an open is 1 s. At 1 s the panel measured 1.9–2.4% of one core on the mini, over the open budget (R134).
+  - **open:** 2 s interval by default (1 s by setting), a tenth of it as leeway, full sweep. The first interval after an open is 1 s, with 0.1 s leeway (R146). At 1 s the panel measured 1.9–2.4% of one core on the mini, over the open budget (R134).
 - A pinned panel that is fully covered (`NSWindow.occlusionState`) uses the closed speed.
 - The clock stops on sleep, screen lock and display sleep, and resumes on wake.
 - Low Power Mode or `ProcessInfo.thermalState` ≥ `.serious` doubles both intervals.

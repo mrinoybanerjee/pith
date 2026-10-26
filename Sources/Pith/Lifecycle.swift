@@ -4,7 +4,7 @@ import os
 
 /// The clock's controls, so a test can record them. `Clock` is the real one.
 @MainActor protocol Ticker: AnyObject {
-  func configure(seconds: Double, leeway: Double, first: Double)
+  func configure(seconds: Double, leeway: Double, first: Double, firstLeeway: Double)
   func pause()
   func resume()
 }
@@ -187,8 +187,8 @@ enum PauseReason { case sleep, screensSleep, locked }
   }
 
   /// Sets the clock's speed. When the panel is open and readings restart on a `fresh` baseline,
-  /// after an open or a wake, the first interval is the 1 s one, so CPU and Disk show 1 s after
-  /// the click; then the setting's (R134).
+  /// after an open or a wake, the first interval is the 1 s one with its own leeway, so CPU and
+  /// Disk show 1 s after the click; then the setting's (R134, R146).
   private func configure(fresh: Bool = false) {
     let thermal = thermalState()
     let interval = { (refresh: RefreshSetting) in
@@ -197,9 +197,10 @@ enum PauseReason { case sleep, screensSleep, locked }
         thermalSerious: thermal == .serious || thermal == .critical)
     }
     let steady = interval(store.settings.refresh)
+    let first = fresh ? interval(.oneSecond) : steady
     clock.configure(
-      seconds: steady.seconds, leeway: steady.leeway,
-      first: fresh ? interval(.oneSecond).seconds : steady.seconds)
+      seconds: steady.seconds, leeway: steady.leeway, first: first.seconds,
+      firstLeeway: first.leeway)
   }
 
   private func pause(_ reason: PauseReason) {
