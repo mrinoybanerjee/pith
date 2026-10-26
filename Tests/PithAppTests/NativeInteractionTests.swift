@@ -888,6 +888,18 @@ private let quitSentence = "Quit Google Chrome? It can ask you to save first."
     try #require(axInteractiveElements(in: w).first { $0.label == label }, "no \(label)").frame)
 }
 
+/// A left click at the middle of `frame`, in the window's coordinates, as mouse-down and mouse-up
+/// events through the window, as AppKit delivers a real click (R154).
+@MainActor private func click(_ frame: CGRect, in window: NSWindow) {
+  for (type, pressure) in [(NSEvent.EventType.leftMouseDown, Float(1)), (.leftMouseUp, 0)] {
+    window.sendEvent(
+      NSEvent.mouseEvent(
+        with: type, location: CGPoint(x: frame.midX, y: frame.midY), modifierFlags: [],
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        context: nil, eventNumber: 0, clickCount: 1, pressure: pressure)!)
+  }
+}
+
 /// The visible part of the panel's list, in the window's coordinates.
 @MainActor private func listFrame(in w: NSWindow) throws -> CGRect {
   let list = try #require(scrollView(in: w.contentView!))
@@ -938,6 +950,27 @@ extension NativeInteractionTests {
       try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == "Quit" } })
     try await Task.sleep(for: .milliseconds(100))
     return (w, store, apps)
+  }
+
+  /// R154 and R163: a real click, as the window gets it from the mouse, opens a row and presses
+  /// Quit. A row's VoiceOver button is a clear overlay (R148) that must leave the click to the row.
+  /// The panel is not the key window here, so each click is one that would activate it, and a row
+  /// must accept it as a button does.
+  @Test func aMouseClickOpensARowAndPressesQuit() async throws {
+    defer { clearDefaults() }
+    let snapshot = DemoSnapshots.calm
+    let apps = FakeRunningApps(
+      snapshot.apps.map {
+        FakeApp(pid: $0.pids[0], bundlePath: $0.bundlePath!, bundleID: $0.bundleID)
+      })
+    let (w, store) = try hostPanelWithStore(snapshot, store: apps.store(guide: Guide.bundled()))
+    let chrome = try #require(store.rows.first { $0.name == "Google Chrome" })
+    let row = try #require(axNodes(in: w).first { $0.label?.hasPrefix("Google Chrome,") == true })
+    click(w.convertFromScreen(row.frame), in: w)
+    #expect(try await eventually(w) { store.expandedAppID == chrome.id })
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) })
+    click(try buttonFrame("Quit", in: w), in: w)
+    #expect(try await eventually(w) { store.quitFlow.state == .confirming })
   }
 
   /// The process that Quit acts on for the opened row.
