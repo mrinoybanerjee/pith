@@ -99,11 +99,44 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
       == .value(2_500_000))
 }
 
-@Test func helpersSumAndInsideGroups() {
+@Test func helpersSumAndInsideGroups() {  // the main process runs from a code-sign clone
   let s = snap(fixture: "chrome-usage")
   #expect(s.apps[0].processCount == 5 && s.apps[0].memory == 5 * 100 << 20)
   #expect(
-    s.apps[0].inside.first == HelperGroup(label: "Tabs and sites", count: 3, memory: 300 << 20))
+    s.apps[0].inside == [
+      HelperGroup(label: "Tabs and sites", count: 3, memory: 300 << 20),
+      HelperGroup(label: "Graphics", count: 1, memory: 100 << 20),
+      HelperGroup(label: "Main process", count: 1, memory: 100 << 20),
+    ])
+}
+
+@Test func theBundlesExecutableIsTheMainProcess() {  // R86: Firefox runs "firefox"
+  let s = snap(
+    previous: nil,
+    current: table(
+      [
+        process(300, app: "Firefox", file: "firefox"),
+        process(301, app: "Firefox", file: "Firefox"),
+      ],
+      at: 0))
+  #expect(
+    s.apps[0].inside == [
+      HelperGroup(label: "Firefox", count: 1, memory: 64 << 20),
+      HelperGroup(label: "Main process", count: 1, memory: 64 << 20),
+    ])
+}
+
+@Test func aProcessOutsideAnyAppKeepsItsFileName() {  // R86: no bundle, so no "Main process"
+  let node = (0..<5).map { i in
+    ProcessSample(
+      key: ProcessKey(pid: 900 + Int32(i), startTime: 1_000), parent: 1,
+      uniqueID: 1_900 + UInt64(i), parentUniqueID: 1, uid: 501, name: "node",
+      path: "/usr/local/bin/node", idVersion: 0, footprint: 64 << 20,
+      cpuTimeNs: 0, diskRead: 0, diskWritten: 0)
+  }
+  let s = snap(previous: nil, current: table(node, at: 0))
+  #expect(s.apps.map(\.id) == ["proc:node"])
+  #expect(s.apps[0].inside == [HelperGroup(label: "node", count: 5, memory: 5 * 64 << 20)])
 }
 
 @Test func residualIsFootprintTotalMinusApps() {

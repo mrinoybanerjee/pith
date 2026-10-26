@@ -8,13 +8,16 @@ import System
 /// Maps each process to the app it belongs to (spec 6.5), so helpers count toward their app.
 public struct AppGrouper: Sendable {
   private let responsible: (@Sendable (Int32) -> Int32?)?
-  private let bundleInfo: @Sendable (String) -> (bundleID: String, name: String)?
+  private let bundleInfo: @Sendable (String) -> BundleInfo?
   private var cache: [ExecutableKey: AppIdentity] = [:]
+
+  /// What an `.app` says about itself: its bundle ID, its name and its main executable's file name.
+  public typealias BundleInfo = (bundleID: String, name: String, executable: String?)
 
   /// `responsible` is nil when the responsibility call is missing. `bundleInfo` reads an `.app`.
   public init(
     responsible: (@Sendable (Int32) -> Int32?)?,
-    bundleInfo: @escaping @Sendable (String) -> (bundleID: String, name: String)?
+    bundleInfo: @escaping @Sendable (String) -> BundleInfo?
   ) {
     self.responsible = responsible
     self.bundleInfo = bundleInfo
@@ -43,8 +46,22 @@ public struct AppGrouper: Sendable {
         let name =
           bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
           ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
-        return (id, name ?? FilePath(appPath).stem!)
+        return (
+          id, name ?? FilePath(appPath).stem!,
+          bundle.object(forInfoDictionaryKey: "CFBundleExecutable") as? String
+        )
       })
+  }
+
+  /// Whether `path` lies in a Chromium code-sign clone: a `code_sign_clone.<suffix>` folder, then
+  /// an `<App>.app.bundle` inside it, where a Chromium browser runs its main process (R125). The
+  /// one rule for a clone, here and when Quit picks the row's own app.
+  public static func isCodeSignClone(_ path: String) -> Bool {
+    let parts = path.split(separator: "/")
+    return zip(parts, parts.dropFirst()).contains { folder, app in
+      folder.count > "code_sign_clone.".count && folder.hasPrefix("code_sign_clone.")
+        && app.count > ".app.bundle".count && app.hasSuffix(".app.bundle")
+    }
   }
 
   /// The outermost `*.app` directory on `path`, so a helper app inside an app resolves to it.
@@ -118,7 +135,7 @@ public struct AppGrouper: Sendable {
     let responsiblePID = responsible?(s.key.pid)
     let owner = responsiblePID.flatMap { table[$0] }
     if let owner, owner.key.startTime <= s.key.startTime,
-      let app = Self.appPaths(owner.path).last, !app.hasSuffix(".app.bundle")
+      let app = Self.appPaths(owner.path).last, !Self.isCodeSignClone(app)
     {
       let (found, readable) = identity(app)
       return (found!, readable)
@@ -142,7 +159,8 @@ public struct AppGrouper: Sendable {
     let last = parents.last ?? s
     let walked = parents.count == 5 || last.parent == 1 || table[last.parent] != nil
     return (
-      AppIdentity(id: "proc:\(s.fileName)", name: s.fileName, bundlePath: nil, bundleID: nil),
+      AppIdentity(
+        id: "proc:\(s.fileName)", name: s.fileName, bundlePath: nil, bundleID: nil, executable: nil),
       ownerSeen && walked && readable
     )
   }
@@ -153,16 +171,19 @@ public struct AppGrouper: Sendable {
   /// `readable` is false when `bundleInfo` failed (R168).
   private func identity(_ app: String) -> (identity: AppIdentity?, readable: Bool) {
     let info = bundleInfo(app)
-    guard !app.hasSuffix(".app.bundle") else {
+    guard !Self.isCodeSignClone(app) else {
       return (
         info.map {
-          AppIdentity(id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID)
+          AppIdentity(
+            id: "clone:\(app)", name: $0.name, bundlePath: nil, bundleID: $0.bundleID,
+            executable: $0.executable)
         }, info != nil
       )
     }
     return (
       AppIdentity(
-        id: app, name: info?.name ?? FilePath(app).stem!, bundlePath: app, bundleID: info?.bundleID),
+        id: app, name: info?.name ?? FilePath(app).stem!, bundlePath: app, bundleID: info?.bundleID,
+        executable: info?.executable),
       info != nil
     )
   }

@@ -27,7 +27,7 @@ let package = Package(
     ),
     .testTarget(
       name: "PithAppTests",
-      dependencies: ["Pith"]
+      dependencies: ["Pith", "PithCore"]
     ),
   ],
   swiftLanguageModes: [.v6]

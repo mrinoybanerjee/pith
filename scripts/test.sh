@@ -34,36 +34,74 @@ run_tests() {
     for attempt in 1 2 3; do
         log="$LOG_DIR/$(printf '%s' "$name" | tr -c 'A-Za-z0-9' '_')-$attempt.log"
         if ! swift test --skip-build "$@" >"$log" 2>&1 </dev/null; then
-            cat "$log"
+            cat "$log" >&2
             return 1
         fi
         if grep -Eq '✘ (Test|Suite) .*(failed|recorded an issue)' "$log"; then
-            cat "$log"
+            cat "$log" >&2
             return 1
         fi
-        # Swift 6.2 adds "in N suites" to the summary; Swift 6.0 and 6.1 do not.
+        if grep -Eq '^✔ Test run with 0 tests' "$log"; then
+            printf 'error: %s matched no tests\n' "$name" >&2
+            return 1
+        fi
+        # Swift 6.2 adds "in N suites" to the summary; Swift 6.0 and 6.1 do not. A skipped test
+        # also ends in a passing summary, so the skips are counted apart. Swift 6.2 marks a skip
+        # with ➜, and Swift 6.0 and 6.1 with ✘ (R149).
         if grep -Eq '^✔ Test run with [0-9]+ tests? (in [0-9]+ suites? )?passed' "$log"; then
-            printf '%s: %s\n' "$name" "$(grep -E '^✔ Test run with' "$log")"
+            local total skipped
+            total="$(grep -E '^✔ Test run with' "$log" | grep -oE '[0-9]+' | head -1)"
+            skipped="$(grep -cE '^(➜|✘) Test .* skipped' "$log" || true)"
+            printf '%s: %s passed, %s skipped\n' "$name" "$((total - skipped))" "$skipped"
             return 0
         fi
         printf 'warning: %s ended before Swift Testing reported completion (attempt %s)\n' \
             "$name" "$attempt" >&2
     done
-    cat "$log"
+    cat "$log" >&2
     printf 'error: %s never completed; tests after the interruption did not run\n' "$name" >&2
     return 1
 }
 
 run_tests "core and app" --parallel --skip NativeInteractionTests
 
-# Native window tests run one per process so an interrupted run affects only that test.
+# Native window tests run one per process so an interrupted run affects only that test. All of
+# them run, so one run shows every failure; the script then fails if any did.
 # grep exits 1 when there are no native tests yet; any other failure stops the script.
 swift test list --skip-build 2>/dev/null \
     | { grep 'NativeInteractionTests/' || (($? == 1)); } >"$LOG_DIR/native.txt"
-native_count=0
+# The tests place windows on the main screen, which differs between Macs and CI runners.
+screen="$(osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSApplication.sharedApplication;
+    const s = $.NSScreen.mainScreen, rect = (r) => $.NSStringFromRect(r).js;
+    `main screen ${rect(s.frame)}, visible ${rect(s.visibleFrame)}`')"
+printf 'native windows: macOS %s (%s), %s\n' "$(sw_vers -productVersion)" \
+    "$(sw_vers -buildVersion)" "$screen"
+listed=0
+completed=0
+skipped=0
+failed=()
 while IFS= read -r test_id; do
-    pattern="^$(printf '%s' "$test_id" | sed -E 's/[][().*+?^$|\\]/\\&/g')\$"
-    run_tests "$test_id" --filter "$pattern" >/dev/null
-    native_count=$((native_count + 1))
+    # The filter matches the listed ID followed by "/<file>:<line>:<column>".
+    pattern="^$(printf '%s' "$test_id" | sed -E 's/[][().*+?^$|\\]/\\&/g')/"
+    listed=$((listed + 1))
+    # Only the summary is kept; a failure prints its log on stderr.
+    if ! summary="$(run_tests "$test_id" --filter "$pattern")"; then
+        failed+=("$test_id")
+        continue
+    fi
+    counts="${summary##*: }"  # "1 passed, 0 skipped"
+    completed=$((completed + ${counts%% passed*}))
+    counts="${counts##*, }"
+    skipped=$((skipped + ${counts%% *}))
+    [[ $counts == "0 skipped" ]] || printf '%s\n' "$summary"
 done <"$LOG_DIR/native.txt"
-printf 'native windows: %s tests completed, one process each\n' "$native_count"
+if ((listed == 0)) && grep -rq --include='*.swift' 'NativeInteractionTests' Tests; then
+    echo "error: Tests define NativeInteractionTests, but the test listing found none" >&2
+    exit 1
+fi
+printf 'native windows: %s passed, %s skipped, %s failed, one process each\n' \
+    "$completed" "$skipped" "${#failed[@]}"
+if ((${#failed[@]} > 0)); then
+    printf 'error: native test failed: %s\n' "${failed[@]}" >&2
+    exit 1
+fi

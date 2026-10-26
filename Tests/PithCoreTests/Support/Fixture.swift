@@ -17,31 +17,33 @@ enum Fixture {
     return try! String(contentsOf: url, encoding: .utf8)
   }
 
-  /// The bundles the table fixtures use. Any other `.app` has no readable bundle.
-  static func bundleInfo(_ appPath: String) -> (bundleID: String, name: String)? {
-    bundles[appPath]
+  /// The bundles the table fixtures use. Any other `.app` has no readable bundle. Firefox's
+  /// executable is "firefox", unlike its name.
+  static func bundleInfo(_ appPath: String) -> AppGrouper.BundleInfo? {
+    bundles[appPath].map { ($0.bundleID, $0.name, $0.executable ?? $0.name) }
   }
 
-  private static let bundles: [String: (bundleID: String, name: String)] = [
-    "/Applications/Google Chrome.app": ("com.google.Chrome", "Google Chrome"),
+  private static let bundles: [String: (bundleID: String, name: String, executable: String?)] = [
+    "/Applications/Google Chrome.app": ("com.google.Chrome", "Google Chrome", nil),
     "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app.bundle": (
-      "com.google.Chrome", "Google Chrome"
+      "com.google.Chrome", "Google Chrome", nil
     ),
     "/private/var/folders/xx/T/code_sign_clone.DeF456/Google Chrome.app.bundle": (
-      "com.google.Chrome", "Google Chrome"
+      "com.google.Chrome", "Google Chrome", nil
     ),
-    "/Applications/Xcode.app": ("com.apple.dt.Xcode", "Xcode"),
+    "/Applications/Xcode.app": ("com.apple.dt.Xcode", "Xcode", nil),
     "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app": (
-      "com.apple.iphonesimulator", "Simulator"
+      "com.apple.iphonesimulator", "Simulator", nil
     ),
-    "/System/Applications/Utilities/Terminal.app": ("com.apple.Terminal", "Terminal"),
-    "/Applications/Codex.app": ("com.example.Codex", "Codex"),
-    "/Applications/Claude.app": ("com.example.Claude", "Claude"),
-    "/Applications/Slack.app": ("com.example.Slack", "Slack"),
-    "/System/Applications/Preview.app": ("com.apple.Preview", "Preview"),
-    "/Applications/Notes.app": ("com.example.Notes", "Notes"),
-    "/Volumes/Demo/Notes.app": ("com.example.Notes", "Notes"),
-    "/Volumes/Demo/Google Chrome.app": ("com.google.Chrome", "Google Chrome"),
+    "/System/Applications/Utilities/Terminal.app": ("com.apple.Terminal", "Terminal", nil),
+    "/Applications/Codex.app": ("com.example.Codex", "Codex", nil),
+    "/Applications/Claude.app": ("com.example.Claude", "Claude", nil),
+    "/Applications/Slack.app": ("com.example.Slack", "Slack", nil),
+    "/System/Applications/Preview.app": ("com.apple.Preview", "Preview", nil),
+    "/Applications/Notes.app": ("com.example.Notes", "Notes", nil),
+    "/Volumes/Demo/Notes.app": ("com.example.Notes", "Notes", nil),
+    "/Volumes/Demo/Google Chrome.app": ("com.google.Chrome", "Google Chrome", nil),
+    "/Applications/Firefox.app": ("org.mozilla.firefox", "Firefox", "firefox"),
   ]
 }
 

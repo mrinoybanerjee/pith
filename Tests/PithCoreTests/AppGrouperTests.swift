@@ -58,7 +58,8 @@ private let clonePaths = [
 @Test func chromeIsOneApp() {
   let chrome = AppIdentity(
     id: "/Applications/Google Chrome.app", name: "Google Chrome",
-    bundlePath: "/Applications/Google Chrome.app", bundleID: "com.google.Chrome")
+    bundlePath: "/Applications/Google Chrome.app", bundleID: "com.google.Chrome",
+    executable: "Google Chrome")
   // The main process runs from a temporary code-sign clone, so it adopts the one installation.
   for g in [grouped("chrome"), grouped("chrome", limited: true)] {
     #expect(g.count == 6 && g.values.allSatisfy { $0 == chrome })
@@ -68,7 +69,7 @@ private let clonePaths = [
 @Test func cloneJoinsOnlyASingleInstallation() {  // R52
   let clone = AppIdentity(
     id: "clone:\(clonePaths[0])", name: "Google Chrome", bundlePath: nil,
-    bundleID: "com.google.Chrome")
+    bundleID: "com.google.Chrome", executable: "Google Chrome")
   let chrome = Fixture.table("chrome")
   let alone = ProcessTable(samples: [chrome.samples[0]], takenAtNs: 0, vanished: 0)
   var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
@@ -231,7 +232,7 @@ private let clonePaths = [
     g[key(81)]
       == AppIdentity(
         id: "/Volumes/Demo/Notes.app", name: "Notes", bundlePath: "/Volumes/Demo/Notes.app",
-        bundleID: "com.example.Notes"))
+        bundleID: "com.example.Notes", executable: "Notes"))
 }
 
 @Test func aBundleThatCannotBeReadIsReadAgainOnTheNextTable() {  // R168 and R157
@@ -263,12 +264,15 @@ private let clonePaths = [
   #expect(g[key(601)]?.name == "Slack")
   #expect(grouped("unreadable-path", limited: true)[key(601)]?.name == "Slack")
   #expect(
-    g[key(602)] == AppIdentity(id: "proc:gone", name: "gone", bundlePath: nil, bundleID: nil))
+    g[key(602)]
+      == AppIdentity(
+        id: "proc:gone", name: "gone", bundlePath: nil, bundleID: nil, executable: nil))
   // A clone with no readable bundle is no app, so its temporary path never becomes an id.
   #expect(
     g[key(603)]
       == AppIdentity(
-        id: "proc:Brave Browser", name: "Brave Browser", bundlePath: nil, bundleID: nil))
+        id: "proc:Brave Browser", name: "Brave Browser", bundlePath: nil, bundleID: nil,
+        executable: nil))
 }
 
 @Test func parentChainStopsAfterFiveLevels() {
@@ -308,5 +312,21 @@ private let clonePaths = [
     a.assign(ProcessTable(samples: [finder], takenAtNs: 0, vanished: 0))[finder.key]
       == AppIdentity(
         id: "/System/Library/CoreServices/Finder.app", name: "Finder",
-        bundlePath: "/System/Library/CoreServices/Finder.app", bundleID: "com.apple.finder"))
+        bundlePath: "/System/Library/CoreServices/Finder.app", bundleID: "com.apple.finder",
+        executable: "Finder"))
+}
+
+/// R125: a code-sign clone is a `code_sign_clone.<suffix>` folder, then an `<App>.app.bundle` in it.
+@Test func aCodeSignCloneNeedsBothItsFolderAndItsBundle() {
+  let clone = "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app.bundle"
+  #expect(AppGrouper.isCodeSignClone(clone))
+  #expect(AppGrouper.isCodeSignClone(clone + "/Contents/MacOS/Google Chrome"))
+  for other in [
+    "/Applications/Google Chrome.app", "/Users/Shared/Example.app.bundle",
+    "/private/var/folders/xx/T/code_sign_clone.AbC123/Google Chrome.app",
+    "/private/var/folders/xx/T/code_sign_clone./Google Chrome.app.bundle",
+    "/private/var/folders/xx/T/code_sign_clone.AbC123/x/Google Chrome.app.bundle",
+  ] {
+    #expect(!AppGrouper.isCodeSignClone(other), "\(other)")
+  }
 }

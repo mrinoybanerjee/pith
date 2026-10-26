@@ -13,6 +13,47 @@ private func entry(_ match: GuideMatch, _ title: String) -> GuideEntry {
   #expect(g.entries.count >= 20)
   #expect(Set(g.entries.map(\.match)).count == g.entries.count)
   #expect(g.entries.filter { $0.kind == .system }.allSatisfy { !$0.quittable && $0.source != nil })
+  #expect(g.entries.filter { $0.kind == .helper }.allSatisfy { !$0.quittable })  // R84
+}
+
+@Test func guideCoversCommonProcesses() throws {
+  let g = try Guide.bundled()
+  #expect(g.entries.count >= 150)
+  for name in [
+    "mds", "mdworker_shared", "WindowServer", "kernel_task", "backupd", "photoanalysisd",
+    "mediaanalysisd", "softwareupdated", "cloudd", "bird", "fileproviderd", "trustd", "syspolicyd",
+    "coreaudiod", "bluetoothd", "Spotlight", "Dock", "ControlCenter", "loginwindow", "sharingd",
+  ] {
+    #expect(g.entry(name: name, bundleID: nil, path: nil) != nil, "missing \(name)")
+  }
+}
+
+@Test func explanationsArePlainAndShort() throws {
+  for e in try Guide.bundled().entries {
+    #expect(e.explanation.count <= 160 && !e.explanation.contains("daemon"))
+  }
+}
+
+/// M9: the process name is at most 16 bytes (`pbsi_comm`, and `top` for other users' processes),
+/// so a longer name entry would never match.
+@Test func nameMatchesFitSixteenBytes() throws {
+  for case .name(let name) in try Guide.bundled().entries.map(\.match) {
+    #expect(name.utf8.count <= 16, "\(name)")
+  }
+}
+
+/// R83: a system entry cites a man page, an Apple support page or the file that macOS runs.
+@Test func systemEntriesCiteAManPageASupportPageOrASystemFile() throws {
+  let prefixes = ["man:", "https://support.apple.com/", "file:/System/", "file:/usr/"]
+  for e in try Guide.bundled().entries where e.kind == .system {
+    #expect(prefixes.contains { e.source?.hasPrefix($0) == true }, "\(e.title): \(e.source ?? "")")
+  }
+}
+
+@Test func noExplanationSaysDaemonInAnyCase() throws {
+  for e in try Guide.bundled().entries {
+    #expect(!e.explanation.lowercased().contains("daemon"), "\(e.title)")
+  }
 }
 
 @Test func entryWithTwoMatchKeysIsRejected() {

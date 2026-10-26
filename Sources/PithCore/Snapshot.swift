@@ -111,12 +111,18 @@ public struct AppIdentity: Sendable, Equatable {
   public let name: String
   public let bundlePath: String?
   public let bundleID: String?  // nil when there is no bundle or it cannot be read
+  /// The bundle's `CFBundleExecutable`, the app's own process; nil when there is no bundle or it
+  /// cannot be read.
+  public let executable: String?
 
-  public init(id: String, name: String, bundlePath: String?, bundleID: String?) {
+  public init(
+    id: String, name: String, bundlePath: String?, bundleID: String?, executable: String?
+  ) {
     self.id = id
     self.name = name
     self.bundlePath = bundlePath
     self.bundleID = bundleID
+    self.executable = executable
   }
 }
 
@@ -180,7 +186,7 @@ public enum GroupingQuality: String, Sendable, Equatable, Codable { case full, l
 
 public enum Mode: String, Sendable, Equatable, Codable { case closed, open }
 
-public enum Metric: Sendable, Equatable { case memory, cpu, disk }
+public enum Metric: String, Sendable, Equatable { case memory, cpu, disk }
 
 public struct Snapshot: Sendable, Equatable, Codable {
   public let takenAtNs: UInt64

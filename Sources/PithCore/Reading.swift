@@ -11,6 +11,18 @@ public enum Reading<Value: Sendable>: Sendable {
 
 extension Reading: Equatable where Value: Equatable {}
 
+extension Reading {
+  /// A value that the next reading has: a new app's rate, or the first reading after a fresh
+  /// baseline. The panel says "not available yet"; every other reason is "not available" (R110).
+  public static var firstSample: Reading { .unavailable(firstSampleReason) }
+
+  public var isFirstSample: Bool {
+    if case .unavailable(let reason) = self { reason == firstSampleReason } else { false }
+  }
+}
+
+private let firstSampleReason = "first sample"
+
 /// Encodes as `{"value": x}` or `{"unavailable": "reason"}`. Decoding needs exactly one key.
 extension Reading: Codable where Value: Codable {
   private enum CodingKeys: String, CodingKey { case value, unavailable }
