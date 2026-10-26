@@ -62,7 +62,7 @@ import os
     // store of its own. The first reading reaches the engine before this.
     Task {
       let warm = Store(
-        settings: store.settings, guide: guide, loginItem: .main, runningApps: .none,
+        settings: store.settings, guide: guide, loginItem: .none, runningApps: .none,
         measureSystem: { throw SystemDetailsError.failed("not measured") }, nowNs: nowNs)
       warm.apply(await engine.warmUp())
       PanelController.prepare(warm)

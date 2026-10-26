@@ -21,7 +21,7 @@ enum LaunchMode: Equatable {
     }
     if arguments.contains("--snapshot-json") {
       return value("--snapshot-json").flatMap(Double.init).flatMap {
-        $0 >= 0 ? .snapshotJSON(seconds: $0) : nil
+        $0 >= 0 && $0.isFinite ? .snapshotJSON(seconds: $0) : nil
       }
     }
     if arguments.contains("--benchmark-sweep") {

@@ -24,11 +24,11 @@ enum SystemDetailsState: Equatable {
   private(set) var status = Status.calm
   var metric = Metric.memory {
     didSet {
+      // The metric already shown changes nothing, so its sort never moves a confirm.
+      guard metric != oldValue else { return }
       // Another sort would move a confirm under the pointer, so it cancels it first, as ↑ and ↓
       // do (R94, R164).
-      if metric != oldValue, [.confirming, .confirmingForce].contains(quitFlow.state) {
-        cancelQuit()
-      }
+      if [.confirming, .confirmingForce].contains(quitFlow.state) { cancelQuit() }
       rows = RowOrder.stable(previous: [], apps: snapshot?.apps ?? [], metric: rowOrder)
     }
   }

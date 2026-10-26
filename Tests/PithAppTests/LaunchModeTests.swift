@@ -16,6 +16,7 @@ import Testing
     (["--snapshot-json"], nil),
     (["--snapshot-json", "soon"], nil),
     (["--snapshot-json", "-1"], nil),
+    (["--snapshot-json", "inf"], nil),
     (["--benchmark-sweep"], nil),
     (["--benchmark-sweep", "0"], nil),
     (["--render-panel", "render-real"], nil),

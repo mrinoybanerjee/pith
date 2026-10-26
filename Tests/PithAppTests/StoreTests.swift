@@ -96,6 +96,26 @@ import os
   #expect(store.quitFlow.state == .idle && store.metric == .cpu)
 }
 
+/// Choosing the metric already shown changes nothing: after the ranks change within the 2% that
+/// keeps the rows in place, the rows keep their order, so a confirm never moves.
+@MainActor @Test func theShownMetricAgainKeepsTheOrder() {
+  let store = testStore()
+  store.apply(DemoSnapshots.tight)
+  let shown = store.rows.map(\.id)
+  let (first, second) = (store.rows[0], store.rows[1])
+  let closer = AppUsage(
+    id: second.id, name: second.name, bundlePath: second.bundlePath, bundleID: second.bundleID,
+    pids: second.pids, processCount: second.processCount, memory: first.memory + 1,
+    cpu: second.cpu, diskBytesPerSecond: second.diskBytesPerSecond, inside: second.inside)
+  store.apply(
+    remake(
+      DemoSnapshots.tight,
+      apps: DemoSnapshots.tight.apps.map { $0.id == second.id ? closer : $0 }))
+  #expect(store.rows.map(\.id) == shown)
+  store.metric = .memory
+  #expect(store.rows.map(\.id) == shown)
+}
+
 /// R165: with CPU chosen, an open's first reading has no rates, so every row would read "—" and
 /// sort by id. The rows keep Memory order until the first rates, then sort by CPU.
 @MainActor @Test func aCPUChoiceKeepsMemoryOrderUntilTheFirstRates() {
