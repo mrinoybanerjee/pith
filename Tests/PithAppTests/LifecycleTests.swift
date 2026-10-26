@@ -32,8 +32,9 @@ import os
   var calls: [String] = []
   var holding = false
   var holdsResets = true
-  /// The CPU and the time of the readings it returns.
+  /// The CPU, the memory pressure and the time of the readings it returns.
   var cpu = Reading<Double>.unavailable("test")
+  var pressure = Reading<Pressure>.value(.normal)
   var nowNs: UInt64 = 0
   /// When each open reading began.
   private(set) var openTicks: [ContinuousClock.Instant] = []
@@ -43,7 +44,7 @@ import os
     calls.append("tick \(mode)")
     if mode == .open { openTicks.append(.now) }
     await hold()
-    return snapshot(cpu: cpu, at: nowNs, mode: mode)
+    return snapshot(cpu: cpu, pressure: pressure, at: nowNs, mode: mode)
   }
 
   func resetBaseline() async {
@@ -78,13 +79,16 @@ import os
   }
 }
 
-/// A snapshot in which only the CPU can change the status.
-private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed) -> Snapshot {
+/// A snapshot in which only the CPU and the memory pressure can change the status.
+private func snapshot(
+  cpu: Reading<Double>, pressure: Reading<Pressure> = .value(.normal), at ns: UInt64,
+  mode: Mode = .closed
+) -> Snapshot {
   Snapshot(
     takenAtNs: ns, mode: mode,
     totals: SystemTotals(
       memoryUsed: .value(6 << 30), footprintTotal: .value(6 << 30), memoryTotal: 16 << 30,
-      pressure: .value(.normal),
+      pressure: pressure,
       swapUsed: .value(0), cpuBusy: cpu, storageFree: .unavailable("test"),
       storageTotal: .unavailable("test")),
     apps: [], system: .unavailable("test"), grouping: .full)
@@ -546,6 +550,29 @@ extension NativeInteractionTests {
       })
     panel.toggle(under: (.zero, .zero))
     #expect(rig.clock.calls.last == closedSchedule)
+  }
+
+  /// R171: while the panel is closed, a reading that changes the status only changes the dot: calm
+  /// to tight, tight to critical, and a reading that a pressure change brings never open the panel.
+  @Test func aStatusChangeWhileClosedNeverOpensThePanel() async throws {
+    let rig = Rig()
+    defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+    try await rig.start()
+    let panel = PanelController(
+      store: rig.store, defaults: rig.defaults,
+      onChange: rig.lifecycle.panelChanged(visible:pinned:occluded:))
+    #expect(rig.store.status.dot == .calm)
+    for (n, pressure, dot) in [(1, Pressure.warning, DotState.tight), (2, .critical, .critical)] {
+      rig.engine.nowNs = UInt64(n) * seconds
+      rig.engine.pressure = .value(pressure)
+      rig.lifecycle.tick()
+      #expect(try await settled { rig.store.status.dot == dot && !panel.panel.isVisible })
+    }
+    rig.engine.nowNs = 3 * seconds
+    rig.engine.pressure = .value(.normal)
+    await rig.pressure.change()
+    #expect(try await settled { rig.store.status.dot == .calm && !panel.panel.isVisible })
+    #expect(!rig.engine.calls.contains("tick open") && !rig.engine.calls.contains("resetBaseline"))
   }
 
   /// R88: a pause while an open waits for its reading drops the open, so neither the reading that
