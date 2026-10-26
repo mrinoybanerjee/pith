@@ -42,40 +42,15 @@ func exitDebugMode() -> Never {
   dispatchMain()
 }
 
-/// The second of two open readings `seconds` apart, and each of its processes by PID: its
-/// footprint, and its share of the whole Mac between the readings when it ran the same executable
-/// in both, as the engine counts it (R132). For `scripts/accuracy.sh`, which compares only the
-/// PIDs that `top` saw too (R138).
-struct LiveReading: Encodable {
-  struct Process: Encodable {
-    let footprint: UInt64
-    let cpu: Double?
-  }
-
-  let snapshot: Snapshot
-  let processes: [String: Process]
-}
-
 func liveReading(_ seconds: Double) async -> LiveReading {
   let engine = Engine.live(SystemReader(), guide: try! Guide.bundled(in: .main))
   _ = await engine.tick(mode: .open)
   let first = await engine.lastTable!
   try! await Task.sleep(for: .seconds(seconds))
   let snapshot = await engine.tick(mode: .open)
-  let second = await engine.lastTable!
-  let before = Dictionary(uniqueKeysWithValues: first.samples.map { ($0.key.pid, $0) })
-  let wallNs = Double(second.takenAtNs - first.takenAtNs)
-  let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
   return LiveReading(
-    snapshot: snapshot,
-    processes: Dictionary(
-      uniqueKeysWithValues: second.samples.map { s in
-        let p = before[s.key.pid].flatMap {
-          $0.key == s.key && $0.idVersion == s.idVersion ? $0 : nil
-        }
-        let cpu = p.map { Double(s.cpuTimeNs - $0.cpuTimeNs) / (wallNs * cores) }
-        return ("\(s.key.pid)", LiveReading.Process(footprint: s.footprint, cpu: cpu))
-      }))
+    snapshot: snapshot, previous: first, current: await engine.lastTable!,
+    cpuCount: ProcessInfo.processInfo.activeProcessorCount)
 }
 
 /// The first reading fills the path cache and is not counted (R21).
