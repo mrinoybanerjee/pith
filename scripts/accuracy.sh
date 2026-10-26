@@ -5,9 +5,10 @@
 # - Each reading checks itself first: every app's memory and CPU must be the sums over its PIDs of
 #   the per-process values that `--snapshot-json` prints, so the gate checks what the panel shows.
 # - Memory, at the same moment: 10 times, `top` samples MEM just before and just after a
-#   `Pith --snapshot-json 0` reading. An app passes within 3% of the range of the two samples;
-#   each line shows the range's width. A range wider than 6% does not count, and an app needs 5
-#   counted runs, or it is "not comparable".
+#   `Pith --snapshot-json 0` reading. A run is within 3% of the range of the two samples, outside
+#   it, or beyond 10%; each line shows the range's width. A range wider than 6% does not count, and
+#   an app needs 5 counted runs, or it is "not comparable". An app passes when at least 90% of its
+#   counted runs are within 3% and none is beyond 10%; its line names each run outside 3% (R170).
 # - CPU, over a 10 s window: 3 times, `Pith --snapshot-json 10` beside `top -l 2 -s 10`, started
 #   together. An app passes within 2 points, as a share of the whole Mac (R135).
 # - The apps are those of 50 MB or more in the first memory reading.
@@ -59,7 +60,8 @@ check_sums() {
 }
 
 # compare_memory <before> <after> <processes> <run>: one line per app, tab-separated: id, name,
-# status (PASS, FAIL, or WIDE when the range is over 6% and does not count), the line.
+# status (PASS within 3% of the range, OUT outside it, FAIL beyond 10% or with no PID to compare,
+# WIDE when the range is over 6% and does not count), width, the run and its range, the line.
 compare_memory() {
     awk -F '\t' -v before="$1" -v after="$2" -v run="$4" '
         FILENAME == before { low[$1] = $2; next }
@@ -74,10 +76,11 @@ compare_memory() {
             }
             lo = a < b ? a : b; hi = a < b ? b : a
             width = lo > 0 ? (hi - lo) / lo * 100 : 0
-            status = both == 0 || pith < lo * 0.97 || pith > hi * 1.03 ? "FAIL" : "PASS"
+            status = both == 0 || pith < lo * 0.90 || pith > hi * 1.10 ? "FAIL" \
+                : pith < lo * 0.97 || pith > hi * 1.03 ? "OUT" : "PASS"
             if (both > 0 && width > 6) status = "WIDE"
-            printf "%s\t%s\t%s\t%.2f\t%s %s, run %d: memory %.1f MB, top %.1f to %.1f MB (width %.2f%%%s), PIDs %d, left out %d\n",
-                $1, $2, status, width, status, $2, run, pith, lo, hi, width,
+            printf "%s\t%s\t%s\t%.2f\trun %d (memory %.1f MB, top %.1f to %.1f MB)\t%s %s, run %d: memory %.1f MB, top %.1f to %.1f MB (width %.2f%%%s), PIDs %d, left out %d\n",
+                $1, $2, status, width, run, pith, lo, hi, status, $2, run, pith, lo, hi, width,
                 (status == "WIDE" ? ", not counted" : ""), both, out
         }' "$1" "$2" "$3"
 }
@@ -132,27 +135,34 @@ evaluate() {
             echo "FAIL memory, run $i: no app of 50 MB or more to compare"
             failed=1
         fi
-        cut -f5 "$work/run"
+        cut -f6 "$work/run"
         cat "$work/run" >>"$work/runs"
         runs=$((runs + 1))
     done
-    # Each app needs 5 counted runs, and passes only if every counted run does.
+    # Each app needs 5 counted runs, at least 90% of them within 3%, and none beyond 10% (R170).
     awk -F '\t' '
+        function add(list, item) { return list (list == "" ? "" : ", ") item }
         !($1 in name) { name[$1] = $2; order[++apps] = $1 }
-        { widths[$1] = widths[$1] (widths[$1] == "" ? "" : ", ") $4 "%" }
+        { widths[$1] = add(widths[$1], $4 "%") }
         $3 != "WIDE" { counted[$1]++ }
-        $3 == "FAIL" { outside[$1]++ }
+        $3 == "PASS" { within[$1]++ }
+        $3 == "OUT" { outside[$1] = add(outside[$1], $5) }
+        $3 == "FAIL" { beyond[$1] = add(beyond[$1], $5) }
         END {
             for (a = 1; a <= apps; a++) {
                 id = order[a]
                 if (counted[id] < 5) {
                     printf "FAIL %s: not comparable, %d runs counted (widths %s)\n", name[id], counted[id], widths[id]
                     failed = 1
-                } else if (outside[id]) {
-                    printf "FAIL %s: memory outside 3%% in %d of %d counted runs\n", name[id], outside[id], counted[id]
+                } else if (beyond[id] != "") {
+                    printf "FAIL %s: memory beyond 10%% in %s\n", name[id], beyond[id]
+                    failed = 1
+                } else if (within[id] * 10 < counted[id] * 9) {
+                    printf "FAIL %s: memory within 3%% in %d of %d counted runs, under 90%%; outside 3%%: %s\n", name[id], within[id], counted[id], outside[id]
                     failed = 1
                 } else {
-                    printf "PASS %s: memory within 3%% in all %d counted runs\n", name[id], counted[id]
+                    printf "PASS %s: memory within 3%% in %d of %d counted runs%s\n", name[id], within[id], counted[id],
+                        (outside[id] == "" ? "" : "; outside 3%: " outside[id])
                 }
             }
             exit failed

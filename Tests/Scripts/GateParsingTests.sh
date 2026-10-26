@@ -8,8 +8,8 @@
 # - `perf.sh` relaunches Pith without the hooks after a failed step, even when its helpers are
 #   gone (R145), with fake tools on PATH, so no real Pith is touched.
 # - `accuracy.sh --evaluate` on a run's files (R138, R141-R143): the same-PID comparisons with
-#   left-out PIDs, the 3% bracket and its low edge, the 6% width rule, CPU units, the sums, the
-#   residual, and comparisons of nothing.
+#   left-out PIDs, the 3% bracket and its low edge, the 6% width rule, the 90% and 10% rules (R170),
+#   CPU units, the sums, the residual, and comparisons of nothing.
 
 set -euo pipefail
 
@@ -211,14 +211,14 @@ EDITOR='{"name": "Example Editor", "pids": [[4101, 206, null], [4102, 101, null]
 NOTES='{"name": "Example Notes", "pids": [[4201, 70, null]]}'
 TINY='{"name": "Example Tiny", "pids": [[4301, 1, null]]}'
 
-# accuracy_run <dir>: a passing run of 5 memory runs, 1 CPU window and 100 residual snapshots on 10
+# accuracy_run <dir>: a passing run of 10 memory runs, 1 CPU window and 100 residual snapshots on 10
 # CPUs. Example Editor's PID 4103 is in Pith and in `top` before, but not after, so it is left out
 # on both sides: 206 + 101 MB against 297 to 305 MB passes inside the 3% bracket. In the window,
 # 4103 is new and has no share. Example Tiny, under 50 MB, is not compared.
 accuracy_run() {
     mkdir -p "$1"
     echo 10 >"$1/cpus"
-    for i in {1..5}; do
+    for i in {1..10}; do
         reading "$1/memory-$i.json" "[$EDITOR, $NOTES, $TINY]"
         top_sample MEM 4101:198M 4102:99M 4103:80M 4201:69M 4301:1024K >"$1/before-$i.txt"
         top_sample MEM 4101:204M+ 4102:101M+ 4201:70M+ 4301:1024K >"$1/after-$i.txt"
@@ -232,7 +232,7 @@ accuracy_run() {
 }
 
 memory_lines() {
-    for i in {1..5}; do
+    for i in {1..10}; do
         echo "PASS Example Editor, run $i: memory 307.0 MB, top 297.0 to 305.0 MB (width 2.69%), PIDs 2, left out 1"
         echo "PASS Example Notes, run $i: memory 70.0 MB, top 69.0 to 70.0 MB (width 1.45%), PIDs 1, left out 0"
     done
@@ -240,28 +240,51 @@ memory_lines() {
 
 accuracy_run "$TMP/accuracy"
 # The CPU units: 4% + 1% of the Mac in Pith against (40% + 10%) of one core / 10 CPUs in top.
-check 0 "PASS sums: in all 106 readings, each app is the sum of its PIDs
+check 0 "PASS sums: in all 111 readings, each app is the sum of its PIDs
 $(memory_lines)
-PASS Example Editor: memory within 3% in all 5 counted runs
-PASS Example Notes: memory within 3% in all 5 counted runs
+PASS Example Editor: memory within 3% in 10 of 10 counted runs
+PASS Example Notes: memory within 3% in 10 of 10 counted runs
 PASS Example Editor, window 1: CPU 5.00% vs top 5.00% of the Mac over 10 s (+0.00 points), PIDs 2, left out 1
 PASS Example Notes, window 1: CPU 0.20% vs top 0.20% of the Mac over 10 s (+0.00 points), PIDs 1, left out 0
 PASS residual: all 100 snapshots have a memory and a CPU residual
 PASS" "$ACCURACY" --evaluate "$TMP/accuracy"
 
-# A value outside the bracket widened by 3% fails, here under its low edge: 70 < 73 x 0.97.
+# outlier <dir> <run> <MiB>: Example Notes' top samples in a memory run, before and after.
+outlier() {
+    top_sample MEM 4101:198M 4102:99M 4103:80M "4201:$3M" 4301:1024K >"$1/before-$2.txt"
+    top_sample MEM 4101:204M+ 4102:101M+ "4201:$3M" 4301:1024K >"$1/after-$2.txt"
+}
+
+# A value under the bracket's low edge widened by 3% is outside it: 70 < 73 x 0.97. One outlier
+# in 10 counted runs, here 6% under, still passes, and the line names it (R170).
 accuracy_run "$TMP/low"
 top_sample MEM 4101:198M 4102:99M 4103:80M 4201:73M 4301:1024K >"$TMP/low/before-2.txt"
 top_sample MEM 4101:204M+ 4102:101M+ 4201:74M+ 4301:1024K >"$TMP/low/after-2.txt"
-check_lines 1 "$ACCURACY" --evaluate "$TMP/low" <<<"FAIL Example Notes, run 2: memory 70.0 MB, top 73.0 to 74.0 MB (width 1.37%), PIDs 1, left out 0
-FAIL Example Notes: memory outside 3% in 1 of 5 counted runs
+check_lines 0 "$ACCURACY" --evaluate "$TMP/low" <<<"OUT Example Notes, run 2: memory 70.0 MB, top 73.0 to 74.0 MB (width 1.37%), PIDs 1, left out 0
+PASS Example Notes: memory within 3% in 9 of 10 counted runs; outside 3%: run 2 (memory 70.0 MB, top 73.0 to 74.0 MB)
+PASS"
+accuracy_run "$TMP/six"
+outlier "$TMP/six" 4 74.5
+check_lines 0 "$ACCURACY" --evaluate "$TMP/six" <<<"PASS Example Notes: memory within 3% in 9 of 10 counted runs; outside 3%: run 4 (memory 70.0 MB, top 74.5 to 74.5 MB)
+PASS"
+
+# R170: two outliers in 10 counted runs fail, and so does one run beyond 10%: 70 < 79 x 0.90.
+accuracy_run "$TMP/two"
+outlier "$TMP/two" 4 74.5
+outlier "$TMP/two" 7 74.5
+check_lines 1 "$ACCURACY" --evaluate "$TMP/two" <<<"FAIL Example Notes: memory within 3% in 8 of 10 counted runs, under 90%; outside 3%: run 4 (memory 70.0 MB, top 74.5 to 74.5 MB), run 7 (memory 70.0 MB, top 74.5 to 74.5 MB)
+FAIL"
+accuracy_run "$TMP/far"
+outlier "$TMP/far" 4 79
+check_lines 1 "$ACCURACY" --evaluate "$TMP/far" <<<"FAIL Example Notes, run 4: memory 70.0 MB, top 79.0 to 79.0 MB (width 0.00%), PIDs 1, left out 0
+FAIL Example Notes: memory beyond 10% in run 4 (memory 70.0 MB, top 79.0 to 79.0 MB)
 FAIL"
 
-# R141: a range wider than 6% does not count; with 3 counted runs of 5, the app is not comparable.
+# R141: a range wider than 6% does not count; with 4 counted runs of 10, the app is not comparable.
 accuracy_run "$TMP/wide"
-for i in 1 2; do top_sample MEM 4101:198M 4102:99M 4201:60M >"$TMP/wide/before-$i.txt"; done
+for i in {1..6}; do top_sample MEM 4101:198M 4102:99M 4201:60M >"$TMP/wide/before-$i.txt"; done
 check_lines 1 "$ACCURACY" --evaluate "$TMP/wide" <<<"WIDE Example Notes, run 1: memory 70.0 MB, top 60.0 to 70.0 MB (width 16.67%, not counted), PIDs 1, left out 0
-FAIL Example Notes: not comparable, 3 runs counted (widths 16.67%, 16.67%, 1.45%, 1.45%, 1.45%)
+FAIL Example Notes: not comparable, 4 runs counted (widths 16.67%, 16.67%, 16.67%, 16.67%, 16.67%, 16.67%, 1.45%, 1.45%, 1.45%, 1.45%)
 FAIL"
 
 # The CPU units again: with top's %CPU of one core not divided by the CPU count, Pith would match.
