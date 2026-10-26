@@ -57,19 +57,24 @@ public enum Aggregator {
     }
     if let wallNs = baseline?.wallNs, !continuing.isEmpty {
       var cpuNs: UInt64 = 0
-      var bytes: UInt64 = 0
+      var bytes: UInt64? = 0
       // An exec keeps the PID and start time and can lower the CPU time (seen on macOS 26.6.2), so
-      // the baseline is per executable: an exec starts a new one (R132). Within one executable a
-      // counter never goes backwards: if one does, this traps.
+      // the baseline is per executable: an exec starts a new one (R132). Within one executable
+      // only the CPU time and bytes read are monotonic, and a CPU time that goes backwards traps.
+      // The disk total can step back when a process reads during the kernel's lock-free update of
+      // it; then the app has no disk rate this tick (R155).
       for (p, s) in continuing {
         cpuNs += s.cpuTimeNs - p.cpuTimeNs
-        bytes += (s.diskRead - p.diskRead) + (s.diskWritten - p.diskWritten)
+        bytes = bytes.flatMap {
+          s.diskBytes >= p.diskBytes ? $0 + (s.diskBytes - p.diskBytes) : nil
+        }
       }
       // Where a scan reads each process can push a saturated Mac a little past 100% (spec 6.3).
       let share = Double(cpuNs) / (wallNs * Double(cpuCount))
       assert(share <= 1.02, "\(identity.id) CPU share \(share)")
       cpu = .value(min(share, 1))
-      disk = .value(Double(bytes) / (wallNs / 1e9))
+      disk =
+        bytes.map { .value(Double($0) / (wallNs / 1e9)) } ?? .unavailable("disk total went down")
     }
     let inside = Dictionary(grouping: members) { (member: ProcessSample) -> String in
       let file = member.fileName

@@ -2,6 +2,6 @@
   "takenAtNs": 1000000000,
   "vanished": 0,
   "samples": [
-    {"key": {"pid": 77, "startTime": 1000}, "parent": 1, "uniqueID": 1077, "parentUniqueID": 1, "uid": 501, "name": "Preview", "path": "/System/Applications/Preview.app/Contents/MacOS/Preview", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskRead": 0, "diskWritten": 0}
+    {"key": {"pid": 77, "startTime": 1000}, "parent": 1, "uniqueID": 1077, "parentUniqueID": 1, "uid": 501, "name": "Preview", "path": "/System/Applications/Preview.app/Contents/MacOS/Preview", "idVersion": 0, "footprint": 1048576, "cpuTimeNs": 0, "diskBytes": 0}
   ]
 }

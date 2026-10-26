@@ -31,8 +31,10 @@ public struct ProcessSample: Sendable, Equatable, Codable {
   public let idVersion: Int32
   public let footprint: UInt64  // ri_phys_footprint, bytes
   public let cpuTimeNs: UInt64  // ri_user_time + ri_system_time, converted from Mach ticks
-  public let diskRead: UInt64
-  public let diskWritten: UInt64
+  /// Bytes read plus bytes written, the kernel's total I/O. Written alone can step back or wrap: the
+  /// kernel computes it as the total less bytes read, from counters it updates without a lock
+  /// (R155). The wrapping sum is the total again.
+  public let diskBytes: UInt64
 
   public init(
     key: ProcessKey, parent: Int32, uniqueID: UInt64, parentUniqueID: UInt64, uid: UInt32,
@@ -49,8 +51,7 @@ public struct ProcessSample: Sendable, Equatable, Codable {
     self.idVersion = idVersion
     self.footprint = footprint
     self.cpuTimeNs = cpuTimeNs
-    self.diskRead = diskRead
-    self.diskWritten = diskWritten
+    diskBytes = diskRead &+ diskWritten
   }
 
   /// The executable's file name, or the 16-byte kernel name when `path` is "".
@@ -103,9 +104,9 @@ public struct SystemTotals: Sendable, Equatable, Codable {
 
 public struct AppIdentity: Sendable, Equatable {
   /// A bundled app's `.app` path, so separate installations of one app stay apart. A Chromium
-  /// clone takes the id of the one installation in the same table with its bundle ID, else it is
-  /// "clone:" and the path of its `.app.bundle`. Any other process is "proc:" and its executable's
-  /// file name (the kernel name only when `path` is "").
+  /// clone takes the id of the one installation with its bundle ID that holds its own child
+  /// processes (R156), else it is "clone:" and the path of its `.app.bundle`. Any other process is
+  /// "proc:" and its executable's file name (the kernel name only when `path` is "").
   public let id: String
   public let name: String
   public let bundlePath: String?
@@ -139,9 +140,9 @@ public struct HelperGroup: Sendable, Equatable, Codable {
 
 public struct AppUsage: Sendable, Equatable, Codable, Identifiable {
   /// A bundled app's `.app` path, so separate installations of one app stay apart. A Chromium
-  /// clone takes the id of the one installation in the same table with its bundle ID, else it is
-  /// "clone:" and the path of its `.app.bundle`. Any other process is "proc:" and its executable's
-  /// file name (the kernel name only when `path` is "").
+  /// clone takes the id of the one installation with its bundle ID that holds its own child
+  /// processes (R156), else it is "clone:" and the path of its `.app.bundle`. Any other process is
+  /// "proc:" and its executable's file name (the kernel name only when `path` is "").
   public let id: String
   public let name: String
   public let bundlePath: String?
