@@ -1,14 +1,9 @@
 import Darwin
 import Foundation
+import Testing
 import os
 
 @testable import PithCore
-
-#if compiler(>=6.2)
-  import Testing
-#else
-  @_spi(Experimental) import Testing  // exit tests are public from Swift 6.2
-#endif
 
 @Test func ownProcessIsPresentAndOthersAreNot() throws {
   let t = LibprocProcessTable().readTable()
@@ -95,20 +90,19 @@ import os
   #expect(t.samples.map(\.key.pid) == [11] && t.vanished == 0)
 }
 
-/// R158: proc_listallpids returns 0 when it fails, which reads as an empty listing.
-private func sweepAfterAFailedListing() {
-  var probe = ProcessProbe.fake(pids: [10], uid: 501)
-  probe.listPIDs = { listAllPIDs(count: { 4 }, fill: { _, _ in 0 }) }
-  _ = LibprocProcessTable(probe: probe, uid: 501).readTable()
-}
+// Exit tests are public from Swift 6.2. Xcode 16's Swift 6.1, on the CI runner, ships none.
+#if compiler(>=6.2)
+  /// R158: proc_listallpids returns 0 when it fails, which reads as an empty listing.
+  private func sweepAfterAFailedListing() {
+    var probe = ProcessProbe.fake(pids: [10], uid: 501)
+    probe.listPIDs = { listAllPIDs(count: { 4 }, fill: { _, _ in 0 }) }
+    _ = LibprocProcessTable(probe: probe, uid: 501).readTable()
+  }
 
-@Test func aTableWithoutPithsOwnProcessTraps() async {  // R158
-  #if compiler(>=6.2)
+  @Test func aTableWithoutPithsOwnProcessTraps() async {  // R158
     await #expect(processExitsWith: .failure) { sweepAfterAFailedListing() }
-  #else
-    await #expect(exitsWith: .failure) { sweepAfterAFailedListing() }
-  #endif
-}
+  }
+#endif
 
 @Test func vanishedProcessIsCountedNotReported() {  // Review Focus 2
   var probe = ProcessProbe.fake(pids: [10, 11], uid: 501)
