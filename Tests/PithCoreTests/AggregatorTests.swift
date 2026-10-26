@@ -264,6 +264,19 @@ func aWriteCountThatStepsBackGivesNoTrap(written: (UInt64, UInt64, Reading<Doubl
   #expect(s.apps[0].cpu == .value(0))  // the CPU rate stands
 }
 
+/// R166: xnu reads disk_reads twice, so the total can step back across zero: a real sample read 0
+/// and wrote 2^64 - 65536. That is not a gain of 2^64, which with a sibling's I/O in the same app
+/// overflowed the app's sum and trapped in release.
+@Test func aDiskTotalThatStepsBackAcrossZeroGivesNoTrap() {
+  let s = snap(
+    previous: table([process(300), process(301)], at: 1_000_000_000),
+    current: table(
+      [process(300, written: UInt64.max - 65_535), process(301, written: 1_000_000)],
+      at: 2_000_000_000))
+  #expect(s.apps[0].diskBytesPerSecond == .unavailable("disk total went down"))
+  #expect(s.apps[0].cpu == .value(0))  // the CPU rate stands
+}
+
 @Test func diskRateSumsTheAppsProcesses() {  // 3 MB read by one, 1 MB written by another, in 2 s
   let s = snap(
     previous: table([process(300), process(301)], at: 0),
