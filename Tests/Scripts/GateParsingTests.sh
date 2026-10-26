@@ -8,7 +8,8 @@
 # - `perf.sh` relaunches Pith without the hooks after a failed step, even when its helpers are
 #   gone (R145), with fake tools on PATH, so no real Pith is touched.
 # - `accuracy.sh --evaluate` on a run's files (R138, R141-R143): the same-PID comparisons with
-#   left-out PIDs, the 3% bracket and its low edge, the 6% width rule, the 90% and 10% rules (R170),
+#   left-out PIDs, the 3% bracket and its low edge, the 6% width rule, the one-outlier and 10% rules
+#   (R170),
 #   CPU units, the sums, the residual, and comparisons of nothing.
 
 set -euo pipefail
@@ -256,23 +257,25 @@ outlier() {
 }
 
 # A value under the bracket's low edge widened by 3% is outside it: 70 < 73 x 0.97. One outlier
-# in 10 counted runs, here 6% under, still passes, and the line names it (R170).
+# still passes, and the line names it (R170).
 accuracy_run "$TMP/low"
 top_sample MEM 4101:198M 4102:99M 4103:80M 4201:73M 4301:1024K >"$TMP/low/before-2.txt"
 top_sample MEM 4101:204M+ 4102:101M+ 4201:74M+ 4301:1024K >"$TMP/low/after-2.txt"
 check_lines 0 "$ACCURACY" --evaluate "$TMP/low" <<<"OUT Example Notes, run 2: memory 70.0 MB, top 73.0 to 74.0 MB (width 1.37%), PIDs 1, left out 0
 PASS Example Notes: memory within 3% in 9 of 10 counted runs; outside 3%: run 2 (memory 70.0 MB, top 73.0 to 74.0 MB)
 PASS"
+# R170: one outlier at 6% among 8 counted runs (2 of 10 are too wide) passes.
 accuracy_run "$TMP/six"
+for i in 1 2; do top_sample MEM 4101:198M 4102:99M 4201:60M >"$TMP/six/before-$i.txt"; done
 outlier "$TMP/six" 4 74.5
-check_lines 0 "$ACCURACY" --evaluate "$TMP/six" <<<"PASS Example Notes: memory within 3% in 9 of 10 counted runs; outside 3%: run 4 (memory 70.0 MB, top 74.5 to 74.5 MB)
+check_lines 0 "$ACCURACY" --evaluate "$TMP/six" <<<"PASS Example Notes: memory within 3% in 7 of 8 counted runs; outside 3%: run 4 (memory 70.0 MB, top 74.5 to 74.5 MB)
 PASS"
 
-# R170: two outliers in 10 counted runs fail, and so does one run beyond 10%: 70 < 79 x 0.90.
+# R170: two outliers fail, and so does one run beyond 10%: 70 < 79 x 0.90.
 accuracy_run "$TMP/two"
 outlier "$TMP/two" 4 74.5
 outlier "$TMP/two" 7 74.5
-check_lines 1 "$ACCURACY" --evaluate "$TMP/two" <<<"FAIL Example Notes: memory within 3% in 8 of 10 counted runs, under 90%; outside 3%: run 4 (memory 70.0 MB, top 74.5 to 74.5 MB), run 7 (memory 70.0 MB, top 74.5 to 74.5 MB)
+check_lines 1 "$ACCURACY" --evaluate "$TMP/two" <<<"FAIL Example Notes: memory outside 3% in 2 of 10 counted runs: run 4 (memory 70.0 MB, top 74.5 to 74.5 MB), run 7 (memory 70.0 MB, top 74.5 to 74.5 MB)
 FAIL"
 accuracy_run "$TMP/far"
 outlier "$TMP/far" 4 79

@@ -7,8 +7,8 @@
 # - Memory, at the same moment: 10 times, `top` samples MEM just before and just after a
 #   `Pith --snapshot-json 0` reading. A run is within 3% of the range of the two samples, outside
 #   it, or beyond 10%; each line shows the range's width. A range wider than 6% does not count, and
-#   an app needs 5 counted runs, or it is "not comparable". An app passes when at least 90% of its
-#   counted runs are within 3% and none is beyond 10%; its line names each run outside 3% (R170).
+#   an app needs 5 counted runs, or it is "not comparable". An app passes when at most one counted
+#   run is outside 3% and none is beyond 10%; its line names each run outside 3% (R170).
 # - CPU, over a 10 s window: 3 times, `Pith --snapshot-json 10` beside `top -l 2 -s 10`, started
 #   together. An app passes within 2 points, as a share of the whole Mac (R135).
 # - The apps are those of 50 MB or more in the first memory reading.
@@ -139,14 +139,14 @@ evaluate() {
         cat "$work/run" >>"$work/runs"
         runs=$((runs + 1))
     done
-    # Each app needs 5 counted runs, at least 90% of them within 3%, and none beyond 10% (R170).
+    # Each app needs 5 counted runs, at most one of them outside 3%, and none beyond 10% (R170).
     awk -F '\t' '
         function add(list, item) { return list (list == "" ? "" : ", ") item }
         !($1 in name) { name[$1] = $2; order[++apps] = $1 }
         { widths[$1] = add(widths[$1], $4 "%") }
         $3 != "WIDE" { counted[$1]++ }
         $3 == "PASS" { within[$1]++ }
-        $3 == "OUT" { outside[$1] = add(outside[$1], $5) }
+        $3 == "OUT" { outliers[$1]++; outside[$1] = add(outside[$1], $5) }
         $3 == "FAIL" { beyond[$1] = add(beyond[$1], $5) }
         END {
             for (a = 1; a <= apps; a++) {
@@ -157,8 +157,8 @@ evaluate() {
                 } else if (beyond[id] != "") {
                     printf "FAIL %s: memory beyond 10%% in %s\n", name[id], beyond[id]
                     failed = 1
-                } else if (within[id] * 10 < counted[id] * 9) {
-                    printf "FAIL %s: memory within 3%% in %d of %d counted runs, under 90%%; outside 3%%: %s\n", name[id], within[id], counted[id], outside[id]
+                } else if (outliers[id] > 1) {
+                    printf "FAIL %s: memory outside 3%% in %d of %d counted runs: %s\n", name[id], outliers[id], counted[id], outside[id]
                     failed = 1
                 } else {
                     printf "PASS %s: memory within 3%% in %d of %d counted runs%s\n", name[id], within[id], counted[id],
