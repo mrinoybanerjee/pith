@@ -837,6 +837,21 @@ extension NativeInteractionTests {
     #expect(second.insetBy(dx: 8, dy: 8).contains(w.frame), "ended at \(w.frame)")
   }
 
+  /// R118: drawing the panel offscreen leaves no view tree alive. The warm store is held only by
+  /// that tree here, so it is gone once the run loop turns.
+  @Test func preparingThePanelLeavesNoViewTreeAlive() async throws {
+    startAppKit()
+    weak var warm: Store?
+    try {
+      let store = testStore(guide: try Guide.bundled())
+      store.apply(DemoSnapshots.calm)
+      PanelController.prepare(store)
+      warm = store
+    }()
+    for _ in 0..<200 where warm != nil { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(warm == nil)
+  }
+
   /// Spec 10: drawing the panel once before the first click loads the icons of the rows it shows.
   @Test func preparingThePanelLoadsTheRowIcons() throws {
     startAppKit()
