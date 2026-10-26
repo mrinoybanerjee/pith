@@ -73,6 +73,25 @@ extension NativeInteractionTests {
     }
   }
 
+  /// R145: the hook's `open` does nothing while the panel waits for its reading, so it cannot cancel
+  /// that open; `close` cancels it, so the reading that lands then does not show the panel.
+  @Test func theHookOpensOnceAndClosesWhileOpening() throws {
+    defer { clearDefaults() }
+    let store = testStore(guide: try Guide.bundled())
+    let controller = PanelController(
+      store: store, defaults: testDefaults(), onChange: { _, _, _ in })
+    controller.uptimeNs = { 0 }  // the open comes before the readings (R121)
+    controller.open(under: try anchor())
+    controller.open(under: try anchor())  // a second open while it waits
+    store.apply(DemoSnapshots.calm)
+    #expect(controller.panel.isVisible)
+    controller.dismiss()
+    controller.open(under: try anchor())
+    controller.dismiss()  // while it waits
+    store.apply(DemoSnapshots.tight)
+    #expect(!controller.panel.isVisible)
+  }
+
   /// R71: the click asks for an open reading, and the panel shows only once it is applied, at its
   /// final rows and height. It does not resize after it shows until the content changes, and a
   /// closed reading never reaches it.

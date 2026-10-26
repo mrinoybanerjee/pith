@@ -9,6 +9,9 @@ import os
   private var lifecycle: Lifecycle!
   private var panel: PanelController!
   private var statusItem: StatusItemController!
+  /// Whether the panel was shown or opening at its last change, for the close line of
+  /// `--debug-hooks`.
+  private var panelShown = false
 
   /// With `debugHooks` (`--debug-hooks`), the panel notification opens and closes the panel.
   init(debugHooks: Bool) {
@@ -29,8 +32,16 @@ import os
     let clock = Clock { [weak self] in Task { @MainActor in self?.lifecycle.tick() } }
     lifecycle = Lifecycle(
       clock: clock, engine: engine, store: store, reader: reader, defaults: defaults)
-    panel = PanelController(
-      store: store, defaults: defaults, onChange: lifecycle.panelChanged(visible:pinned:occluded:))
+    panel = PanelController(store: store, defaults: defaults) {
+      [weak self] visible, pinned, covered in
+      guard let self else { return }
+      lifecycle.panelChanged(visible: visible, pinned: pinned, occluded: covered)
+      // R145: `scripts/perf.sh` checks that the panel stayed open through its open phase.
+      if debugHooks, panelShown, !visible {
+        Logger(subsystem: "com.mrinoy.pith", category: "debug-hooks").notice("panel closed")
+      }
+      panelShown = visible
+    }
     lifecycle.onPause = { [weak self] in self?.panel.cancelOpening() }
     statusItem = StatusItemController { [weak self] in
       guard let self else { return }
@@ -65,10 +76,9 @@ import os
   /// `userInfo["action"]` "open" opens the panel as a click does, and "close" closes it.
   /// `scripts/perf.sh` sends it.
   @objc private func panelNotification(_ notification: Notification) {
-    let visible = panel.panel.isVisible
     switch notification.userInfo?["action"] as? String {
-    case "open" where !visible, "close" where visible: panel.toggle(under: statusItem.anchor)
-    case "open", "close": break
+    case "open": panel.open(under: statusItem.anchor)
+    case "close": panel.dismiss()
     case let action:
       Logger(subsystem: "com.mrinoy.pith", category: "debug-hooks").error(
         "unknown panel action \(String(describing: action), privacy: .public)")
