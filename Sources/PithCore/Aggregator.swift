@@ -140,12 +140,14 @@ public enum Aggregator {
   /// macOS 26.6.2), so the baseline is per executable: an exec starts a new one (R132). Within one
   /// executable only the CPU time and bytes read are monotonic, and a CPU time that goes backwards
   /// traps. The disk total can step back when a process reads during the kernel's lock-free update
-  /// of it; then `bytes` is nil (R155).
+  /// of it, also across zero; then `bytes` is nil (R155). So the difference wraps and is signed: a
+  /// negative one is a step back, never a gain of nearly 2^64 (R166).
   private static func delta(
     _ s: ProcessSample, _ baseline: Baseline
   ) -> (cpuNs: UInt64, bytes: UInt64?)? {
     baseline.samples[s.executableKey].map { p in
-      (s.cpuTimeNs - p.cpuTimeNs, s.diskBytes >= p.diskBytes ? s.diskBytes - p.diskBytes : nil)
+      let bytes = s.diskBytes &- p.diskBytes
+      return (s.cpuTimeNs - p.cpuTimeNs, Int64(bitPattern: bytes) < 0 ? nil : bytes)
     }
   }
 

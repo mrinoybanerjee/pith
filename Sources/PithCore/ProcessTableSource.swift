@@ -195,8 +195,7 @@ public final class LibprocProcessTable: ProcessTableReading {
     case .failure(.noSuchProcess): return .vanished
     case .failure(.notPermitted): return .skipped  // changed user after the UID check
     case .failure(let code):
-      assertionFailure("proc_pid_rusage(\(pid)) failed: errno \(code.rawValue)")
-      return .skipped
+      preconditionFailure("proc_pid_rusage(\(pid)) failed: errno \(code.rawValue)")
     }
     let start = timebase.nanoseconds(fromTicks: usage.ri_proc_start_abstime) / 1_000
     let key = ProcessKey(pid: pid, startTime: start)
