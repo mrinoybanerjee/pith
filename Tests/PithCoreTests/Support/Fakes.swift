@@ -75,14 +75,15 @@ extension AppGrouper {
 }
 
 extension ProcessProbe {
-  /// Synthetic processes: each PID belongs to `uid`, has parent 1 and a footprint of 1 byte.
+  /// Synthetic processes: each PID belongs to `uid`, has parent 1 and a footprint of 1 byte. The
+  /// first PID is the sweeping process, which each table must hold (R158).
   static func fake(pids: [Int32], uid: UInt32) -> ProcessProbe {
     ProcessProbe(
       listPIDs: { pids },
       bsdInfo: { pid in (uid, 1, "fake", 1, UInt64(pid), 1) },
       idVersion: { _ in 1 },
       rusage: { _ in .success(.fake(footprint: 1)) },
-      path: { _ in "/Applications/Fake.app/Contents/MacOS/Fake" })
+      path: { _ in "/Applications/Fake.app/Contents/MacOS/Fake" }, ownPID: pids.first ?? 0)
   }
 }
 

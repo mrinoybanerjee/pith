@@ -76,14 +76,31 @@ private let clonePaths = [
   #expect(a.assign(alone)[key(100)] == clone)
   #expect(a.assign(chrome)[key(100)]?.id == "/Applications/Google Chrome.app")
   #expect(a.assign(alone)[key(100)] == clone)
-  let two = a.assign(Fixture.table("clone-two-installs"))  // Chrome in two places
-  #expect(two[key(100)] == clone)
+  // Chrome in two places: the clone joins the one that holds its own helper, 101 (R156).
+  let two = a.assign(Fixture.table("clone-two-installs"))
+  #expect(two[key(100)]?.id == "/Applications/Google Chrome.app")
   #expect(two[key(102)]?.id == "/Volumes/Demo/Google Chrome.app")
 }
 
-@Test func clonesOfTwoInstallationsStayApart() {  // R53: each keeps the path of its own clone
+@Test func clonesOfTwoInstallationsStayApart() {  // R53 and R156: they never share one app
+  // 100 joins the installation of its own helper; 103 has none, so it keeps its clone's path.
   let g = grouped("clone-two-installs")
+  #expect(
+    [g[key(100)]?.id, g[key(103)]?.id] == [
+      "/Applications/Google Chrome.app", "clone:\(clonePaths[1])",
+    ])
+}
+
+@Test func clonesWithNoHelpersOfTheirOwnStayApart() {  // R156
+  // Without helper 101 neither clone has a child process, so neither joins the one installation
+  // left in the table, /Volumes/Demo/Google Chrome.app.
+  let map = responsibleFor["clone-two-installs"]!
+  var a = AppGrouper(responsible: { map[$0] }, bundleInfo: Fixture.bundleInfo)
+  let t = Fixture.table("clone-two-installs")
+  let g = a.assign(
+    ProcessTable(samples: t.samples.filter { $0.key.pid != 101 }, takenAtNs: 0, vanished: 0))
   #expect([g[key(100)]?.id, g[key(103)]?.id] == clonePaths.map { "clone:\($0)" })
+  #expect(g[key(102)]?.id == "/Volumes/Demo/Google Chrome.app")
 }
 
 @Test func helperOfAnUnjoinedCloneKeepsItsInstallation() {  // step 1 skips the clone owner
@@ -115,6 +132,23 @@ private let clonePaths = [
 @Test func responsibleProcessWins() {
   var a = AppGrouper(responsible: { $0 == 401 ? 400 : nil }, bundleInfo: Fixture.bundleInfo)
   #expect(a.assign(Fixture.table("responsible"))[key(401)]?.name == "Claude")
+}
+
+@Test func anAssignmentThatMissedAProcessIsGroupedAgain() {  // R157
+  // The responsible owner is not in the first table, then it is.
+  var a = AppGrouper(responsible: { $0 == 401 ? 400 : nil }, bundleInfo: Fixture.bundleInfo)
+  let t = Fixture.table("responsible")
+  let agent = ProcessTable(
+    samples: t.samples.filter { $0.key.pid == 401 }, takenAtNs: 0, vanished: 0)
+  #expect(a.assign(agent)[key(401)]?.name == "Example Agent")
+  #expect(a.assign(t)[key(401)]?.name == "Claude")
+  // Without the call, node's parent Codex is not in the first table, then it is.
+  var limited = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
+  let codex = Fixture.table("node-under-terminal-and-codex")
+  let node = ProcessTable(
+    samples: codex.samples.filter { $0.key.pid == 301 }, takenAtNs: 0, vanished: 0)
+  #expect(limited.assign(node)[key(301)]?.id == "proc:node")
+  #expect(limited.assign(codex)[key(301)]?.name == "Codex")
 }
 
 @Test func responsibleStepFallsThrough() {

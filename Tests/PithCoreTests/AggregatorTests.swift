@@ -275,6 +275,22 @@ private func cpuResidual(busy: Reading<Double>) -> Reading<Double>? {
   #expect(s.system == .value(SystemResidual(memory: (1 << 30) - (192 << 20), cpu: .value(0.125))))
 }
 
+/// R155: the kernel computes bytes written as total I/O less bytes read, from counters it updates
+/// without a lock, so written alone can step back or wrap. Read and written together are the
+/// kernel's total, which only a race moves back: then the app has no disk rate this tick.
+@Test(arguments: [
+  (UInt64(0), UInt64.max - 4_095, Reading<Double>.unavailable("disk total went down")),
+  (UInt64.max - 4_095, 0, .value(4_096)),
+  (100_000, 95_904, .unavailable("disk total went down")),
+])
+func aWriteCountThatStepsBackGivesNoTrap(written: (UInt64, UInt64, Reading<Double>)) {
+  let s = snap(
+    previous: table([process(300, read: 1_000_000, written: written.0)], at: 1_000_000_000),
+    current: table([process(300, read: 1_000_000, written: written.1)], at: 2_000_000_000))
+  #expect(s.apps[0].diskBytesPerSecond == written.2)
+  #expect(s.apps[0].cpu == .value(0))  // the CPU rate stands
+}
+
 @Test func diskRateSumsTheAppsProcesses() {  // 3 MB read by one, 1 MB written by another, in 2 s
   let s = snap(
     previous: table([process(300), process(301)], at: 0),

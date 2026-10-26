@@ -69,12 +69,15 @@ public enum Aggregator {
     let deltas = baseline.map { b in members.compactMap { delta($0, b) } } ?? []
     if let wallNs = baseline?.wallNs, !deltas.isEmpty {
       let cpuNs = deltas.reduce(0) { $0 + $1.cpuNs }
-      let bytes = deltas.reduce(0) { $0 + $1.bytes }
+      // A disk total that went down leaves the app with no disk rate this tick (R155).
+      let bytes = deltas.reduce(UInt64?(0)) { sum, d in sum.flatMap { t in d.bytes.map { t + $0 } }
+      }
       // Where a scan reads each process can push a saturated Mac a little past 100% (spec 6.3).
       let share = Self.share(cpuNs, wallNs, cpuCount)
       assert(share <= 1.02, "\(identity.id) CPU share \(share)")
       cpu = .value(min(share, 1))
-      disk = .value(Double(bytes) / (wallNs / 1e9))
+      disk =
+        bytes.map { .value(Double($0) / (wallNs / 1e9)) } ?? .unavailable("disk total went down")
     }
     let inside = Dictionary(grouping: members) { (member: ProcessSample) -> String in
       let file = member.fileName
@@ -135,12 +138,14 @@ public enum Aggregator {
   /// A process's CPU time and disk bytes since its baseline sample, when it ran the same
   /// executable then. An exec keeps the PID and start time and can lower the CPU time (seen on
   /// macOS 26.6.2), so the baseline is per executable: an exec starts a new one (R132). Within one
-  /// executable a counter never goes backwards: if one does, this traps.
+  /// executable only the CPU time and bytes read are monotonic, and a CPU time that goes backwards
+  /// traps. The disk total can step back when a process reads during the kernel's lock-free update
+  /// of it; then `bytes` is nil (R155).
   private static func delta(
     _ s: ProcessSample, _ baseline: Baseline
-  ) -> (cpuNs: UInt64, bytes: UInt64)? {
+  ) -> (cpuNs: UInt64, bytes: UInt64?)? {
     baseline.samples[s.executableKey].map { p in
-      (s.cpuTimeNs - p.cpuTimeNs, (s.diskRead - p.diskRead) + (s.diskWritten - p.diskWritten))
+      (s.cpuTimeNs - p.cpuTimeNs, s.diskBytes >= p.diskBytes ? s.diskBytes - p.diskBytes : nil)
     }
   }
 

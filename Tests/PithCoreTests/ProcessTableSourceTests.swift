@@ -85,9 +85,24 @@ import os
   var probe = ProcessProbe.fake(pids: [10, 11], uid: 501)
   probe.bsdInfo = { pid in (501, 1, "fake", next(pid), UInt64(pid), 1) }
   probe.idVersion = next
+  probe.ownPID = 11
   let t = LibprocProcessTable(probe: probe, uid: 501).readTable()
   #expect(t.samples.map(\.key.pid) == [11] && t.vanished == 0)
 }
+
+// Exit tests are public from Swift 6.2. Xcode 16's Swift 6.1, on the CI runner, ships none.
+#if compiler(>=6.2)
+  /// R158: proc_listallpids returns 0 when it fails, which reads as an empty listing.
+  private func sweepAfterAFailedListing() {
+    var probe = ProcessProbe.fake(pids: [10], uid: 501)
+    probe.listPIDs = { listAllPIDs(count: { 4 }, fill: { _, _ in 0 }) }
+    _ = LibprocProcessTable(probe: probe, uid: 501).readTable()
+  }
+
+  @Test func aTableWithoutPithsOwnProcessTraps() async {  // R158
+    await #expect(processExitsWith: .failure) { sweepAfterAFailedListing() }
+  }
+#endif
 
 @Test func vanishedProcessIsCountedNotReported() {  // Review Focus 2
   var probe = ProcessProbe.fake(pids: [10, 11], uid: 501)
@@ -155,7 +170,7 @@ import os
 @Test func pathIsReadOncePerKeyAndEvictedWhenGone() {
   let pids = OSAllocatedUnfairLock(initialState: [Int32]([10, 11]))
   let reads = OSAllocatedUnfairLock(initialState: [Int32]())
-  var probe = ProcessProbe.fake(pids: [], uid: 501)
+  var probe = ProcessProbe.fake(pids: [10], uid: 501)
   probe.listPIDs = { pids.withLock { $0 } }
   probe.path = { pid in
     reads.withLock { $0.append(pid) }
