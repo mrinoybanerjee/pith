@@ -43,12 +43,16 @@ public struct AppGrouper: Sendable {
     return AppGrouper(responsible: responsible, bundleInfo: readBundle)
   }
 
-  /// What the `.app` at `appPath` says about itself in its `Contents/Info.plist`, or nil when that
-  /// cannot be read, as in the middle of an update. `Bundle(path:)` would keep a bundle that it
-  /// could not read for the process's life. A bundle with no bundle ID is still read (R175).
+  /// What the `.app` at `appPath` says about itself in its `Contents/Info.plist`, or in its top
+  /// `Info.plist` for a flat bundle such as the inner Wrapper/*.app of an iPhone or iPad app. Nil
+  /// when neither can be read, as in the middle of an update. `Bundle(path:)` would keep a bundle
+  /// that it could not read for the process's life. A bundle with no bundle ID is still read (R175).
   static func readBundle(_ appPath: String) -> BundleInfo? {
-    let url = URL(fileURLWithPath: appPath).appending(path: "Contents/Info.plist")
-    guard let plist = NSDictionary(contentsOf: url) else { return nil }
+    let app = URL(fileURLWithPath: appPath)
+    guard
+      let plist = NSDictionary(contentsOf: app.appending(path: "Contents/Info.plist"))
+        ?? NSDictionary(contentsOf: app.appending(path: "Info.plist"))
+    else { return nil }
     let name = plist["CFBundleDisplayName"] as? String ?? plist["CFBundleName"] as? String
     return (
       plist["CFBundleIdentifier"] as? String, name ?? FilePath(appPath).stem!,
