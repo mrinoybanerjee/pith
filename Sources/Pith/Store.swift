@@ -36,7 +36,12 @@ enum SystemDetailsState: Equatable {
   /// or the panel closes (R78), and when the row no longer has the process that the user asked to
   /// quit (R95). So no confirm outlives its row or its process. A quit already sent stays sent.
   private(set) var quitFlow = QuitFlow()
-  /// Whether the confirm's default button is drawn whole in the list; the button reports it.
+  /// Where the confirm's default button is drawn, in the list content's coordinates, or nil while
+  /// none is; the button reports it. Each change calls `confirmButtonMoved` (R147).
+  @ObservationIgnored var confirmButtonFrame: CGRect? { didSet { confirmButtonMoved() } }
+  @ObservationIgnored var confirmButtonMoved: () -> Void = {}
+  /// Whether the confirm's default button is drawn whole in the list. The panel sets it from the
+  /// list's scroll position at that moment (R147).
   @ObservationIgnored var confirmButtonInView = false {
     didSet { confirmVisible = confirmButtonInView && !panelCovered }
   }

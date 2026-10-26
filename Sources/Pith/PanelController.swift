@@ -33,6 +33,8 @@ import SwiftUI
   private var anchor = (itemFrame: CGRect.zero, visibleFrame: CGRect.zero)
   /// The outside-click monitor, installed while the panel is attached and open.
   private var monitors: [Any] = []
+  /// Sees each scroll of the list, which can move the confirm's default button in or out of view.
+  private var scrolls: (any NSObjectProtocol)?
   /// The check that keeps a moved pinned panel on screen (R106).
   private var dragCheck: Task<Void, any Error>?
   /// Whether other windows cover the panel, as macOS reports it. Tests set it (R104).
@@ -76,6 +78,11 @@ import SwiftUI
     effect.addSubview(hosting)
     panel.contentView = effect
     store.appliedOpenSnapshot = { [weak self] in self?.show() }
+    store.confirmButtonMoved = { [weak self] in self?.checkConfirmButton() }
+    // A scroll of the list sets its clip view's bounds. Pith has no other scroll view.
+    scrolls = NotificationCenter.default.addObserver(
+      forName: NSView.boundsDidChangeNotification, object: nil, queue: .main
+    ) { [weak self] _ in MainActor.assumeIsolated { self?.checkConfirmButton() } }
     follow({ [store] in store.pinned }, then: { [weak self] in self?.pin($0) })
   }
 
@@ -153,8 +160,10 @@ import SwiftUI
     panel.makeKeyAndOrderFront(nil)
   }
 
-  /// Follows the content's height after each layout of the shown panel.
+  /// Follows the content's height after each layout of the shown panel. The list may have just come
+  /// back, as after Settings, so the confirm's button is checked again too (R147).
   private func fit() {
+    checkConfirmButton()
     if panel.isVisible { resize() }
   }
 
@@ -204,13 +213,30 @@ import SwiftUI
     case ([], 126) where list && confirming, ([], 125) where list && confirming: store.cancelQuit()
     case ([], 126) where list: store.moveSelection(-1)
     case ([], 125) where list: store.moveSelection(1)
-    case ([], 36) where list && confirming, ([], 76) where list && confirming: store.confirmQuit()
+    case ([], 36) where list && confirming, ([], 76) where list && confirming:
+      checkConfirmButton()
+      store.confirmQuit()
     case ([], 36) where list, ([], 76) where list: store.toggleSelected()
     case ([], 53) where confirming: store.cancelQuit()
     case ([], 53) where !store.pinned: close()
     default: return false
     }
     return true
+  }
+
+  /// R147: whether the confirm's default button shows whole in the list, from where the list is
+  /// scrolled now. SwiftUI on macOS 15 can drop the last geometry change after a scroll, so no
+  /// reported flag decides it. The list is the panel's one NSScrollView, and its flipped document
+  /// has the list content's coordinates; a test pins both. While Settings show there is no list,
+  /// and the button's frame can still be set until its disappearance reaches the store.
+  private func checkConfirmButton() {
+    func list(in view: NSView) -> NSScrollView? {
+      view as? NSScrollView ?? view.subviews.lazy.compactMap(list).first
+    }
+    store.confirmButtonInView =
+      store.confirmButtonFrame.map { frame in
+        list(in: hosting).map { $0.documentVisibleRect.contains(frame) } ?? false
+      } ?? false
   }
 
   private func close() {

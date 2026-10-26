@@ -5,6 +5,9 @@ import SwiftUI
 /// (spec 4.2). The rows ease into a new order; with Reduce Motion they crossfade (spec 4.8). Over
 /// 560 pt the list scrolls under the fixed status line and tiles.
 struct AppListView: View {
+  /// The list content's coordinates, which are its NSScrollView document's (R147).
+  nonisolated static let contentSpace = "pith.list"
+
   let store: Store
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   /// The height of the list's visible part, and the opened row with its height (R92).
@@ -62,6 +65,7 @@ struct AppListView: View {
             .transition(.opacity)
           }
           .animation(.easeInOut(duration: 0.25), value: order)
+          .coordinateSpace(.named(Self.contentSpace))
         }
         .scrollBounceBehavior(.basedOnSize)
         .onGeometryChange(for: CGFloat.self, of: \.size.height) { listHeight = $0 }

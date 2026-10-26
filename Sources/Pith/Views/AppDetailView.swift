@@ -67,7 +67,8 @@ struct AppDetailView: View {
 /// A confirm inside an opened row (design section 1): the question in semibold and what follows,
 /// then Cancel and the default button. VoiceOver reads the sentence, then the two buttons. The
 /// panel's keys reach them through the store (R80 and R94): Return presses the default button
-/// only while it shows whole in the list, which the button reports.
+/// only while it shows whole in the list. The button reports where it is in the list's content,
+/// and the panel checks that against the list's scroll position (R147).
 private struct Confirm: View {
   let store: Store
   let question: String
@@ -94,12 +95,12 @@ private struct Confirm: View {
         .buttonStyle(.plain)
         Button(action) { store.confirmQuit() }
           .buttonStyle(.borderedProminent)
-          .onGeometryChange(for: Bool.self) { proxy in
-            proxy.bounds(of: .scrollView).map { $0.contains(proxy.frame(in: .local)) } ?? false
+          .onGeometryChange(for: CGRect.self) {
+            $0.frame(in: .named(AppListView.contentSpace))
           } action: {
-            store.confirmButtonInView = $0
+            store.confirmButtonFrame = $0
           }
-          .onDisappear { store.confirmButtonInView = false }
+          .onDisappear { store.confirmButtonFrame = nil }
       }
     }
     .padding(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))

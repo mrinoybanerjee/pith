@@ -19,13 +19,19 @@ extension NativeInteractionTests {
     let labels = axLabels(in: w)
     #expect(labels.contains("Google Chrome, 6.4 GB memory, 41 processes"))
     #expect(labels.contains("Memory, 15.1 of 16 GB, Tight, 2.1 GB swap"))
+    // R148: VoiceOver hears each row once, through its button; the texts it repeats are hidden.
+    #expect(labels.count { $0 == "Google Chrome, 6.4 GB memory, 41 processes" } == 1)
+    #expect(!labels.contains("Google Chrome") && !labels.contains("6.4 GB"))
     #expect(axInteractiveElements(in: w).allSatisfy { !($0.label ?? "").isEmpty })
   }
 
   @MainActor @Test func smallestReadableTextIsThirteenPoints() throws {
+    RowTextFrames.recorded = [:]  // the rows' own texts, which VoiceOver does not read (R148)
     #expect(
       try minimumReadableFontSize(hostPanel(DemoSnapshots.calm), excludingIdentifier: "pith.footer")
         >= 13)
+    let rowSizes = rowTextPointSizes()
+    #expect(rowSizes.count == 12 && rowSizes.allSatisfy { $0 >= 13 }, "\(rowSizes)")  // 6 rows
   }
 
   @MainActor @Test func commandTwoSwitchesToCPU() throws {
@@ -35,9 +41,10 @@ extension NativeInteractionTests {
   }
 
   @MainActor @Test func longNamesTruncateAndValuesStay() throws {
-    let w = try hostPanel(
+    RowTextFrames.recorded = [:]
+    _ = try hostPanel(
       DemoSnapshots.withAppName(String(repeating: "Extraordinarily Long App ", count: 6)))
-    #expect(valueColumnFrames(in: w).allSatisfy { $0.maxX <= 352 })
+    #expect(valueColumnFrames().allSatisfy { $0.maxX <= 352 })
   }
 
   /// R75: a tool for the design check and the README images, so it is skipped, not passed, unless
@@ -211,6 +218,7 @@ extension NativeInteractionTests {
   @Test func voiceOverHearsTheStateOfRowsAndControls() async throws {
     let (w, store) = try hostPanelWithStore(DemoSnapshots.tight)
     let chrome = "Google Chrome, 6.4 GB memory, 41 processes"
+    #expect(try axNode(chrome, in: w).role == "AXButton")
     #expect(try axNode(chrome, in: w).value == "collapsed")
     #expect(try axNode("Memory", in: w).selected && !(try axNode("CPU", in: w).selected))
     #expect(axNodes(in: w).contains { $0.label == "Sort by" && $0.children.count == 3 })
@@ -226,12 +234,14 @@ extension NativeInteractionTests {
   /// Spec 4.3: an opened row shows the guide's explanation, its process count and what is inside,
   /// with the app's own executable as the "Main process".
   @Test func anOpenedRowExplainsTheAppAndListsWhatIsInside() async throws {
+    RowTextFrames.recorded = [:]  // the count is a row text, which VoiceOver does not read (R148)
+    let count = "Google Chrome, 6.4 GB memory, 41 processes | 41 processes"
     let (w, store) = try hostPanelWithStore(DemoSnapshots.tight)
-    #expect(!axLabels(in: w).contains("41 processes"))
+    #expect(RowTextFrames.recorded?[count] == nil)
     store.toggle(store.rows[0].id)
     #expect(try await eventually(w) { axLabels(in: w).contains("Tabs and sites (34), 5.1 GB") })
     let labels = axLabels(in: w)
-    #expect(labels.contains("41 processes"))
+    #expect(RowTextFrames.recorded?[count] != nil)
     #expect(labels.contains("Graphics, 620 MB"))
     #expect(labels.contains("Main process, 210 MB"))
     let chrome = try #require(
@@ -259,6 +269,7 @@ extension NativeInteractionTests {
   /// the rows show "—" and VoiceOver says "not available yet". "macOS system" has no disk reading
   /// at all, so on Disk it says "not measured" (R76).
   @Test func unknownValuesShowADashAndMissingOnesSayNotMeasured() async throws {
+    RowTextFrames.recorded = [:]  // what the rows draw, which VoiceOver reads in a sentence (R148)
     let (w, store) = try hostPanelWithStore(remake(DemoSnapshots.calm, firstTick: true))
     #expect(axLabels(in: w).contains("CPU, not available yet"))
     store.metric = .cpu
@@ -273,7 +284,8 @@ extension NativeInteractionTests {
         axLabels(in: w).contains("Google Chrome, disk not available yet, 22 processes")
       })
     let labels = axLabels(in: w)
-    #expect(labels.contains("macOS system, disk not measured") && labels.contains("not measured"))
+    #expect(labels.contains("macOS system, disk not measured"))
+    #expect(RowTextFrames.recorded?["macOS system, disk not measured | not measured"] != nil)
     #expect(!labels.contains { $0.hasSuffix("/s") })
   }
 
@@ -303,10 +315,8 @@ extension NativeInteractionTests {
       grouping: .full)
     let (w, store) = try hostPanelWithStore(missing)
     let plain = "Pith couldn't measure this right now."
-    #expect(axLabels(in: w).contains("macOS system, memory not available"))
-    let systemValue = try #require(
-      axNodes(in: w).first { $0.identifier == "pith.value" && $0.spoken == "not available" })
-    #expect(systemValue.help == plain)
+    // A row's value is part of its button's sentence, and its tooltip is the button's help (R148).
+    #expect(try axNode("macOS system, memory not available", in: w).help == plain)
     #expect(try axNode("CPU, not available", in: w).help == plain)
     let tiles = axNodes(in: w).filter { node in
       ["Memory, ", "Storage, "].contains { node.spoken?.hasPrefix($0) == true }
@@ -318,13 +328,9 @@ extension NativeInteractionTests {
       try await eventually(w) {
         axLabels(in: w).contains("Google Chrome, CPU not available yet, 22 processes")
       })
-    let chromeValue = try #require(
-      axNodes(in: w).first { $0.identifier == "pith.value" && $0.spoken == "not available yet" })
-    #expect((chromeValue.help ?? "").isEmpty)
-    #expect(axLabels(in: w).contains("Claude, CPU not available, 9 processes"))
-    let claudeValue = try #require(
-      axNodes(in: w).first { $0.identifier == "pith.value" && $0.spoken == "not available" })
-    #expect(claudeValue.help == plain)
+    #expect(
+      (try axNode("Google Chrome, CPU not available yet, 22 processes", in: w).help ?? "").isEmpty)
+    #expect(try axNode("Claude, CPU not available, 9 processes", in: w).help == plain)
   }
 
   /// R120: on a screen whose visible frame is 540 pt tall, the panel is at most 524 pt tall, so it
@@ -1040,6 +1046,23 @@ extension NativeInteractionTests {
     apps.passTheConfirmGuard()
     sendKey("↩", to: w)
     #expect(slack.terminations == 1)
+  }
+
+  /// R147: Return reads the list's scroll position from AppKit, so the list must be an NSScrollView
+  /// whose flipped document has the list content's coordinates: the default button's reported frame
+  /// is where the window draws it.
+  @Test func theListIsAnNSScrollViewInTheContentsCoordinates() async throws {
+    defer { clearDefaults() }
+    let (w, store, _) = try await hostOpened("Slack", in: DemoSnapshots.calm)
+    try press("Quit", in: w)
+    #expect(try await eventually(w) { showsInTheList("Quit", in: w) && store.confirmButtonInView })
+    let document = try #require(scrollView(in: w.contentView!)?.documentView)
+    #expect(document.isFlipped)
+    let drawn = document.convert(try buttonFrame("Quit", in: w), from: nil)
+    let reported = try #require(store.confirmButtonFrame)
+    #expect(
+      abs(drawn.minX - reported.minX) < 1 && abs(drawn.minY - reported.minY) < 1
+        && abs(drawn.height - reported.height) < 1, "drawn \(drawn), reported \(reported)")
   }
 
   /// R92: a reading that only changes what is inside the opened row does not scroll the list, so

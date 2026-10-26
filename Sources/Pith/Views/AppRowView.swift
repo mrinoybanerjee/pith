@@ -30,12 +30,15 @@ struct AppRowView: View {
           quitTarget: store.quitTarget(for: app))
       }
     }
+    .accessibilityElement(children: .contain)
   }
 }
 
 /// What every row shows (spec 4.2): a 24 pt icon, the name over a 3 pt bar, and the value on the
-/// right, which stays whole while a long name truncates. VoiceOver reads it as one sentence, then
-/// "expanded" or "collapsed".
+/// right, which stays whole while a long name truncates. VoiceOver reads it once, as one button: the
+/// sentence, then "expanded" or "collapsed", and the value's tooltip as its help. One tree on every
+/// macOS (R148): on macOS 15 an element with children is a group with no value, so the button is a
+/// leaf over the row, and the texts that it repeats are hidden from VoiceOver.
 struct RowLayout<Icon: View, Name: View>: View {
   let icon: Icon
   let name: Name
@@ -54,11 +57,11 @@ struct RowLayout<Icon: View, Name: View>: View {
     HStack(spacing: 10) {
       icon
         .frame(width: 24, height: 24)
-        .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 4) {
         name
           .font(.panel(.body, weight: .medium))
           .lineLimit(1)
+          .recordsFrame(sentence, "name")
         Bar(fraction: fraction, height: 3, fill: .secondary)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,18 +69,18 @@ struct RowLayout<Icon: View, Name: View>: View {
         Text(value.text)
           .font(.panel(.body, weight: .medium).monospacedDigit())
           .foregroundStyle(value.amount == nil ? .secondary : .primary)
-          .accessibilityLabel(value.label)
           .help(value.help ?? "")
-          .accessibilityIdentifier("pith.value")
+          .recordsFrame(sentence, value.text)
         if let processes {
           Text("\(processes) processes")
             .font(.panel(.body).monospacedDigit())
             .foregroundStyle(.secondary)
-            .accessibilityIdentifier("pith.value")
+            .recordsFrame(sentence, "\(processes) processes")
         }
       }
       .fixedSize()
     }
+    .accessibilityHidden(true)
     .padding(.horizontal, 8)
     .padding(.vertical, 6)
     .background(
@@ -86,11 +89,39 @@ struct RowLayout<Icon: View, Name: View>: View {
     .contentShape(.rect)
     .onTapGesture(perform: action)
     .onHover { hovering = $0 }
-    .accessibilityElement(children: .contain)
-    .accessibilityLabel(sentence)
-    .accessibilityValue(expanded ? "expanded" : "collapsed")
-    .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-    .accessibilityAction(.default, action)
+    .overlay {
+      Color.clear
+        .accessibilityElement()
+        .accessibilityLabel(sentence)
+        .accessibilityValue(expanded ? "expanded" : "collapsed")
+        .accessibilityHint(value.help ?? "")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(.default, action)
+    }
+  }
+}
+
+/// R148: VoiceOver reads a row through its button, so the row's own texts are hidden from it.
+/// While a test sets `recorded`, each of them records where it draws, in the window, under
+/// "<row sentence> | <name, the value or the process count>", so the test can check its size and
+/// place. It is nil in the app, where nothing records.
+@MainActor enum RowTextFrames {
+  static var recorded: [String: CGRect]?
+}
+
+extension View {
+  @ViewBuilder fileprivate func recordsFrame(_ sentence: String, _ part: String) -> some View {
+    if RowTextFrames.recorded != nil {
+      let key = "\(sentence) | \(part)"
+      onGeometryChange(for: CGRect.self) {
+        $0.frame(in: .global)
+      } action: {
+        RowTextFrames.recorded?[key] = $0
+      }
+      .onDisappear { RowTextFrames.recorded?[key] = nil }
+    } else {
+      self
+    }
   }
 }
 

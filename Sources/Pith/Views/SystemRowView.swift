@@ -21,7 +21,6 @@ struct SystemRowView: View {
             .font(.panel(.body, weight: .semibold))
             .imageScale(.small)
             .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
         },
         fraction: fraction, value: value, processes: nil,
         selected: store.selectedRowID == Store.systemRowID, expanded: expanded,
@@ -29,6 +28,7 @@ struct SystemRowView: View {
       ) { store.toggle(Store.systemRowID) }
       if expanded { details.detailWell() }
     }
+    .accessibilityElement(children: .contain)
   }
 
   @ViewBuilder private var details: some View {
