@@ -96,7 +96,8 @@ public struct AppGrouper: Sendable {
   ///    so Chrome's helpers keep the real app path from step 2.
   /// 2. The process's own app: the innermost when it is responsible for itself, else the outermost.
   /// 3. The outermost app of up to 5 parents, following only processes in the table and stopping
-  ///    at launchd.
+  ///    at launchd. An edge holds only while the parent's unique ID is the one that the child
+  ///    recorded, as a reused PID has a new one (R151).
   /// Otherwise the process stands alone, named by its file name.
   private func group(_ s: ProcessSample, _ table: [Int32: ProcessSample]) -> AppIdentity {
     let responsiblePID = responsible?(s.key.pid)
@@ -106,7 +107,10 @@ public struct AppGrouper: Sendable {
       return identity(app)!
     }
     let own = Self.appPaths(s.path)
-    let parents = sequence(first: s) { $0.parent == 1 ? nil : table[$0.parent] }.dropFirst()
+    let parents = sequence(first: s) { child in
+      child.parent == 1
+        ? nil : table[child.parent].flatMap { $0.uniqueID == child.parentUniqueID ? $0 : nil }
+    }.dropFirst()
     let apps =
       [responsiblePID == s.key.pid ? own.last : own.first]
       + parents.prefix(5).map { Self.enclosingAppPath($0.path) }

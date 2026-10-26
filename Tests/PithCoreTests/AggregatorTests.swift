@@ -48,7 +48,9 @@ private func process(
 ) -> ProcessSample {
   let file = file ?? app
   return ProcessSample(
-    key: ProcessKey(pid: pid, startTime: start), parent: 1, uid: 501, name: String(file.prefix(16)),
+    key: ProcessKey(pid: pid, startTime: start), parent: 1, uniqueID: UInt64(pid),
+    parentUniqueID: 1,
+    uid: 501, name: String(file.prefix(16)),
     path: "/Applications/\(app).app/Contents/MacOS/\(file)", idVersion: idVersion,
     footprint: memory, cpuTimeNs: cpu, diskRead: read, diskWritten: written)
 }

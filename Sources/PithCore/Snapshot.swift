@@ -19,6 +19,10 @@ struct ExecutableKey: Hashable, Sendable {
 public struct ProcessSample: Sendable, Equatable, Codable {
   public let key: ProcessKey
   public let parent: Int32
+  /// p_uniqueid and p_puniqueid: a parent edge holds only while they match, as a reused PID has a
+  /// new unique ID (R151).
+  public let uniqueID: UInt64
+  public let parentUniqueID: UInt64
   public let uid: UInt32
   public let name: String
   public let path: String
@@ -31,11 +35,14 @@ public struct ProcessSample: Sendable, Equatable, Codable {
   public let diskWritten: UInt64
 
   public init(
-    key: ProcessKey, parent: Int32, uid: UInt32, name: String, path: String, idVersion: Int32,
-    footprint: UInt64, cpuTimeNs: UInt64, diskRead: UInt64, diskWritten: UInt64
+    key: ProcessKey, parent: Int32, uniqueID: UInt64, parentUniqueID: UInt64, uid: UInt32,
+    name: String, path: String, idVersion: Int32, footprint: UInt64, cpuTimeNs: UInt64,
+    diskRead: UInt64, diskWritten: UInt64
   ) {
     self.key = key
     self.parent = parent
+    self.uniqueID = uniqueID
+    self.parentUniqueID = parentUniqueID
     self.uid = uid
     self.name = name
     self.path = path
