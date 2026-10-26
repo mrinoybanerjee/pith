@@ -179,7 +179,7 @@ extension NativeInteractionTests {
 
   /// R165: with CPU chosen, an open's first reading keeps Memory order, and the next one, with
   /// rates, sorts the rows by CPU in an update that disables animations, so they move at once.
-  @Test func theFirstRatesSortTheRowsWithoutAnimation() throws {
+  @Test func theFirstRatesSortTheRowsWithoutAnimation() async throws {
     let store = testStore(guide: try Guide.bundled())
     store.metric = .cpu
     let rated = reversingCPU(DemoSnapshots.tight)
@@ -193,16 +193,15 @@ extension NativeInteractionTests {
     #expect(
       store.rows.map(\.id)
         == RowOrder.stable(previous: [], apps: first.apps, metric: .memory).map(\.id))
-    var updates: [Bool] = []
-    let probe = hostView(RowOrderProbe(store: store) { updates.append($0) })
-    updates = []
+    let cpuOrder = RowOrder.stable(previous: [], apps: rated.apps, metric: .cpu).map(\.id)
+    var updates: [(ids: [String], instant: Bool)] = []
+    let probe = hostView(RowOrderProbe(store: store) { updates.append(($0, $1)) })
     store.apply(rated)
-    probe.contentView!.layoutSubtreeIfNeeded()
     controller.panel.contentView!.layoutSubtreeIfNeeded()
-    #expect(
-      store.rows.map(\.id)
-        == RowOrder.stable(previous: [], apps: rated.apps, metric: .cpu).map(\.id))
-    #expect(!updates.isEmpty && updates.allSatisfy { $0 }, "\(updates)")
+    #expect(store.rows.map(\.id) == cpuOrder)
+    // macOS 15 draws the update on a later turn of the run loop; macOS 26 at the layout.
+    #expect(try await eventually(probe) { updates.contains { $0.ids == cpuOrder } })
+    #expect(updates.first { $0.ids == cpuOrder }?.instant == true)
   }
 
   /// R172: a row's icon is kept as two small bitmaps, the rows' 24 pt at 1x and 2x, drawn once
@@ -1590,13 +1589,14 @@ private final class KeyRecorder: NSView {
   override func keyDown(with event: NSEvent) { keyCodes.append(event.keyCode) }
 }
 
-/// Shows the row order, and notes whether each update that reaches it disables animations (R165).
+/// Shows the row order, and notes the order each update draws and whether that update disables
+/// animations (R165).
 private struct RowOrderProbe: View {
   let store: Store
-  let note: (Bool) -> Void
+  let note: ([String], Bool) -> Void
 
   var body: some View {
-    Text(store.rows.map(\.id).joined(separator: "\n"))
-      .transaction { note($0.disablesAnimations) }
+    let ids = store.rows.map(\.id)
+    Text(ids.joined(separator: "\n")).transaction { note(ids, $0.disablesAnimations) }
   }
 }
