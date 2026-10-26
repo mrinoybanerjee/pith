@@ -47,6 +47,15 @@ extension UserDefaults {
     set { set(newValue.map(NSStringFromRect), forKey: "pinnedFrame") }
   }
 
+  /// The "Using the most" choice (spec 4.2, R161): Memory until the user changes it. It is saved
+  /// apart from the settings because `Lifecycle` sets the clock again for each settings change. A
+  /// write happens only for a change, so a launch writes none (R137). A saved value of the wrong
+  /// type traps, as the settings do.
+  var metric: Metric {
+    get { object(forKey: "metric").map { Metric(rawValue: $0 as! String)! } ?? .memory }
+    set { if newValue != metric { set(newValue.rawValue, forKey: "metric") } }
+  }
+
   /// Pith registers its login item on its first launch only (spec 4.6 and 12). After that only the
   /// user turns it on or off.
   var loginItemOfferedOnce: Bool {

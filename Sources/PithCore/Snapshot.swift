@@ -186,7 +186,7 @@ public enum GroupingQuality: String, Sendable, Equatable, Codable { case full, l
 
 public enum Mode: String, Sendable, Equatable, Codable { case closed, open }
 
-public enum Metric: Sendable, Equatable { case memory, cpu, disk }
+public enum Metric: String, Sendable, Equatable { case memory, cpu, disk }
 
 public struct Snapshot: Sendable, Equatable, Codable {
   public let takenAtNs: UInt64

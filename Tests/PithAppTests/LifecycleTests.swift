@@ -355,6 +355,37 @@ private final class GrowingTable: ProcessTableReading {
   #expect(item.registrations == 1 && !second.store.launchesAtLogin)
 }
 
+/// R161 and spec 4.2: a launch with nothing saved shows Memory and saves nothing (R137).
+@MainActor @Test func aLaunchShowsMemoryAndSavesNoMetric() async throws {
+  let rig = Rig()
+  defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+  try await rig.start()
+  #expect(rig.store.metric == .memory)
+  #expect(rig.defaults.object(forKey: "metric") == nil)
+}
+
+/// R161: choosing a metric saves it.
+@MainActor @Test func choosingTheCPUSavesTheMetric() async throws {
+  let rig = Rig()
+  defer { UserDefaults().removePersistentDomain(forName: rig.suite) }
+  try await rig.start()
+  rig.store.metric = .cpu
+  #expect(try await settled { rig.defaults.string(forKey: "metric") == "cpu" })
+}
+
+/// R161: the next launch shows the saved metric.
+@MainActor @Test func aNewLaunchShowsTheSavedMetric() async throws {
+  let first = Rig()
+  defer { UserDefaults().removePersistentDomain(forName: first.suite) }
+  try await first.start()
+  first.store.metric = .cpu
+  #expect(try await settled { first.defaults.string(forKey: "metric") == "cpu" })
+
+  let second = Rig(nextLaunch: true)
+  try await second.start()
+  #expect(second.store.metric == .cpu)
+}
+
 /// Rule 7: a settings change is saved and sets the clock's speed.
 @MainActor @Test func aSettingsChangeIsSavedAndReconfiguresTheClock() async throws {
   let rig = Rig()
