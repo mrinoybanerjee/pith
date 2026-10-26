@@ -26,7 +26,8 @@ struct AppRowView: View {
       ) { store.toggle(app.id) }
       if expanded {
         AppDetailView(
-          store: store, name: name, explanation: entry?.explanation, inside: app.inside,
+          store: store, name: name, explanation: entry?.explanation,
+          programsInside: entry?.programsInside == true, inside: app.inside,
           quitTarget: store.quitTarget(for: app))
       }
     }

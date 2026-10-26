@@ -6,7 +6,8 @@ import Testing
 
 private func entry(_ match: GuideMatch, _ title: String) -> GuideEntry {
   GuideEntry(
-    match: match, title: title, explanation: "e", kind: .app, quittable: true, source: nil)
+    match: match, title: title, explanation: "e", kind: .app, quittable: true, source: nil,
+    programsInside: nil)
 }
 
 @Test func bundledGuideIsValid() throws {
@@ -162,4 +163,13 @@ func invalidMatchIsRejected(json: String) {
   #expect(Guide.empty.entries.isEmpty)
   #expect(Guide.empty.entry(name: "mds_stores", bundleID: nil, path: nil) == nil)
   #expect(Guide.empty.helperLabel(processName: "Slack Helper") == nil)
+}
+
+/// The apps whose quit also stops the programs that run inside them, which their confirm says.
+@Test func theGuideMarksTheAppsThatRunPrograms() throws {
+  let marked = try Guide.bundled().entries.filter { $0.programsInside == true }.map(\.title)
+  #expect(
+    Set(marked) == [
+      "Terminal", "iTerm2", "Warp", "Ghostty", "Docker Desktop", "Xcode", "Simulator", "Ollama",
+    ])
 }

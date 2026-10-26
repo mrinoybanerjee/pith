@@ -65,6 +65,12 @@ enum SystemDetailsState: Equatable {
   let runningApps: RunningApps
   /// Called after each open snapshot is applied. The panel shows on the first one after a click.
   @ObservationIgnored var appliedOpenSnapshot: () -> Void = {}
+  /// Says `sentence` through VoiceOver at once, as when a confirm appears. Tests set it.
+  @ObservationIgnored var announce: (_ sentence: String) -> Void = { sentence in
+    NSAccessibility.post(
+      element: NSApp!, notification: .announcementRequested,
+      userInfo: [.announcement: sentence, .priority: NSAccessibilityPriorityLevel.high.rawValue])
+  }
   @ObservationIgnored private var rules: StatusRules
   @ObservationIgnored private let loginItem: LoginItem
   @ObservationIgnored private let measureSystem: @Sendable () async throws -> SystemBreakdown
@@ -109,7 +115,13 @@ enum SystemDetailsState: Equatable {
     if status != self.status { self.status = status }
     guard snapshot.mode == .open else { return }
     self.snapshot = snapshot
-    rows = RowOrder.stable(previous: rows.map(\.id), apps: snapshot.apps, metric: metric)
+    // While a quit flow runs, the rows keep their order and set, so the confirm's button stays
+    // where the user saw it; the order follows the readings again once the flow ends.
+    let apps = Dictionary(uniqueKeysWithValues: snapshot.apps.map { ($0.id, $0) })
+    rows =
+      quitFlow.state == .idle
+      ? RowOrder.stable(previous: rows.map(\.id), apps: snapshot.apps, metric: metric)
+      : rows.compactMap { apps[$0.id] }
     // The icons kept are those of the rows shown now, whatever the view drew before (R112).
     AppIcons.keep(Set(rows.compactMap(\.bundlePath)))
     if !flowTargetHolds { resetQuit() }

@@ -80,7 +80,7 @@ private func guide(_ match: GuideMatch, kind: GuideKind, quittable: Bool) -> Gui
   Guide(entries: [
     GuideEntry(
       match: match, title: "Example", explanation: "A synthetic entry.", kind: kind,
-      quittable: quittable, source: kind == .system ? "man:example(8)" : nil)
+      quittable: quittable, source: kind == .system ? "man:example(8)" : nil, programsInside: nil)
   ])
 }
 

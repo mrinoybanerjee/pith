@@ -106,7 +106,7 @@ Clicking a row expands it in place. The expanded row shows:
 
 ### 4.5 Quit flow
 
-1. **Quit** shows an inline confirm: "Quit {App}? It can ask you to save first." [Cancel] [Quit].
+1. **Quit** shows an inline confirm: "Quit {App}? It can ask you to save first." [Cancel] [Quit]. VoiceOver announces the sentence when it appears. For an app whose guide entry says that programs run inside it (a terminal, Docker Desktop, Xcode, Simulator, Ollama), both confirms add: "Programs running inside it stop too."
 2. **Quit** calls `NSRunningApplication.terminate()`.
 3. If the app is still running after 5 s, the row offers **Force Quit**, with a second confirm. That calls `forceTerminate()`.
 4. System processes, apps owned by other users and command-line processes never show Quit.

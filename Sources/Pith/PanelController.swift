@@ -36,6 +36,8 @@ import os
   private var monitors: [Any] = []
   /// Sees each scroll of the list, which can move the confirm's default button in or out of view.
   private var scrolls: (any NSObjectProtocol)?
+  /// Sees each change of the screens, which can leave a pinned panel off its screen.
+  private var screens: (any NSObjectProtocol)?
   /// The check that keeps a moved pinned panel on screen (R106).
   private var dragCheck: Task<Void, any Error>?
   /// Whether other windows cover the panel, as macOS reports it. Tests set it (R104).
@@ -84,6 +86,9 @@ import os
     scrolls = NotificationCenter.default.addObserver(
       forName: NSView.boundsDidChangeNotification, object: nil, queue: .main
     ) { [weak self] _ in MainActor.assumeIsolated { self?.checkConfirmButton() } }
+    screens = NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+    ) { [weak self] _ in MainActor.assumeIsolated { self?.screensChanged() } }
     follow({ [store] in store.pinned }, then: { [weak self] in self?.pin($0) })
   }
 
@@ -263,8 +268,22 @@ import os
     }
     store.confirmButtonInView =
       store.confirmButtonFrame.map { frame in
-        list(in: hosting).map { $0.documentVisibleRect.contains(frame) } ?? false
+        list(in: hosting).map { list in
+          // Whole in the list, and on the panel's own screen, which can be shorter than the panel.
+          list.documentVisibleRect.contains(frame)
+            && ownVisibleFrame?.contains(
+              panel.convertToScreen(list.documentView!.convert(frame, to: nil))) == true
+        } ?? false
       } ?? false
+  }
+
+  /// A pinned panel refits onto its own screen when the screens change: a resolution or a display
+  /// arrangement can leave it partly off its screen, confirm and all.
+  private func screensChanged() {
+    if store.pinned, let visible = ownVisibleFrame {
+      panel.setFrame(fitted(in: visible), display: true)
+    }
+    checkConfirmButton()
   }
 
   private func close() {

@@ -12,6 +12,8 @@ struct AppDetailView: View {
   /// The row's name.
   let name: String
   let explanation: String?
+  /// The guide says that quitting the app stops the programs that run inside it.
+  let programsInside: Bool
   let inside: [HelperGroup]
   /// The process that Quit acts on, when Pith may quit the app; nil shows no Quit.
   let quitTarget: (any QuitTarget)?
@@ -43,11 +45,13 @@ struct AppDetailView: View {
   /// confirm's default button, so one double-click cannot press both (R93).
   @ViewBuilder private func quit(_ target: any QuitTarget) -> some View {
     let quitting = Text("Quitting \(name)…").foregroundStyle(.secondary)
+    let alsoStops = programsInside ? " Programs running inside it stop too." : ""
     switch store.quitFlow.state {
     case .idle: Button("Quit") { store.askToQuit(target) }
     case .confirming:
       Confirm(
-        store: store, question: "Quit \(name)?", detail: "It can ask you to save first.",
+        store: store, question: "Quit \(name)?",
+        detail: "It can ask you to save first.\(alsoStops)",
         action: "Quit")
     case .waiting: quitting
     case .offerForce:
@@ -57,8 +61,8 @@ struct AppDetailView: View {
       }
     case .confirmingForce:
       Confirm(
-        store: store, question: "Force Quit \(name)?", detail: "Unsaved changes will be lost.",
-        action: "Force Quit")
+        store: store, question: "Force Quit \(name)?",
+        detail: "Unsaved changes will be lost.\(alsoStops)", action: "Force Quit")
     case .done: EmptyView()
     }
   }
@@ -112,5 +116,7 @@ private struct Confirm: View {
     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator, lineWidth: 0.5))
     .accessibilityElement(children: .contain)
     .id(AppDetailView.confirmID)
+    // VoiceOver hears the confirm at once, wherever its cursor is.
+    .onAppear { store.announce("\(question) \(detail)") }
   }
 }

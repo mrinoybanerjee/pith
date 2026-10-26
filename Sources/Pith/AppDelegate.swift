@@ -45,7 +45,7 @@ import os
     lifecycle.onPause = { [weak self] in self?.panel.cancelOpening() }
     statusItem = StatusItemController { [weak self] in
       guard let self else { return }
-      panel.toggle(under: statusItem.anchor)
+      if let anchor = statusItem.anchor { panel.toggle(under: anchor) }
     }
     follow({ [store] in store.status }, then: { [weak self] in self?.statusItem.show(status: $0) })
     // R128: only on request, as any process can post a distributed notification. Pith is never
@@ -77,7 +77,7 @@ import os
   /// `scripts/perf.sh` sends it.
   @objc private func panelNotification(_ notification: Notification) {
     switch notification.userInfo?["action"] as? String {
-    case "open": panel.open(under: statusItem.anchor)
+    case "open": statusItem.anchor.map(panel.open(under:))
     case "close": panel.dismiss()
     case let action:
       Logger(subsystem: "com.mrinoy.pith", category: "debug-hooks").error(

@@ -65,6 +65,27 @@ import os
   return store
 }
 
+/// While a quit flow runs, a reading does not reorder the rows, so the confirm's button cannot move
+/// under the pointer and its 0.4 s mean what they say. New values still show. Once the flow ends,
+/// the order follows the readings again (the PR 2 council's minors).
+@MainActor @Test func aQuitFlowHoldsTheRowOrder() throws {
+  let store = try askToQuitChrome(FakeRunningApps([fakeChrome()]))
+  let order = store.rows.map(\.id)
+  let apps = DemoSnapshots.tight.apps
+  let s = apps[1]  // now twice Chrome's memory
+  let bigger = AppUsage(
+    id: s.id, name: s.name, bundlePath: s.bundlePath, bundleID: s.bundleID, pids: s.pids,
+    processCount: s.processCount, memory: apps[0].memory * 2, cpu: s.cpu,
+    diskBytesPerSecond: s.diskBytesPerSecond, inside: s.inside)
+  let reordered = remake(DemoSnapshots.tight, apps: [apps[0], bigger] + apps.dropFirst(2))
+  store.apply(reordered)
+  #expect(store.rows.map(\.id) == order && store.rows[1].memory == bigger.memory)
+  #expect(store.quitFlow.state == .confirming)
+  store.cancelQuit()
+  store.apply(reordered)
+  #expect(store.rows.first?.id == s.id)
+}
+
 /// The tight mockup with Google Chrome running as `pids`.
 private func tight(chromePIDs pids: [Int32]) -> Snapshot {
   let c = DemoSnapshots.tight.apps[0]

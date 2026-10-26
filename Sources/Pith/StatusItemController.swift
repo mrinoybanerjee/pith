@@ -16,11 +16,13 @@ import PithCore
   var statusItemLength: CGFloat { item.length }
 
   /// The item's frame on screen and the visible frame of its screen, where the attached panel hangs.
-  var anchor: (itemFrame: CGRect, visibleFrame: CGRect) {
-    let button = item.button!
-    let window = button.window!
-    let frame = window.convertToScreen(button.convert(button.bounds, to: nil))
-    return (frame, window.screen!.visibleFrame)
+  var anchor: (itemFrame: CGRect, visibleFrame: CGRect)? { Self.anchor(of: item.button) }
+
+  /// `button`'s frame on screen and its screen's visible frame. Nil while it has no window or the
+  /// window no screen, as while macOS lays out the menu bar again: a click then does nothing.
+  static func anchor(of button: NSView?) -> (itemFrame: CGRect, visibleFrame: CGRect)? {
+    guard let button, let window = button.window, let screen = window.screen else { return nil }
+    return (window.convertToScreen(button.convert(button.bounds, to: nil)), screen.visibleFrame)
   }
 
   /// AppKit must be up first: without `NSApplication.shared`, macOS 15's status bar calls the

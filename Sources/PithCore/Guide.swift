@@ -63,6 +63,8 @@ public struct GuideEntry: Codable, Sendable, Equatable {
   public let kind: GuideKind
   public let quittable: Bool
   public let source: String?
+  /// True for an app that runs other programs, such as a terminal: quitting it stops them too.
+  public let programsInside: Bool?
 }
 
 /// The built-in guide (spec 7). Immutable; the lookups are indexed once, in `init`.

@@ -9,7 +9,7 @@ private let guide = Guide(entries: [
 private func helper(_ pattern: String, _ title: String) -> GuideEntry {
   GuideEntry(
     match: .helperPattern(pattern), title: title, explanation: "e", kind: .helper,
-    quittable: false, source: nil)
+    quittable: false, source: nil, programsInside: nil)
 }
 
 /// Aggregates `current` against `previous`, grouped by `AppGrouper` in `.limited` mode.

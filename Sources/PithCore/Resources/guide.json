@@ -177,7 +177,8 @@
     "explanation": "Apple's app for building software. Builds, indexing and previews can use a lot of memory and CPU.",
     "kind": "app",
     "quittable": true,
-    "source": null
+    "source": null,
+    "programsInside": true
   },
   {
     "match": {
@@ -1227,7 +1228,8 @@
     "explanation": "Apple's command-line app. Programs that you start in it count toward Terminal.",
     "kind": "app",
     "quittable": true,
-    "source": null
+    "source": null,
+    "programsInside": true
   },
   {
     "match": {
@@ -1297,7 +1299,8 @@
     "explanation": "Runs simulated iPhones, iPads and other devices to test apps. Each running device adds its own processes and memory.",
     "kind": "app",
     "quittable": true,
-    "source": null
+    "source": null,
+    "programsInside": true
   },
   {
     "match": {
@@ -1507,7 +1510,8 @@
     "explanation": "A command-line app. Programs that you start in it count toward iTerm2.",
     "kind": "app",
     "quittable": true,
-    "source": null
+    "source": null,
+    "programsInside": true
   },
   {
     "match": {
@@ -1517,7 +1521,8 @@
     "explanation": "A command-line app with AI features. Programs that you start in it count toward Warp.",
     "kind": "app",
     "quittable": true,
-    "source": null
+    "source": null,
+    "programsInside": true
   },
   {
     "match": {
@@ -1527,7 +1532,8 @@
     "explanation": "A command-line app. Programs that you start in it count toward Ghostty.",
     "kind": "app",
     "quittable": true,
-    "source": null
+    "source": null,
+    "programsInside": true
   },
   {
     "match": {
@@ -1547,7 +1553,8 @@
     "explanation": "Runs AI models on your Mac. A model uses a lot of memory, and CPU or graphics, while it answers.",
     "kind": "app",
     "quittable": true,
-    "source": null
+    "source": null,
+    "programsInside": true
   },
   {
     "match": {
@@ -1677,7 +1684,8 @@
     "explanation": "Runs software containers for developers in a hidden Linux system. That system holds its memory for as long as Docker runs.",
     "kind": "app",
     "quittable": true,
-    "source": null
+    "source": null,
+    "programsInside": true
   },
   {
     "match": {
