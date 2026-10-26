@@ -38,6 +38,10 @@ struct LoginItem {
       if !enabled, app.status != .notRegistered { try app.unregister() }
     })
 
+  /// Never enabled, and a change does nothing: for tests and for the stores of `--demo` and
+  /// `--render-panel`, which must not touch the real login item (R144).
+  static let none = LoginItem(isEnabled: { false }, set: { _ in })
+
   /// Whether Pith opens at login now. The user can change it in System Settings at any time.
   let isEnabled: @MainActor @Sendable () -> Bool
   /// Registers Pith or removes it. macOS can refuse, for example for an app outside a bundle.

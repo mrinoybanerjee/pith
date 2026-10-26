@@ -21,13 +21,8 @@ func clearDefaults(_ test: String = #function) {
   UserDefaults().removePersistentDomain(forName: testSuite(test))
 }
 
-/// The login item and `top` are never real in tests.
-extension LoginItem {
-  static let stub = LoginItem(isEnabled: { false }, set: { _ in })
-}
-
 @MainActor func testStore(
-  guide: Guide = .empty, loginItem: LoginItem = .stub, runningApps: RunningApps = .none,
+  guide: Guide = .empty, loginItem: LoginItem = .none, runningApps: RunningApps = .none,
   nowNs: @escaping @MainActor @Sendable () -> UInt64 = { 0 },
   measure: @escaping @Sendable () async throws -> SystemBreakdown = {
     throw SystemDetailsError.failed("no top in tests")

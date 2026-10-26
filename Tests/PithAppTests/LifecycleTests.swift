@@ -106,7 +106,7 @@ private func snapshot(cpu: Reading<Double>, at ns: UInt64, mode: Mode = .closed)
   let lifecycle: Lifecycle
 
   init(
-    loginItem: LoginItem = .stub, nextLaunch: Bool = false, lowPower: Bool = false,
+    loginItem: LoginItem = .none, nextLaunch: Bool = false, lowPower: Bool = false,
     thermal: ProcessInfo.ThermalState = .nominal, test: String = #function
   ) {
     suite = testSuite(test)
