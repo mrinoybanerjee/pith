@@ -62,12 +62,12 @@ public enum Aggregator {
       // the baseline is per executable: an exec starts a new one (R132). Within one executable
       // only the CPU time and bytes read are monotonic, and a CPU time that goes backwards traps.
       // The disk total can step back when a process reads during the kernel's lock-free update of
-      // it; then the app has no disk rate this tick (R155).
+      // it, also across zero; then the app has no disk rate this tick (R155). So the difference
+      // wraps and is signed: a negative one is a step back, never a gain of nearly 2^64 (R166).
       for (p, s) in continuing {
         cpuNs += s.cpuTimeNs - p.cpuTimeNs
-        bytes = bytes.flatMap {
-          s.diskBytes >= p.diskBytes ? $0 + (s.diskBytes - p.diskBytes) : nil
-        }
+        let d = s.diskBytes &- p.diskBytes
+        bytes = bytes.flatMap { Int64(bitPattern: d) < 0 ? nil : $0 + d }
       }
       // Where a scan reads each process can push a saturated Mac a little past 100% (spec 6.3).
       let share = Double(cpuNs) / (wallNs * Double(cpuCount))

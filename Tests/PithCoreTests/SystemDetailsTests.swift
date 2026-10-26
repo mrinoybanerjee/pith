@@ -243,6 +243,13 @@ func unparseableRowThrows(row: String) {
   #expect(kill(pid, 0) == -1 && errno == ESRCH)  // gone and reaped
 }
 
+@Test func aChildThatExitedBeforeTheTimeoutIsNotATimeout() async throws {  // R168
+  // The shell exits 0 at once, but its background sleep holds the output pipe open past 0.3 s.
+  let output = try await SystemDetails.runProcess(
+    "/bin/sh", ["-c", "echo done; sleep 1 & exit 0"], timeout: 0.3)
+  #expect(output == "done\n")
+}
+
 @Test func timeoutIsFailedEvenWhenTheChildExitsZero() async {
   await #expect {
     // The trap runs when TERM arrives during `wait`, stops the sleep, and exits 0.

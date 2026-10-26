@@ -235,6 +235,23 @@ private let clonePaths = [
         bundleID: "com.example.Notes", executable: "Notes"))
 }
 
+@Test func aBundleThatCannotBeReadIsReadAgainOnTheNextTable() {  // R168 and R157
+  let reads = OSAllocatedUnfairLock(initialState: 0)
+  var a = AppGrouper(
+    responsible: nil,
+    bundleInfo: { path in
+      let read = reads.withLock { n -> Int in
+        n += 1
+        return n
+      }
+      return read == 1 ? nil : Fixture.bundleInfo(path)  // an app in the middle of an update
+    })
+  let notes = Fixture.table("same-name").samples[0]
+  let t = ProcessTable(samples: [notes], takenAtNs: 0, vanished: 0)
+  #expect(a.assign(t)[notes.key]?.bundleID == nil)
+  #expect(a.assign(t)[notes.key]?.bundleID == "com.example.Notes")
+}
+
 @Test func missingResponsibilityCallIsLimited() {
   var a = AppGrouper(responsible: nil, bundleInfo: Fixture.bundleInfo)
   _ = a.assign(Fixture.table("chrome"))

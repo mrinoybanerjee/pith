@@ -213,9 +213,10 @@ public actor SystemDetails {
     }
 
     let timedOut = OSAllocatedUnfairLock(initialState: false)
-    // The items hold the process weakly, so a normal run frees it and its pipe at once.
+    // The items hold the process weakly, so a normal run frees it and its pipe at once. A process
+    // that has already exited did not time out, even if its output pipe is still open (R168).
     let stop = DispatchWorkItem { [weak process] in
-      guard let process else { return }
+      guard let process, process.isRunning else { return }
       timedOut.withLock { $0 = true }
       process.terminate()
       // A process that ignores SIGTERM would hold the read below open for ever.

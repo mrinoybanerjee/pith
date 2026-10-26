@@ -102,6 +102,18 @@ import os
   @Test func aTableWithoutPithsOwnProcessTraps() async {  // R158
     await #expect(processExitsWith: .failure) { sweepAfterAFailedListing() }
   }
+
+  /// R168: a counter read that fails for a reason other than ESRCH or EPERM traps, as a failed
+  /// info read does. Debug builds trapped before; only a release build skipped the process.
+  private func sweepAfterAnUnexpectedRusageError() {
+    var probe = ProcessProbe.fake(pids: [10], uid: 501)
+    probe.rusage = { _ in .failure(.ioError) }
+    _ = LibprocProcessTable(probe: probe, uid: 501).readTable()
+  }
+
+  @Test func anUnexpectedRusageErrorTraps() async {  // R168
+    await #expect(processExitsWith: .failure) { sweepAfterAnUnexpectedRusageError() }
+  }
 #endif
 
 @Test func vanishedProcessIsCountedNotReported() {  // Review Focus 2
