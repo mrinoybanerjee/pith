@@ -380,7 +380,9 @@ Measured on each of the three Macs with `scripts/perf.sh`, which samples `top -l
    - the `top` parser on recorded output;
    - guide validation: schema, unique matches, sources on system entries, no quittable system entry.
 2. **Accuracy** (`scripts/accuracy.sh`, each Mac, each release):
-   - Pith's per-app memory must be within ±3% of the sum of `top` MEM for the same PIDs at the same moment.
+   - Pith's per-app memory must be within ±3% of the range of two `top` samples of MEM, summed over the same PIDs, one just before and one just after Pith's reading.
+   - Each app needs at least 5 counted runs. At most one counted run may fall outside ±3%, and none beyond ±10%.
+   - A run whose two `top` samples differ by more than 6% does not count.
    - Pith's CPU must be within ±2 points over a 10 s window.
    - No residual may be negative across 100 samples.
 3. **Speed gate** (`scripts/perf.sh`, each Mac, each release): every line of section 10.

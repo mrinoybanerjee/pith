@@ -47,7 +47,7 @@ From top to bottom:
    - **CPU:** "38%". The word is Light (under 30%), Moderate (30–70%) or Busy (over 70%).
    - **Storage:** "112 GB free", then "of 228 GB". The meter is the used share.
 3. **"Using the most"**, with Memory · CPU · Disk. Memory is the default, and Pith remembers the
-   choice while it runs.
+   choice across launches.
 4. **App rows:** the top 8 by the chosen measure. Each has a 24 pt icon, the name over a 3 pt bar,
    and the value on the right.
 5. **"macOS system"**, always last. See below.

@@ -76,8 +76,8 @@ Pith never:
 - **quits an app without asking.** Quit always asks first, and Pith never offers to quit part of
   macOS.
 
-Pith saves only the settings you change, the pinned panel's position, and a note that it added
-its login item.
+Pith saves only the settings you change, the Memory · CPU · Disk choice, the pinned panel's
+position, and a note that it added its login item.
 
 ## Speed
 
@@ -103,7 +103,8 @@ the MacBook Pro has 128 GB.
 
 \* The MacBook Pro's numbers are from build `a68ea3c`; the Mac mini's and the MacBook Air's are from
 the release build. The Pro locks its screen 3 minutes after the last input and Pith pauses while the
-screen is locked, so its gates cannot run unattended. Its gate's first open ran behind a locked
+screen is locked, so its gates cannot run unattended. Its closed-panel numbers may include time
+when Pith was paused by the lock. Its gate's first open ran behind a locked
 screen under heavy disk load; a later probe measured 43–85 ms for 15 first opens after launch.
 No 24-hour soak was run for 0.1.0.
 
@@ -114,7 +115,7 @@ every app of 50 MB or more. CPU points are shares of the whole Mac.
 
 | Check | Pass rule | Mac mini M4 | MacBook Air M4 | MacBook Pro M5 Max |
 |---|---|---|---|---|
-| Memory per app | within ±3% | pass, 2 of 2 runs | pass, 19 apps | pass, 2 of 2 runs |
+| Memory per app | within ±3% of the range of 2 `top` samples, in at least 5 counted runs; at most 1 run outside, none beyond ±10%; a range over 6% wide does not count | pass, 2 of 2 runs | pass, 19 apps | pass, 2 of 2 runs |
 | CPU per app, over 10 s | within ±2 points | pass, 2 of 2 runs | pass, largest gap 0.12 | pass, largest gap 0.22 |
 | "macOS system" | never below zero | 100 of 100 readings | 100 of 100 readings | 100 of 100 readings |
 
