@@ -4,7 +4,10 @@
 # the panel open, opened and closed through the hook's notification. It opens the panel 9 more
 # times, samples 2 more minutes closed, runs one sweep benchmark, and reads the launch and open
 # timings and the closes of the panel from the unified log: none during its open minutes (R145),
-# and the 10 that it makes after them, which prove the close line is logged (N4). Once it has quit
+# and the 10 that it makes after them, which prove the close line is logged (N4). The first open
+# after the launch is gated on its own line, beside the slowest of the other opens, and each open
+# is listed with the 1-minute load average at its moment (R173). It refuses to run while the
+# screen is locked, and it wakes the display, as a user's click would find them. Once it has quit
 # the running Pith, on any exit it relaunches Pith without the hooks. It prints one line per budget, then PASS or FAIL,
 # and exits 1 if any budget fails. The logs are kept; their path is printed first.
 # --evaluate checks one `top -l ... -stats pid,cpu,mem,idlew` log against the closed or open
@@ -14,7 +17,7 @@
 # Usage: scripts/perf.sh [--minutes <minutes, default 10>]
 #        scripts/perf.sh --evaluate <closed | open> <log>
 #        scripts/perf.sh --evaluate-run <dir with closed.log, open.log, after.log, children.txt,
-#                        closes.txt, closes-after.txt, sweep.txt, timing.txt>
+#                        closes.txt, closes-after.txt, sweep.txt, timing.txt, loads.txt>
 
 set -euo pipefail
 
@@ -107,11 +110,16 @@ evaluate_run() {
         3.00 %.2f || failed=1
     launches="$(grep -oE 'launch_to_first_reading_ms=[0-9.]+' "$dir/timing.txt" | cut -d= -f2 || true)"
     opens="$(grep -oE 'open_to_visible_ms=[0-9.]+' "$dir/timing.txt" | cut -d= -f2 || true)"
-    if [[ "$(grep -c . <<<"$launches" || true)" == 1 && "$(grep -c . <<<"$opens" || true)" == 10 ]]; then
+    if [[ "$(grep -c . <<<"$launches" || true)" == 1 && "$(grep -c . <<<"$opens" || true)" == 10 &&
+        "$(grep -c . "$dir/loads.txt" || true)" == 10 ]]; then
+        echo "opens in ms, with the 1-minute load: $(paste -d @ <(cat <<<"$opens") \
+            <(awk '{ print $2 }' "$dir/loads.txt") | paste -sd ' ' -)"
         gate launch_to_first_reading_ms "$launches" 300 %.1f || failed=1
-        gate open_to_visible_ms_max "$(sort -n <<<"$opens" | tail -1)" 100 %.1f || failed=1
+        gate first_open_to_visible_ms "$(head -1 <<<"$opens")" 100 %.1f || failed=1
+        gate open_to_visible_ms_max "$(tail -n +2 <<<"$opens" | sort -n | tail -1)" 100 %.1f ||
+            failed=1
     else
-        echo "FAIL timings: want 1 launch and 10 opens in $dir/timing.txt"
+        echo "FAIL timings: want 1 launch, 10 opens and 10 loads in $dir"
         failed=1
     fi
     echo "footprint growth over 24 h: scripts/soak.sh"
@@ -150,8 +158,10 @@ quit_pith() {
 }
 
 # post <open | close>: the panel notification of --debug-hooks. Pith is never the active app, so
-# the notification is sent for immediate delivery. `$()` is nil; JavaScript's null is NSNull.
+# the notification is sent for immediate delivery. `$()` is nil; JavaScript's null is NSNull. Each
+# open logs the load average of its moment (R173).
 post() {
+    [[ "$1" != open ]] || sysctl -n vm.loadavg >>"$LOGS/loads.txt"
     osascript -l JavaScript -e "ObjC.import('Foundation')
 \$.NSDistributedNotificationCenter.defaultCenter
   .postNotificationNameObjectUserInfoDeliverImmediately(
@@ -182,12 +192,19 @@ relaunch() {
     open -n "$APP"
 }
 
+# A locked screen is not what a click finds (R173).
+if ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
+    echo "error: the screen is locked; unlock it and run again" >&2
+    exit 2
+fi
 LOGS="$(mktemp -d)"
 echo "logs: $LOGS"
 # A display that sleeps or locks pauses Pith's clock (spec 9), so it stays awake for the run.
 caffeinate -d -i -w $$ >/dev/null 2>&1 &
 awake=$!
 disown
+# A dark display slows the first open, and a click always finds it lit (R173).
+caffeinate -u -t 2
 # A Pith that does not quit is left as it is: relaunching would start a second copy (N3).
 quit_pith || { echo "error: Pith did not quit" >&2; exit 2; }
 trap relaunch EXIT

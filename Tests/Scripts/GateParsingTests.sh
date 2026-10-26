@@ -4,9 +4,10 @@
 #   open budgets, and the refusal (exit 2) of a log that is too short. The first sample of each
 #   log has 9.9% CPU, which the evaluation must drop.
 # - `perf.sh --evaluate-run` on a run's files: the children, close, sweep and timing lines, and a
-#   value that is no number fails (R142, R145).
+#   value that is no number fails (R142, R145), and the first open is gated on its own line (R173).
 # - `perf.sh` relaunches Pith without the hooks after a failed step, even when its helpers are
-#   gone (R145), with fake tools on PATH, so no real Pith is touched.
+#   gone (R145), stops when Pith does not quit (N3), and refuses a locked screen (R173), with fake
+#   tools on PATH, so no real Pith is touched.
 # - `accuracy.sh --evaluate` on a run's files (R138, R141-R143): the same-PID comparisons with
 #   left-out PIDs, the 3% bracket and its low edge, the 6% width rule, the one-outlier and 10% rules
 #   (R170),
@@ -77,8 +78,8 @@ check 2 "" "$PERF" --evaluate closed "$TMP/short.log"
 
 # --- perf.sh --evaluate-run
 
-# perf_run <dir>: a passing run: pass.log for each phase, no child, no close, one sweep line, one
-# launch and 10 opens.
+# perf_run <dir>: a passing run: pass.log for each phase, no child, no close while open and the
+# 10 closes after, one sweep line, one launch, 10 opens and the load at each.
 perf_run() {
     mkdir -p "$1"
     for phase in closed open after; do cp "$FIXTURES/pass.log" "$1/$phase.log"; done
@@ -97,6 +98,9 @@ perf_run() {
             echo "2026-10-25 09:20:00.100 Df Pith[4242:1] [com.mrinoy.pith:timing] open_to_visible_ms=$ms"
         done
     } >"$1/timing.txt"
+    for load in 1.52 1.40 1.38 1.35 1.30 1.31 1.29 1.27 1.25 1.26; do
+        echo "{ $load 1.20 1.10 }"
+    done >"$1/loads.txt"
 }
 
 perf_run "$TMP/run"
@@ -121,10 +125,19 @@ PASS panel_closes_while_open 0 <= 0
 PASS panel_closes_after_open 10, the control
 sweep n=200 processes=330 mean_ms=0.868 max_ms=1.299
 PASS sweep_mean_ms 0.87 <= 3.00
+opens in ms, with the 1-minute load: 55.2@1.52 48.1@1.40 47.9@1.38 50.0@1.35 46.3@1.30 47.0@1.31 49.9@1.29 51.2@1.27 48.8@1.25 47.5@1.26
 PASS launch_to_first_reading_ms 125.4 <= 300
-PASS open_to_visible_ms_max 55.2 <= 100
+PASS first_open_to_visible_ms 55.2 <= 100
+PASS open_to_visible_ms_max 51.2 <= 100
 footprint growth over 24 h: scripts/soak.sh
 PASS" "$PERF" --evaluate-run "$TMP/run"
+
+# R173: a slow first open fails on its own line, while the other opens pass.
+perf_run "$TMP/first"
+sed -i '' 's/open_to_visible_ms=55.2/open_to_visible_ms=120.4/' "$TMP/first/timing.txt"
+check_lines 1 "$PERF" --evaluate-run "$TMP/first" <<<"FAIL first_open_to_visible_ms 120.4 > 100
+PASS open_to_visible_ms_max 51.2 <= 100
+FAIL"
 
 # A sweep line in another format has no number to gate: it fails, never reads as 0 (R142).
 perf_run "$TMP/sweep"
@@ -149,11 +162,12 @@ FAIL"
 
 perf_run "$TMP/opens"
 sed -i '' '$d' "$TMP/opens/timing.txt"
-check_lines 1 "$PERF" --evaluate-run "$TMP/opens" <<<"FAIL timings: want 1 launch and 10 opens in $TMP/opens/timing.txt"
+check_lines 1 "$PERF" --evaluate-run "$TMP/opens" <<<"FAIL timings: want 1 launch, 10 opens and 10 loads in $TMP/opens"
 
 # --- perf.sh's relaunch on exit (R145), with fakes: Pith never starts, and caffeinate is gone
 # before the trap runs.
 mkdir "$TMP/bin"
+printf '#!/bin/bash\necho "IOConsoleUsers unlocked"\n' >"$TMP/bin/ioreg"
 printf '#!/bin/bash\nexit 0\n' >"$TMP/bin/caffeinate"
 printf '#!/bin/bash\nexit 1\n' >"$TMP/bin/pkill"
 printf '#!/bin/bash\nexit 1\n' >"$TMP/bin/pgrep"
@@ -168,6 +182,7 @@ passed=$((passed + 1))
 
 # N3: when the user's Pith does not quit, the script stops and opens no second copy.
 mkdir "$TMP/stuck"
+cp "$TMP/bin/ioreg" "$TMP/stuck/ioreg"
 printf '#!/bin/bash\nexit 0\n' >"$TMP/stuck/caffeinate"
 printf '#!/bin/bash\nexit 0\n' >"$TMP/stuck/pkill"
 printf '#!/bin/bash\nexit 0\n' >"$TMP/stuck/pgrep"
@@ -177,6 +192,21 @@ code=0
 PATH="$TMP/stuck:$PATH" "$PERF" --minutes 1 >/dev/null 2>"$TMP/stderr" || code=$?
 [[ "$code" == 2 && ! -e "$TMP/stuck-opened" ]] || fail "$(printf 'perf.sh when Pith does not quit: exit %s, opened\n%s\n%s' \
     "$code" "$(cat "$TMP/stuck-opened" 2>/dev/null)" "$(cat "$TMP/stderr")")"
+passed=$((passed + 1))
+
+# R173: a locked screen stops the script before it starts a helper, quits Pith or opens anything.
+mkdir "$TMP/locked"
+printf '#!/bin/bash\necho %q\n' '"IOConsoleUsers" = ({"CGSSessionScreenIsLocked"=Yes})' \
+    >"$TMP/locked/ioreg"
+for tool in caffeinate pkill pgrep open; do
+    printf '#!/bin/bash\necho "%s $*" >>%q\n' "$tool" "$TMP/locked-calls" >"$TMP/locked/$tool"
+done
+chmod +x "$TMP/locked"/*
+code=0
+PATH="$TMP/locked:$PATH" "$PERF" --minutes 1 >/dev/null 2>"$TMP/stderr" || code=$?
+[[ "$code" == 2 && ! -e "$TMP/locked-calls" ]] && grep -q 'the screen is locked' "$TMP/stderr" ||
+    fail "$(printf 'perf.sh on a locked screen: exit %s, calls\n%s\n%s' "$code" \
+        "$(cat "$TMP/locked-calls" 2>/dev/null)" "$(cat "$TMP/stderr")")"
 passed=$((passed + 1))
 
 # --- accuracy.sh --evaluate
