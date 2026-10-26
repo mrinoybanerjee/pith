@@ -182,14 +182,17 @@ evaluate() {
     done
     [[ "$windows" -gt 0 ]] || { echo "FAIL CPU: no window"; failed=1; }
 
-    # Exactly 100 snapshots, and each counts only with a memory and a CPU residual; any other
-    # reason is printed (N1).
+    # Exactly 100 snapshots, and each counts only with a memory and a CPU residual, neither one
+    # negative; any other reason is printed (N1).
     local residuals=("$dir"/residual-*.json) total valid
     for reading in "${residuals[@]}"; do
         if [[ -s "$reading" ]]; then
             jq -r '.snapshot.system
-                | if (.value.memory | type) == "number" and (.value.cpu.value | type) == "number"
-                  then "ok" else (.unavailable // .value.cpu.unavailable // "no residual") end' \
+                | if (.value.memory | type) != "number" or (.value.cpu.value | type) != "number"
+                  then (.unavailable // .value.cpu.unavailable // "no residual")
+                  elif .value.memory < 0 then "negative memory residual"
+                  elif .value.cpu.value < 0 then "negative CPU residual"
+                  else "ok" end' \
                 "$reading"
         else
             echo "empty reading"

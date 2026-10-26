@@ -79,18 +79,34 @@ PASS cpu_60s_max 0.05 <= 1.00
 FAIL mem_max 100.0 > 30.0
 PASS idlew_per_s 0.20 <= 0.50" "$PERF" --evaluate closed "$TMP/first-memory.log"
 
+# A value that is not a number, or a column top did not print, fails and names the field: it never
+# reads as 0.
+sed '26s/  0\.1  /  N\/A  /' "$FIXTURES/pass.log" >"$TMP/cpu-text.log"
+check 1 'FAIL %CPU: sample 2 reads "N/A", not a number' "$PERF" --evaluate closed "$TMP/cpu-text.log"
+sed -E 's/^(PID +%CPU +MEM) +IDLEW$/\1/; s/^(4242 +[^ ]+ +[^ ]+) +[^ ]+$/\1/' "$FIXTURES/pass.log" \
+    >"$TMP/no-idlew.log"
+check 1 "FAIL IDLEW: no IDLEW column in top's output" "$PERF" --evaluate closed "$TMP/no-idlew.log"
+sed -E 's/^(PID +%CPU) +MEM( +IDLEW)$/\1\2/; s/^(4242 +[^ ]+) +[^ ]+( +[^ ]+)$/\1\2/' \
+    "$FIXTURES/pass.log" >"$TMP/no-mem.log"
+check 1 "FAIL MEM: no MEM column in top's output" "$PERF" --evaluate closed "$TMP/no-mem.log"
+
+# Pith's rows stop after 8 of the 11 samples: Pith exited, and the log cannot be read.
+awk '/^Processes:/ { s++ } !(s > 8 && /^4242 /)' "$FIXTURES/pass.log" >"$TMP/stopped.log"
+check 2 "" "$PERF" --evaluate closed "$TMP/stopped.log"
+
 # Three samples (13 lines each) give no 60 s window.
 head -n 39 "$FIXTURES/pass.log" >"$TMP/short.log"
 check 2 "" "$PERF" --evaluate closed "$TMP/short.log"
 
 # --- perf.sh --evaluate-run
 
-# perf_run <dir>: a passing run: pass.log for each phase, no child, no close while open and the
-# 10 closes after, one sweep line, one launch, 10 opens and the load at each.
+# perf_run <dir>: a passing run: pass.log for each phase, no child, no locked second, no close
+# while open and the 10 closes after, one sweep line, one launch, 10 opens and the load at each.
 perf_run() {
     mkdir -p "$1"
     for phase in closed open after; do cp "$FIXTURES/pass.log" "$1/$phase.log"; done
     : >"$1/children.txt"
+    : >"$1/locked.txt"
     echo "Timestamp               Ty Process[PID:TID]" >"$1/closes.txt"
     {
         echo "Timestamp               Ty Process[PID:TID]"
@@ -128,6 +144,7 @@ PASS mem_max 21.0 <= 30.0
 PASS idlew_per_s 0.20 <= 0.50
 always:
 PASS children 0 <= 0
+PASS locked_seconds 0 <= 0
 PASS panel_closes_while_open 0 <= 0
 PASS panel_closes_after_open 10, the control
 sweep n=200 processes=330 mean_ms=0.868 max_ms=1.299
@@ -155,6 +172,16 @@ FAIL"
 perf_run "$TMP/child"
 echo 4321 >"$TMP/child/children.txt"
 check_lines 1 "$PERF" --evaluate-run "$TMP/child" <<<"FAIL children 1 > 0"
+
+# A recorded file that is missing fails; it never reads as 0.
+perf_run "$TMP/nochild"
+rm "$TMP/nochild/children.txt"
+check_lines 1 "$PERF" --evaluate-run "$TMP/nochild" <<<"FAIL children.txt: missing from $TMP/nochild"
+
+# A lock at any moment of the run pauses Pith's clock (spec 9), so the run fails.
+perf_run "$TMP/lock"
+printf '09:03:01\n09:03:02\n' >"$TMP/lock/locked.txt"
+check_lines 1 "$PERF" --evaluate-run "$TMP/lock" <<<"FAIL locked_seconds 2 > 0"
 
 perf_run "$TMP/closed"
 echo "2026-10-25 09:15:00.000 Df Pith[4242:1] [com.mrinoy.pith:debug-hooks] panel closed" \
@@ -202,9 +229,11 @@ PATH="$TMP/stuck:$PATH" "$PERF" --minutes 1 >/dev/null 2>"$TMP/stderr" || code=$
 passed=$((passed + 1))
 
 # R173: a locked screen stops the script before it starts a helper, quits Pith or opens anything.
+# ioreg prints about 90 KB, the flag early: a `grep -q` on its pipe would stop early, and with
+# pipefail its SIGPIPE would read as unlocked.
 mkdir "$TMP/locked"
-printf '#!/bin/bash\necho %q\n' '"IOConsoleUsers" = ({"CGSSessionScreenIsLocked"=Yes})' \
-    >"$TMP/locked/ioreg"
+printf '#!/bin/bash\necho %q\nhead -c 120000 /dev/zero | tr %q x\n' \
+    '"IOConsoleUsers" = ({"CGSSessionScreenIsLocked"=Yes})' '\0' >"$TMP/locked/ioreg"
 for tool in caffeinate pkill pgrep open; do
     printf '#!/bin/bash\necho "%s $*" >>%q\n' "$tool" "$TMP/locked-calls" >"$TMP/locked/$tool"
 done
@@ -320,6 +349,33 @@ check_lines 1 "$ACCURACY" --evaluate "$TMP/far" <<<"FAIL Example Notes, run 4: m
 FAIL Example Notes: memory beyond 10% in run 4 (memory 70.0 MB, top 79.0 to 79.0 MB)
 FAIL"
 
+# Pith above `top`: 70 > 67 x 1.03 is one outlier, which passes; 70 > 63 x 1.10 fails.
+accuracy_run "$TMP/above"
+outlier "$TMP/above" 4 67
+check_lines 0 "$ACCURACY" --evaluate "$TMP/above" <<<"OUT Example Notes, run 4: memory 70.0 MB, top 67.0 to 67.0 MB (width 0.00%), PIDs 1, left out 0
+PASS Example Notes: memory within 3% in 9 of 10 counted runs; outside 3%: run 4 (memory 70.0 MB, top 67.0 to 67.0 MB)
+PASS"
+accuracy_run "$TMP/high"
+outlier "$TMP/high" 4 63
+check_lines 1 "$ACCURACY" --evaluate "$TMP/high" <<<"FAIL Example Notes, run 4: memory 70.0 MB, top 63.0 to 63.0 MB (width 0.00%), PIDs 1, left out 0
+FAIL Example Notes: memory beyond 10% in run 4 (memory 70.0 MB, top 63.0 to 63.0 MB)
+FAIL"
+
+# The edges: a range exactly 6% wide still counts (300 to 318 MB), and a CPU gap of exactly 2
+# points passes (25% in Pith against 230% of one core / 10 CPUs in `top`).
+accuracy_run "$TMP/edges"
+top_sample MEM 4101:200M 4102:100M 4103:80M 4201:69M 4301:1024K >"$TMP/edges/before-3.txt"
+top_sample MEM 4101:212M+ 4102:106M+ 4201:70M+ 4301:1024K >"$TMP/edges/after-3.txt"
+jq '.processes["4101"].cpu = 0.25 | .processes["4102"].cpu = 0 | .snapshot.apps[0].cpu.value = 0.25' \
+    "$TMP/edges/cpu-1.json" >"$TMP/edges/c.json"
+mv "$TMP/edges/c.json" "$TMP/edges/cpu-1.json"
+{ top_sample %CPU 4101:0.0 4102:0.0 4201:0.0; top_sample %CPU 4101:230.0 4102:0.0 4201:2.0; } \
+    >"$TMP/edges/cpu-1.txt"
+check_lines 0 "$ACCURACY" --evaluate "$TMP/edges" <<<"PASS Example Editor, run 3: memory 307.0 MB, top 300.0 to 318.0 MB (width 6.00%), PIDs 2, left out 1
+PASS Example Editor: memory within 3% in 10 of 10 counted runs
+PASS Example Editor, window 1: CPU 25.00% vs top 23.00% of the Mac over 10 s (+2.00 points), PIDs 2, left out 1
+PASS"
+
 # R141: a range wider than 6% does not count; with 4 counted runs of 10, the app is not comparable.
 accuracy_run "$TMP/wide"
 for i in {1..6}; do top_sample MEM 4101:198M 4102:99M 4201:60M >"$TMP/wide/before-$i.txt"; done
@@ -350,6 +406,17 @@ jq '.snapshot.system = {unavailable: "accounting mismatch"}' "$TMP/residual/resi
 mv "$TMP/residual/r.json" "$TMP/residual/residual-2.json"
 check_lines 1 "$ACCURACY" --evaluate "$TMP/residual" <<<"FAIL residual: 99 of 100 snapshots have a memory and a CPU residual
   1 accounting mismatch
+FAIL"
+
+# A negative residual fails, with the field that is negative.
+accuracy_run "$TMP/negative"
+jq '.snapshot.system.value.memory = -1' "$TMP/negative/residual-3.json" >"$TMP/negative/r.json"
+mv "$TMP/negative/r.json" "$TMP/negative/residual-3.json"
+jq '.snapshot.system.value.cpu.value = -0.1' "$TMP/negative/residual-4.json" >"$TMP/negative/r.json"
+mv "$TMP/negative/r.json" "$TMP/negative/residual-4.json"
+check_lines 1 "$ACCURACY" --evaluate "$TMP/negative" <<<"FAIL residual: 98 of 100 snapshots have a memory and a CPU residual
+  1 negative CPU residual
+  1 negative memory residual
 FAIL"
 
 # N1: 100 snapshots, no fewer, and an empty reading fails in both checks.

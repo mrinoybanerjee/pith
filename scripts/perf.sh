@@ -7,7 +7,8 @@
 # and the 10 that it makes after them, which prove the close line is logged (N4). The first open
 # after the launch is gated on its own line, beside the slowest of the other opens, and each open
 # is listed with the 1-minute load average at its moment (R173). It refuses to run while the
-# screen is locked, and it wakes the display, as a user's click would find them. Once it has quit
+# screen is locked, fails a run in which the screen locks, and wakes the display, as a user's click
+# would find them. Once it has quit
 # the running Pith, on any exit it relaunches Pith without the hooks. It prints one line per budget, then PASS or FAIL,
 # and exits 1 if any budget fails. The logs are kept; their path is printed first.
 # --evaluate checks one `top -l ... -stats pid,cpu,mem,idlew` log against the closed or open
@@ -17,7 +18,7 @@
 # Usage: scripts/perf.sh [--minutes <minutes, default 10>]
 #        scripts/perf.sh --evaluate <closed | open> <log>
 #        scripts/perf.sh --evaluate-run <dir with closed.log, open.log, after.log, children.txt,
-#                        closes.txt, closes-after.txt, sweep.txt, timing.txt, loads.txt>
+#                        locked.txt, closes.txt, closes-after.txt, sweep.txt, timing.txt, loads.txt>
 
 set -euo pipefail
 
@@ -55,10 +56,24 @@ evaluate() {
         open) budgets=(1.50 5.00 45.0 2.00) ;;
         *) usage ;;
     esac
+    # The rows are read by position, so a column that top did not print fails, and never reads as
+    # 0. So does a value that is not a number.
+    local field code=0
+    for field in %CPU MEM IDLEW; do
+        if grep '^PID ' "$2" | grep -vw -- "$field" >/dev/null; then
+            echo "FAIL $field: no $field column in top's output"
+            failed=1
+        fi
+    done
+    ((failed == 0)) || return 1
     measures="$(awk -f "$ROOT/scripts/top-rows.awk" "$2" | awk \
         -v samples="$(grep -c '^Processes:' "$2")" '
-        { t[NR] = $2; cpu[NR] = $4; mem[NR] = $5; idle[NR] = $6 }
+        {
+            number("%CPU", $4); number("MEM", $5); number("IDLEW", $6)
+            t[NR] = $2; cpu[NR] = $4; mem[NR] = $5; idle[NR] = $6
+        }
         END {
+            if (invalid) exit 1
             n = NR
             if (n != samples) error(samples " samples but " n " rows of Pith: did it exit?")
             if (n < 7) error(n " samples, fewer than the 7 that one 60 s window needs")
@@ -72,10 +87,21 @@ evaluate() {
             }
             printf "%.6f %.6f %.6f %.6f\n", sum / (n - 1), window / 6, most, (idle[n] - idle[1]) / (t[n] - t[1])
         }
+        function number(field, value) {
+            if (value ~ /^[0-9]+([.][0-9]+)?(e[-+]?[0-9]+)?$/ || field in named) return
+            printf "FAIL %s: sample %d reads \"%s\", not a number\n", field, $1, value
+            named[field] = 1
+            invalid = 1
+        }
         function error(message) {
             print "error: " message > "/dev/stderr"
             exit 2
-        }')" || return 2
+        }')" || code=$?
+    if ((code == 1)); then
+        echo "$measures"
+        return 1
+    fi
+    ((code == 0)) || return 2
     read -r cpu window mem rate <<<"$measures"
     gate cpu_mean "$cpu" "${budgets[0]}" %.2f || failed=1
     gate cpu_60s_max "$window" "${budgets[1]}" %.2f || failed=1
@@ -86,7 +112,12 @@ evaluate() {
 
 # evaluate_run <dir>: every budget line of a run from its recorded files; returns 1 on any FAIL.
 evaluate_run() {
-    local dir="$1" failed=0 launches opens control
+    local dir="$1" failed=0 launches opens control file
+    for file in closed.log open.log after.log children.txt locked.txt closes.txt closes-after.txt \
+        sweep.txt timing.txt loads.txt; do
+        [[ -f "$dir/$file" ]] || { echo "FAIL $file: missing from $dir"; failed=1; }
+    done
+    ((failed == 0)) || return 1
     echo "closed:"
     evaluate closed "$dir/closed.log" || failed=1
     echo "open:"
@@ -95,6 +126,7 @@ evaluate_run() {
     evaluate closed "$dir/after.log" || failed=1
     echo "always:"
     gate children "$(sort -u "$dir/children.txt" | grep -c . || true)" 0 %d || failed=1
+    gate locked_seconds "$(grep -c . "$dir/locked.txt" || true)" 0 %d || failed=1
     gate panel_closes_while_open "$(grep -c 'panel closed' "$dir/closes.txt" || true)" 0 %d ||
         failed=1
     control="$(grep -c 'panel closed' "$dir/closes-after.txt" || true)"
@@ -191,8 +223,16 @@ relaunch() {
     open -n "$APP"
 }
 
+# Whether the screen is locked. ioreg's output, about 90 KB, is read whole: a `grep -q` on its pipe
+# stops early, and with pipefail ioreg's SIGPIPE would read as unlocked.
+locked() {
+    local root
+    root="$(ioreg -n Root -d1)"
+    grep -q '"CGSSessionScreenIsLocked"=Yes' <<<"$root"
+}
+
 # A locked screen is not what a click finds (R173).
-if ioreg -n Root -d1 | grep -q '"CGSSessionScreenIsLocked"=Yes'; then
+if locked; then
     echo "error: the screen is locked; unlock it and run again" >&2
     exit 2
 fi
@@ -215,8 +255,13 @@ for _ in {1..50}; do
 done
 [[ -n "${PID:-}" ]] || { echo "error: Pith did not start" >&2; exit 2; }
 sleep 5
-# Pith's child processes, checked every second, so a child shorter than that can be missed.
-while sleep 1; do pgrep -P "$PID" || true; done >"$LOGS/children.txt" 2>&1 &
+# Pith's child processes and a locked screen, checked every second, so a child shorter than that
+# can be missed. A lock pauses Pith's clock (spec 9), so each locked second fails the run.
+: >"$LOGS/locked.txt"
+while sleep 1; do
+    pgrep -P "$PID" || true
+    if locked; then date '+%H:%M:%S' >>"$LOGS/locked.txt"; fi
+done >"$LOGS/children.txt" 2>&1 &
 watcher=$!
 disown
 
