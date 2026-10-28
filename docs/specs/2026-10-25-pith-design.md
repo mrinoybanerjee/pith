@@ -15,6 +15,8 @@ Pith is a free, open-source macOS menu-bar app. It answers one question at a gla
   - the apps that use the most, with each app's helper processes added into one row.
 - The panel can be pinned as a floating side panel.
 
+From v0.2, Pith also keeps the Mac awake on request, for a time you pick: see the [Awake spec](2026-10-28-pith-awake.md).
+
 Pith must be extremely light, fast, robust and accurate. It must also look minimal, native and pristine.
 
 ## 2. Goals and non-goals
@@ -28,6 +30,7 @@ Pith must be extremely light, fast, robust and accurate. It must also look minim
 5. Match Activity Monitor's numbers for the same processes.
 6. Run on Mrinoy's three Apple Silicon Macs (MacBook Air M4, Mac mini M4, MacBook Pro) on macOS 26, and keep working on macOS 27.
 7. Cost $0 to build, sign and install.
+8. Keep the Mac awake on request ([Awake spec](2026-10-28-pith-awake.md)).
 
 ### Non-goals for v1
 
@@ -83,7 +86,7 @@ Top to bottom:
    - a 24 pt app icon, the app name, a 3 pt proportional bar and a right-aligned tabular value;
    - "N processes" under the value when N > 1.
 5. **"macOS system" row**, always last. It shows a generic chip icon and the residual value (section 6.6).
-6. **Footer** (11.5 pt, tertiary): "Updated just now" and "Pith".
+6. **Awake bar:** "Keep awake" with 1 h, 4 h and ∞, or the session's end with End ([Awake spec](2026-10-28-pith-awake.md) section 3.2).
 
 Typography: SF Pro, 13 pt minimum for anything the user must read, tabular numerals for all values.
 

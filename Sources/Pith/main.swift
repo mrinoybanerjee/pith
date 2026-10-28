@@ -9,7 +9,8 @@ import PithCore
 // - `--render-panel`: the real panel with the second of two live open readings 1 s apart, in
 //   light and dark, as real-light.png and real-dark.png in a new folder under the temporary
 //   directory, whose path it prints. They show real process names, so they never land in the
-//   repo (R129, R144);
+//   repo (R129, R144). Beside them, awake-light.png and awake-dark.png show the calm demo with
+//   a session running (Awake spec 6);
 // - `--demo <calm | tight>`: the panel with that `DemoSnapshots` state and no real reads, for
 //   README captures, until it closes.
 // The panels of the last two keep their settings and pinned frame in a suite of their own,
@@ -70,18 +71,24 @@ func benchmark(_ count: Int) async -> String {
 }
 
 /// The panel opened as a click opens it, under the top middle of the main screen, on a store of
-/// its own with no lifecycle, that shows `snapshot` at each open. No row offers Quit. `closed`
-/// runs when the panel closes after it opened.
+/// its own with no lifecycle, that shows `snapshot` at each open. No row offers Quit, and no
+/// session holds the Mac awake. With `awake`, the bar reads "Awake until 3:40 PM". `closed` runs
+/// when the panel closes after it opened.
 @MainActor func openPanel(
-  _ snapshot: Snapshot, appearance: NSAppearance.Name?,
+  _ snapshot: Snapshot, appearance: NSAppearance.Name?, awake: Bool = false,
   closed: @escaping @MainActor () -> Void = {}
 ) -> PanelController {
   _ = NSApplication.shared  // R124
   let defaults = UserDefaults(suiteName: debugSuite)!
   let store = Store(
     settings: .load(defaults), guide: try! Guide.bundled(in: .main), loginItem: .none,
-    runningApps: .none, measureSystem: { throw SystemDetailsError.failed("not measured here") },
+    sleepHold: .none, runningApps: .none,
+    measureSystem: { throw SystemDetailsError.failed("not measured here") },
     nowNs: { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) })
+  if awake {
+    store.startAwake(
+      for: 3600, now: Calendar.current.date(bySettingHour: 14, minute: 40, second: 0, of: .now)!)
+  }
   let controller = PanelController(store: store, defaults: defaults) { visible, _, _ in
     if visible { store.apply(snapshot) } else if store.snapshot != nil { closed() }
   }
@@ -112,6 +119,8 @@ case .renderPanel:
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
       try! openPanel(snapshot, appearance: appearance).panel.pngData().write(
         to: dir.appending(path: "real-\(name).png"))
+      try! openPanel(DemoSnapshots.calm, appearance: appearance, awake: true).panel.pngData()
+        .write(to: dir.appending(path: "awake-\(name).png"))
     }
     print(dir.path)
     UserDefaults.standard.removePersistentDomain(forName: debugSuite)

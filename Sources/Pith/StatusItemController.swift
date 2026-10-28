@@ -1,16 +1,17 @@
 import AppKit
 import PithCore
 
-/// The calm dot in the menu bar (spec 4.1). The item has a fixed width, and its image changes only
-/// when the dot state changes, so the status bar is not laid out again on every tick (spec 9).
+/// The calm dot in the menu bar (spec 4.1), in a thin ring while the Mac is kept awake (Awake spec
+/// 3.1). The item has a fixed width, and its image changes only when the dot state or the ring
+/// changes, so the status bar is not laid out again on every tick (spec 9).
 @MainActor final class StatusItemController: NSObject {
-  private static let images: [DotState: NSImage] = [
-    .calm: dot(fill: nil), .tight: dot(fill: .systemOrange), .critical: dot(fill: .systemRed),
-  ]
+  /// The 6 images: the dot of each state, alone and in the ring.
+  private static let images = [false: dots(ring: false), true: dots(ring: true)]
 
   let item: NSStatusItem
   private let onClick: () -> Void
   private var dot: DotState?
+  private var ring = false
   private(set) var imageChanges = 0
 
   var statusItemLength: CGFloat { item.length }
@@ -37,32 +38,50 @@ import PithCore
     item.button!.action = #selector(clicked)
   }
 
-  func show(status: Status) {
-    show(status.dot)
-    item.button!.setAccessibilityLabel("Pith: \(status.title)")
+  func show(status: Status, awake: Awake?) {
+    show(status.dot, ring: awake != nil)
+    item.button!.setAccessibilityLabel(
+      "Pith: \(status.title)." + (awake.map { " \($0.title)." } ?? ""))
   }
 
-  func show(_ dot: DotState) {
-    guard dot != self.dot else { return }
-    self.dot = dot
-    item.button!.image = Self.images[dot]
+  func show(_ dot: DotState, ring: Bool) {
+    guard dot != self.dot || ring != self.ring else { return }
+    (self.dot, self.ring) = (dot, ring)
+    item.button!.image = Self.images[ring]![dot]
     imageChanges += 1
   }
 
   @objc private func clicked() { onClick() }
 
+  private static func dots(ring: Bool) -> [DotState: NSImage] {
+    [
+      .calm: dot(fill: nil, ring: ring), .tight: dot(fill: .systemOrange, ring: ring),
+      .critical: dot(fill: .systemRed, ring: ring),
+    ]
+  }
+
   /// A 16 pt image with a 9 pt circle: an outline template when calm, filled with `fill` otherwise.
-  private static func dot(fill: NSColor?) -> NSImage {
+  /// With `ring`, a 14 pt circle with a 1.25 pt line goes around it, in the menu bar's text color
+  /// whatever the dot's state (Awake spec 3.1).
+  private static func dot(fill: NSColor?, ring: Bool) -> NSImage {
     let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in
       if let fill {
         fill.setFill()
         NSBezierPath(ovalIn: NSRect(x: 3.5, y: 3.5, width: 9, height: 9)).fill()
       } else {
         // Inset by half the line width, so the stroke's outer edge is the 9 pt circle.
-        let ring = NSBezierPath(ovalIn: NSRect(x: 4.3, y: 4.3, width: 7.4, height: 7.4))
-        ring.lineWidth = 1.6
+        let outline = NSBezierPath(ovalIn: NSRect(x: 4.3, y: 4.3, width: 7.4, height: 7.4))
+        outline.lineWidth = 1.6
         NSColor.black.setStroke()
-        ring.stroke()
+        outline.stroke()
+      }
+      if ring {
+        // Inset as the outline is. A template takes the menu bar's color; a colored image draws in
+        // the menu bar's appearance, so its label color is the menu bar's text color.
+        let circle = NSBezierPath(ovalIn: NSRect(x: 1.625, y: 1.625, width: 12.75, height: 12.75))
+        circle.lineWidth = 1.25
+        (fill == nil ? NSColor.black : .labelColor).setStroke()
+        circle.stroke()
       }
       return true
     }

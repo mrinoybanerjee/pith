@@ -1,4 +1,5 @@
 import AppKit
+import IOKit.pwr_mgt
 import Observation
 import PithCore
 import SwiftUI
@@ -11,8 +12,24 @@ enum SystemDetailsState: Equatable {
   case failed
 }
 
-/// The app's state on the main actor (spec 5.1): the status, what the panel draws, the UI choices
-/// and the settings. Views read it; `Lifecycle` hands it each snapshot.
+/// A session that keeps the Mac awake (Awake spec): until `until`, or until the user ends it.
+struct Awake: Equatable {
+  let until: Date?
+
+  /// "Awake until 3:40 PM", in the user's short time with the weekday first when the end is not
+  /// today, or "Awake until you end it" (Awake spec 3.2).
+  var title: String {
+    guard let until else { return "Awake until you end it" }
+    let time =
+      Calendar.current.isDateInToday(until)
+      ? until.formatted(date: .omitted, time: .shortened)
+      : until.formatted(.dateTime.weekday().hour().minute())
+    return "Awake until \(time)"
+  }
+}
+
+/// The app's state on the main actor (spec 5.1): the status, what the panel draws, the UI choices,
+/// the settings and the awake session. Views read it; `Lifecycle` hands it each snapshot.
 @MainActor @Observable final class Store {
   /// The "macOS system" row's id. App ids are paths or start with "proc:" or "clone:".
   static let systemRowID = "system"
@@ -75,6 +92,8 @@ enum SystemDetailsState: Equatable {
   private(set) var launchesAtLogin = false
   /// macOS refused the last change to the login item.
   private(set) var loginItemFailed = false
+  /// The session that keeps the Mac awake, if one runs. Nothing saves it (Awake spec 2).
+  private(set) var awake: Awake?
   let guide: Guide
   let runningApps: RunningApps
   /// Called after each open snapshot is applied. The panel shows on the first one after a click.
@@ -87,6 +106,16 @@ enum SystemDetailsState: Equatable {
   }
   @ObservationIgnored private var rules: StatusRules
   @ObservationIgnored private let loginItem: LoginItem
+  @ObservationIgnored private let sleepHold: SleepHold
+  /// The hold of the session that runs.
+  @ObservationIgnored private var holdID: IOPMAssertionID?
+  /// Ends a timed session at its end time. End cancels it.
+  @ObservationIgnored private var awakeEnd: Task<Void, any Error>? {
+    didSet { oldValue?.cancel() }
+  }
+  /// When a session last started or ended, so a button that just appeared in the bar waits 0.4 s,
+  /// as the quit confirm does (R93).
+  @ObservationIgnored private var awakeChangedNs: UInt64 = 0
   @ObservationIgnored private let measureSystem: @Sendable () async throws -> SystemBreakdown
   /// The time that the quit flow's 5 s are counted in.
   @ObservationIgnored private let nowNs: @MainActor @Sendable () -> UInt64
@@ -109,13 +138,14 @@ enum SystemDetailsState: Equatable {
   }
 
   init(
-    settings: Settings, guide: Guide, loginItem: LoginItem, runningApps: RunningApps,
-    measureSystem: @escaping @Sendable () async throws -> SystemBreakdown,
+    settings: Settings, guide: Guide, loginItem: LoginItem, sleepHold: SleepHold,
+    runningApps: RunningApps, measureSystem: @escaping @Sendable () async throws -> SystemBreakdown,
     nowNs: @escaping @MainActor @Sendable () -> UInt64
   ) {
     self.settings = settings
     self.guide = guide
     self.loginItem = loginItem
+    self.sleepHold = sleepHold
     self.runningApps = runningApps
     self.measureSystem = measureSystem
     self.nowNs = nowNs
@@ -335,6 +365,48 @@ enum SystemDetailsState: Equatable {
       loginItemFailed = true
     }
     launchesAtLogin = loginItem.isEnabled()
+  }
+
+  /// Keeps the Mac awake for `seconds` from `now`, or until the user ends it when nil (Awake spec 2
+  /// and 4). The end time counts on the continuous clock, which runs on while the Mac sleeps, so a
+  /// session whose end passed during sleep ends on wake. Nothing polls.
+  func startAwake(for seconds: TimeInterval?, now: Date = .now) {
+    precondition(awake == nil, "a session already runs")
+    holdID = sleepHold.acquire()
+    awake = Awake(until: seconds.map { now + $0 })
+    awakeChangedNs = nowNs()
+    guard let seconds else { return }
+    awakeEnd = Task { [weak self] in
+      try await Task.sleep(for: .seconds(seconds), clock: .continuous)
+      // A timer that ends as the user ends its session does not end the next one.
+      try Task.checkCancellation()
+      self?.endAwake()
+    }
+  }
+
+  /// A duration button in the bar. Each button in the bar acts once it has shown for 0.4 s, so the
+  /// second click of a double-click never lands on the button that replaced the first: a
+  /// double-click on End cannot start a session, nor one on a duration end it (R93). A click queued
+  /// before the bar changed does nothing.
+  func startAwakeFromBar(for seconds: TimeInterval?) {
+    guard awake == nil, nowNs() - awakeChangedNs >= 400_000_000 else { return }
+    startAwake(for: seconds)
+  }
+
+  /// End in the bar, with the same wait as the duration buttons.
+  func endAwakeFromBar() {
+    guard awake != nil, nowNs() - awakeChangedNs >= 400_000_000 else { return }
+    endAwake()
+  }
+
+  /// End, or the end time: the hold goes at once (Awake spec 2).
+  func endAwake() {
+    precondition(awake != nil, "no session runs")
+    awakeEnd = nil
+    sleepHold.release(holdID!)
+    holdID = nil
+    awake = nil
+    awakeChangedNs = nowNs()
   }
 }
 

@@ -28,9 +28,7 @@ extension NativeInteractionTests {
 
   @MainActor @Test func smallestReadableTextIsThirteenPoints() throws {
     RowTextFrames.recorded = [:]  // the rows' own texts, which VoiceOver does not read (R148)
-    #expect(
-      try minimumReadableFontSize(hostPanel(DemoSnapshots.calm), excludingIdentifier: "pith.footer")
-        >= 13)
+    #expect(try minimumReadableFontSize(hostPanel(DemoSnapshots.calm)) >= 13)
     let rowSizes = rowTextPointSizes()
     #expect(rowSizes.count == 12 && rowSizes.allSatisfy { $0 >= 13 }, "\(rowSizes)")  // 6 rows
   }
@@ -446,11 +444,11 @@ extension NativeInteractionTests {
     #expect(w.isVisible)
     try fits("at open")
     controller.toggle(under: (item, short))  // closes it
-    reading.snapshot = DemoSnapshots.tight  // 521 pt, under the cap
+    reading.snapshot = DemoSnapshots.tight  // 523 pt, under the cap
     controller.toggle(under: (item, short))
-    #expect(w.isVisible && w.frame.height == 521)
+    #expect(w.isVisible && w.frame.height == 523)
     store.toggle(store.rows[0].id)  // Google Chrome opens, so the content grows past 560 pt
-    #expect(try await eventually(w) { w.frame.height > 521 })
+    #expect(try await eventually(w) { w.frame.height > 523 })
     try fits("after a resize")
     controller.toggle(under: (item, short))
     reading.snapshot = eightRows
@@ -977,19 +975,50 @@ extension NativeInteractionTests {
     ] {
       #expect(controls.contains(name), "\(name)")
     }
-    #expect(!axLabels(in: w).contains("Using the most"))
+    // The awake bar is not on the Settings page (Awake spec 3.2).
+    #expect(!axLabels(in: w).contains("Using the most") && !axLabels(in: w).contains("Keep awake"))
+  }
+
+  /// Awake spec 3.2: each button starts its session, with a hold that keeps nothing awake, and End
+  /// brings "Keep awake" back.
+  @Test func theAwakeBarStartsAndEndsEachSession() async throws {
+    let apps = FakeRunningApps([])
+    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm, store: apps.store(guide: .empty))
+    #expect(axLabels(in: w).contains("Keep awake"))
+    let sessions: [(button: String, seconds: TimeInterval?)] = [
+      ("Keep awake for 1 hour", 3600), ("Keep awake for 4 hours", 4 * 3600),
+      ("Keep awake until you end it", nil),
+    ]
+    for (button, seconds) in sessions {
+      apps.passTheConfirmGuard()
+      try press(button, in: w)
+      let awake = try #require(store.awake)
+      // The end is `seconds` after the press, to the minute.
+      #expect(
+        awake.until.map { ($0.timeIntervalSinceNow / 60).rounded() } == seconds.map { $0 / 60 })
+      #expect(try await eventually(w) { axLabels(in: w).contains(awake.title) })
+      // The second click of a double-click lands on End, and does nothing (R93).
+      try press("End keeping awake", in: w)
+      #expect(store.awake == awake)
+      apps.passTheConfirmGuard()
+      try press("End keeping awake", in: w)
+      #expect(store.awake == nil)
+      #expect(try await eventually(w) { axLabels(in: w).contains("Keep awake") })
+      // The second click of a double-click on End lands on ∞, and does nothing (R93).
+      try press("Keep awake until you end it", in: w)
+      #expect(store.awake == nil)
+    }
   }
 
   /// R76 and R87: the font check reads headings by their height and a font that a container
-  /// passes down, and it sees the 11.5 pt footer when it is not left out. A button's label has no
-  /// font for VoiceOver, so buttons use the `PanelType` sizes, which a unit test checks.
+  /// passes down, under 13 pt too. A button's label has no font for VoiceOver, so buttons use the
+  /// `PanelType` sizes, which a unit test checks.
   @Test func theFontCheckSeesHeadingsAndInheritedFonts() throws {
     let w = try hostPanel(DemoSnapshots.calm)
     let title = try axNode("All calm", in: w).fontSizes
     #expect(title.count == 1 && abs(title[0] - 17) < 1, "\(title)")
     #expect(try axNode("Using the most", in: w).fontSizes.allSatisfy { abs($0 - 13) < 1 })
     #expect(try axNode("Memory", in: w).role == "AXButton")
-    #expect(minimumReadableFontSize(w, excludingIdentifier: "none") == 11.5)
     let inherited = hostView(VStack { Text("Inherited") }.font(.system(size: 12)))
     #expect(axNodes(in: inherited).flatMap(\.fontSizes) == [12])
   }

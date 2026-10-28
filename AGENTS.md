@@ -34,7 +34,7 @@ On macOS 26, a process started the wrong way can get no visible status item.
   - text the user must read is at least 13 pt, in SF Pro, with tabular numerals for all values;
   - color appears only for state: `NSColor.systemOrange` for Tight and `NSColor.systemRed` for Critical;
   - the panel is 360 pt wide.
-- **Copy:** UI strings are copied exactly from spec sections 4 and 7.3.
+- **Copy:** UI strings are copied exactly from spec sections 4 and 7.3, and Awake spec section 3.
 - **Public repo:** fixtures, screenshots and README images use **synthetic data only**, with no real process lists, paths or user names.
 - **Ported Stats code:** each adapted file starts with a header like this:
 

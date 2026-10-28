@@ -51,7 +51,9 @@ From top to bottom:
 4. **App rows:** the top 8 by the chosen measure. Each has a 24 pt icon, the name over a 3 pt bar,
    and the value on the right.
 5. **"macOS system"**, always last. See below.
-6. **Footer:** "Updated just now" and "Pith".
+6. **Awake bar:** "Keep awake" with 1 h, 4 h and ∞, or "Awake until 3:40 PM" with End. While a
+   session runs, a thin ring circles the dot. See the
+   [Awake spec](specs/2026-10-28-pith-awake.md).
 
 ### Status sentences
 
@@ -74,8 +76,7 @@ The first rule that applies sets the dot, the title and the sentence.
 - A missing value shows "—". VoiceOver says "not available yet" for a first reading, and "not
   available" when Pith could not measure it; then the tooltip says "Pith couldn't measure this
   right now."
-- SF Pro, 13 pt or larger for all text you read. Only the footer is smaller, at 11.5 pt. All
-  numbers use tabular digits.
+- SF Pro, 13 pt or larger for all text you read. All numbers use tabular digits.
 - Native greys and materials. Amber and red appear only for Tight and Critical; the status-line
   dot is green when calm.
 

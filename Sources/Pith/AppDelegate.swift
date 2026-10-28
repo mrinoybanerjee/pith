@@ -24,8 +24,8 @@ import os
     let nowNs = { @Sendable in clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
     let details = SystemDetails(guide: guide, nowNs: nowNs)
     let store = Store(
-      settings: .load(defaults), guide: guide, loginItem: .main, runningApps: .live,
-      measureSystem: { try await details.measure() }, nowNs: nowNs)
+      settings: .load(defaults), guide: guide, loginItem: .main, sleepHold: .main,
+      runningApps: .live, measureSystem: { try await details.measure() }, nowNs: nowNs)
     let reader = SystemReader()
     let engine = Engine.live(reader, guide: guide)
     // The clock keeps `onTick` until it is released, so `onTick` must not hold its owners.
@@ -47,7 +47,9 @@ import os
       guard let self else { return }
       if let anchor = statusItem.anchor { panel.toggle(under: anchor) }
     }
-    follow({ [store] in store.status }, then: { [weak self] in self?.statusItem.show(status: $0) })
+    follow(
+      { [store] in (store.status, store.awake) },
+      then: { [weak self] in self?.statusItem.show(status: $0.0, awake: $0.1) })
     // R128: only on request, as any process can post a distributed notification. Pith is never
     // the active app, so the notification must not wait for that.
     if debugHooks {
@@ -62,8 +64,9 @@ import os
     // store of its own. The first reading reaches the engine before this.
     Task {
       let warm = Store(
-        settings: store.settings, guide: guide, loginItem: .none, runningApps: .none,
-        measureSystem: { throw SystemDetailsError.failed("not measured") }, nowNs: nowNs)
+        settings: store.settings, guide: guide, loginItem: .none, sleepHold: .none,
+        runningApps: .none, measureSystem: { throw SystemDetailsError.failed("not measured") },
+        nowNs: nowNs)
       warm.apply(await engine.warmUp())
       PanelController.prepare(warm)
     }

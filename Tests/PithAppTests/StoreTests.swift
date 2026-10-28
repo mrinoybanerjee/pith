@@ -46,12 +46,80 @@ import os
   #expect(!store.launchesAtLogin && !store.loginItemFailed && item.registrations == 1)
 }
 
-/// R87: every type size the user must read is at least 13 pt (spec 4.2); only the decorative footer
-/// is smaller.
+/// R87: every type size is at least 13 pt (spec 4.2). The awake bar took the place of the
+/// footer, the one smaller text.
 @Test func everyReadableTypeSizeIsAtLeast13Points() {
-  #expect(PanelType.allCases.filter { $0 != .footer }.allSatisfy { $0.rawValue >= 13 })
-  #expect(PanelType.footer.rawValue == 11.5)
+  #expect(PanelType.allCases.allSatisfy { $0.rawValue >= 13 })
 }
+
+/// Awake spec 6: a session holds the Mac once, from its start to its End. The timer of an ended
+/// session does not end the next one.
+@MainActor @Test func aSessionHoldsOnceUntilEnd() async throws {
+  let hold = FakeSleepHold()
+  let store = testStore(sleepHold: hold.sleepHold)
+  let now = Date(timeIntervalSinceReferenceDate: 0)
+  store.startAwake(for: 3600, now: now)
+  #expect(store.awake == Awake(until: now + 3600) && hold.acquires == 1 && hold.releases == 0)
+  store.endAwake()
+  #expect(store.awake == nil && hold.releases == 1)
+  store.startAwake(for: 0.05)
+  store.endAwake()
+  store.startAwake(for: nil)
+  try await Task.sleep(for: .seconds(0.2))
+  #expect(store.awake == Awake(until: nil) && hold.acquires == 3 && hold.releases == 2)
+  store.endAwake()
+  #expect(store.awake == nil && hold.releases == 3)
+}
+
+/// An End click queued before the end time ended the session does nothing; it must not end a
+/// session that no longer runs.
+@MainActor @Test func aLateEndClickDoesNothing() {
+  let apps = FakeRunningApps([])
+  let store = apps.store(guide: .empty)
+  store.startAwake(for: 3600)
+  apps.passTheConfirmGuard()
+  store.endAwake()
+  store.endAwakeFromBar()
+  #expect(store.awake == nil)
+}
+
+/// Awake spec 4: the end time ends the session and lets the hold go.
+@MainActor @Test func theEndTimeEndsTheSession() async throws {
+  let hold = FakeSleepHold()
+  let store = testStore(sleepHold: hold.sleepHold)
+  store.startAwake(for: 0.05)
+  for _ in 0..<200 where store.awake != nil { try await Task.sleep(for: .milliseconds(10)) }
+  #expect(store.awake == nil && hold.acquires == 1 && hold.releases == 1)
+}
+
+/// Awake spec 3.2: the end in the user's short time, with the weekday first when it is not today.
+@Test func theEndReadsAsATimeWithTheWeekdayWhenNotToday() {
+  let today = Calendar.current.date(bySettingHour: 15, minute: 40, second: 0, of: .now)!
+  let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+  #expect(
+    Awake(until: today).title == "Awake until \(today.formatted(date: .omitted, time: .shortened))")
+  #expect(
+    Awake(until: tomorrow).title
+      == "Awake until \(tomorrow.formatted(.dateTime.weekday().hour().minute()))")
+  #expect(Awake(until: nil).title == "Awake until you end it")
+}
+
+// Exit tests are public from Swift 6.2. Xcode 16's Swift 6.1, on the CI runner, ships none.
+#if compiler(>=6.2)
+  /// Awake spec 4: a session starts only when none runs, and ends only when one runs.
+  @MainActor private func startTwice() {
+    let store = testStore()
+    store.startAwake(for: nil)
+    store.startAwake(for: nil)
+  }
+
+  @MainActor private func endWithNoSession() { testStore().endAwake() }
+
+  @Test func startingWhileAwakeAndEndingWhileNotTrap() async {
+    await #expect(processExitsWith: .failure) { await startTwice() }
+    await #expect(processExitsWith: .failure) { await endWithNoSession() }
+  }
+#endif
 
 /// The tight mockup with Google Chrome opened and asked to quit; the confirm shows, and its
 /// button reports itself in view, as the view does.
