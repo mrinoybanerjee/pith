@@ -22,15 +22,15 @@ func clearDefaults(_ test: String = #function) {
 }
 
 @MainActor func testStore(
-  guide: Guide = .empty, loginItem: LoginItem = .none, runningApps: RunningApps = .none,
-  nowNs: @escaping @MainActor @Sendable () -> UInt64 = { 0 },
+  guide: Guide = .empty, loginItem: LoginItem = .none, sleepHold: SleepHold = .none,
+  runningApps: RunningApps = .none, nowNs: @escaping @MainActor @Sendable () -> UInt64 = { 0 },
   measure: @escaping @Sendable () async throws -> SystemBreakdown = {
     throw SystemDetailsError.failed("no top in tests")
   }
 ) -> Store {
   Store(
-    settings: Settings(), guide: guide, loginItem: loginItem, runningApps: runningApps,
-    measureSystem: measure, nowNs: nowNs)
+    settings: Settings(), guide: guide, loginItem: loginItem, sleepHold: sleepHold,
+    runningApps: runningApps, measureSystem: measure, nowNs: nowNs)
 }
 
 /// A running app that a test controls. Each instance records its own calls, so a call that goes
@@ -193,6 +193,25 @@ extension AppUsage {
         if self.refuses { throw SystemDetailsError.failed("synthetic refusal") }
         if enabled, !self.enabled { self.registrations += 1 }
         self.enabled = enabled
+      })
+  }
+}
+
+/// A hold that counts its acquires and releases, and checks that each release ends the last hold
+/// and only once. It never keeps the Mac awake.
+@MainActor final class FakeSleepHold {
+  private(set) var acquires = 0
+  private(set) var releases = 0
+
+  var sleepHold: SleepHold {
+    SleepHold(
+      acquire: {
+        self.acquires += 1
+        return UInt32(self.acquires)
+      },
+      release: { id in
+        #expect(id == UInt32(self.acquires) && self.releases == self.acquires - 1)
+        self.releases += 1
       })
   }
 }

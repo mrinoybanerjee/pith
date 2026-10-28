@@ -80,7 +80,8 @@ func benchmark(_ count: Int) async -> String {
   let defaults = UserDefaults(suiteName: debugSuite)!
   let store = Store(
     settings: .load(defaults), guide: try! Guide.bundled(in: .main), loginItem: .none,
-    runningApps: .none, measureSystem: { throw SystemDetailsError.failed("not measured here") },
+    sleepHold: .none, runningApps: .none,
+    measureSystem: { throw SystemDetailsError.failed("not measured here") },
     nowNs: { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) })
   let controller = PanelController(store: store, defaults: defaults) { visible, _, _ in
     if visible { store.apply(snapshot) } else if store.snapshot != nil { closed() }
