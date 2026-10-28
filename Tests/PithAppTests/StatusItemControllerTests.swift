@@ -34,7 +34,8 @@ import Testing
   #expect(images.map(\.isTemplate) == [true, false, false, true, false, false])
 }
 
-/// Awake spec 3.1: the label names the status, then the session's end while one runs.
+/// Awake spec 3.1: the label names the status, then the session's end while one runs, then the
+/// lid while "Lid closed" is ticked.
 @MainActor @Test func theLabelNamesTheStatusAndTheSession() {
   startAppKit()
   let c = StatusItemController(onClick: {})
@@ -48,6 +49,10 @@ import Testing
   c.show(status: status, awake: Awake(until: nil))
   #expect(
     c.item.button!.accessibilityLabel() == "Pith: Memory is very tight. Awake until you end it.")
+  c.show(status: status, awake: Awake(until: nil, lidClosed: true))
+  #expect(
+    c.item.button!.accessibilityLabel()
+      == "Pith: Memory is very tight. Awake until you end it. Even with the lid closed.")
 }
 
 /// A status item button with no window, or a window with no screen, has no anchor, so a click on it

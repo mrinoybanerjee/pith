@@ -23,9 +23,12 @@ import os
     let guide = try! Guide.bundled(in: .main)
     let nowNs = { @Sendable in clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
     let details = SystemDetails(guide: guide, nowNs: nowNs)
+    // A lid hold left set when Pith and its holder were killed at once ends here (Awake spec 4.2).
+    if LidHold.main.hasLid { LidFlag.set(false) }
     let store = Store(
       settings: .load(defaults), guide: guide, loginItem: .main, sleepHold: .main,
-      runningApps: .live, measureSystem: { try await details.measure() }, nowNs: nowNs)
+      lidHold: .main, runningApps: .live, measureSystem: { try await details.measure() },
+      nowNs: nowNs)
     let reader = SystemReader()
     let engine = Engine.live(reader, guide: guide)
     // The clock keeps `onTick` until it is released, so `onTick` must not hold its owners.
@@ -65,7 +68,8 @@ import os
     Task {
       let warm = Store(
         settings: store.settings, guide: guide, loginItem: .none, sleepHold: .none,
-        runningApps: .none, measureSystem: { throw SystemDetailsError.failed("not measured") },
+        lidHold: .none, runningApps: .none,
+        measureSystem: { throw SystemDetailsError.failed("not measured") },
         nowNs: nowNs)
       warm.apply(await engine.warmUp())
       PanelController.prepare(warm)

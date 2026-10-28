@@ -22,7 +22,8 @@ fi
 "${build[@]}"
 
 LOG_DIR="$(mktemp -d)"
-trap 'rm -rf "$LOG_DIR"' EXIT
+# The tests empty their defaults suites (R70), but each suite's file stays; remove them after.
+trap 'rm -rf "$LOG_DIR"; rm -f "$HOME"/Library/Preferences/pith.tests.*.plist' EXIT
 
 # A test run passes only when Swift Testing reports its own completion summary.
 # Swift Testing drives AppKit from the Swift async main loop. AppKit's nested run loops

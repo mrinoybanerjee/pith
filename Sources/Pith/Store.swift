@@ -15,6 +15,8 @@ enum SystemDetailsState: Equatable {
 /// A session that keeps the Mac awake (Awake spec): until `until`, or until the user ends it.
 struct Awake: Equatable {
   let until: Date?
+  /// Whether the session also keeps the Mac awake with the lid closed (Awake spec 2).
+  var lidClosed = false
 
   /// "Awake until 3:40 PM", in the user's short time with the weekday first when the end is not
   /// today, or "Awake until you end it" (Awake spec 3.2).
@@ -107,6 +109,7 @@ struct Awake: Equatable {
   @ObservationIgnored private var rules: StatusRules
   @ObservationIgnored private let loginItem: LoginItem
   @ObservationIgnored private let sleepHold: SleepHold
+  @ObservationIgnored private let lidHold: LidHold
   /// The hold of the session that runs.
   @ObservationIgnored private var holdID: IOPMAssertionID?
   /// Ends a timed session at its end time. End cancels it.
@@ -139,13 +142,15 @@ struct Awake: Equatable {
 
   init(
     settings: Settings, guide: Guide, loginItem: LoginItem, sleepHold: SleepHold,
-    runningApps: RunningApps, measureSystem: @escaping @Sendable () async throws -> SystemBreakdown,
+    lidHold: LidHold, runningApps: RunningApps,
+    measureSystem: @escaping @Sendable () async throws -> SystemBreakdown,
     nowNs: @escaping @MainActor @Sendable () -> UInt64
   ) {
     self.settings = settings
     self.guide = guide
     self.loginItem = loginItem
     self.sleepHold = sleepHold
+    self.lidHold = lidHold
     self.runningApps = runningApps
     self.measureSystem = measureSystem
     self.nowNs = nowNs
@@ -377,7 +382,7 @@ struct Awake: Equatable {
     awakeChangedNs = nowNs()
     guard let seconds else { return }
     awakeEnd = Task { [weak self] in
-      try await Task.sleep(for: .seconds(seconds), clock: .continuous)
+      try await Task.sleep(for: .seconds(seconds), tolerance: .seconds(1), clock: .continuous)
       // A timer that ends as the user ends its session does not end the next one.
       try Task.checkCancellation()
       self?.endAwake()
@@ -399,14 +404,44 @@ struct Awake: Equatable {
     endAwake()
   }
 
-  /// End, or the end time: the hold goes at once (Awake spec 2).
+  /// End, or the end time: the hold goes at once, and the lid hold with it (Awake spec 2).
   func endAwake() {
     precondition(awake != nil, "no session runs")
     awakeEnd = nil
+    if awake!.lidClosed { lidHold.stop() }
     sleepHold.release(holdID!)
     holdID = nil
     awake = nil
     awakeChangedNs = nowNs()
+  }
+
+  /// Whether the bar offers "Lid closed": only on a Mac with a lid (Awake spec 4.2).
+  var hasLid: Bool { lidHold.hasLid }
+
+  /// "Lid closed" in the bar, with the same wait as the bar's buttons: a double-click on a
+  /// duration does not tick it (R93).
+  func setLidClosedFromBar(_ lidClosed: Bool) {
+    guard let awake, awake.lidClosed != lidClosed, nowNs() - awakeChangedNs >= 400_000_000
+    else { return }
+    setLidClosed(lidClosed)
+  }
+
+  /// Keeps the session's Mac awake with the lid closed, or no longer (Awake spec 2).
+  func setLidClosed(_ lidClosed: Bool) {
+    precondition(hasLid && awake != nil && awake!.lidClosed != lidClosed, "no lid hold to change")
+    if lidClosed {
+      lidHold.start { [weak self] in self?.lidHoldEnded() }
+    } else {
+      lidHold.stop()
+    }
+    awake!.lidClosed = lidClosed
+  }
+
+  /// The lid hold ended by itself: on low battery, on heat or with its process. The box unticks,
+  /// and the session goes on with the lid open (Awake spec 2).
+  private func lidHoldEnded() {
+    precondition(awake?.lidClosed == true, "no lid hold runs")
+    awake!.lidClosed = false
   }
 }
 

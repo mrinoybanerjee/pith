@@ -366,7 +366,7 @@ Measured on each of the three Macs with `scripts/perf.sh`, which samples `top -l
 | CPU, any 60 s sample | ≤ 1% | ≤ 5% |
 | Memory footprint | ≤ 30 MB | ≤ 45 MB |
 | Idle wakeups per second | ≤ 0.5 | ≤ 2 |
-| Child processes launched | 0 | 0 (on-demand `top` excluded) |
+| Child processes launched | 0 | 0 (on-demand `top` and the lid holder excluded) |
 | One full sweep (~500 processes, M4) | — | ≤ 3 ms |
 | Click to panel visible | ≤ 100 ms | — |
 | Launch to first reading | ≤ 300 ms | — |
