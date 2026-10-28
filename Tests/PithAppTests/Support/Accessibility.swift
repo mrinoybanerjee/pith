@@ -119,15 +119,9 @@ private let interactiveRoles: Set<String> = [
   try #require(axInteractiveElements(in: window).first { $0.label == label }).press()
 }
 
-/// The smallest font of any text VoiceOver can read in `window`, leaving out the element with
-/// `identifier` and everything inside it.
-@MainActor func minimumReadableFontSize(_ window: NSWindow, excludingIdentifier identifier: String)
-  -> CGFloat
-{
-  func sizes(_ node: AXNode) -> [CGFloat] {
-    node.identifier == identifier ? [] : node.fontSizes + node.children.flatMap(sizes)
-  }
-  let all = sizes(AXNode(window))
+/// The smallest font of any text VoiceOver can read in `window`.
+@MainActor func minimumReadableFontSize(_ window: NSWindow) -> CGFloat {
+  let all = axNodes(in: window).flatMap(\.fontSizes)
   #expect(all.count > 10, "found \(all.count) text runs")
   return all.min() ?? 0
 }

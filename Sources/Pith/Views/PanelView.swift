@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The panel (spec 4.2): the status line, the three tiles, "Using the most" with the rows, and the
-/// footer. Settings take the place of everything under the status line.
+/// awake bar. Settings take the place of everything under the status line.
 struct PanelView: View {
   let store: Store
   /// Which open this is. Each open draws a new view, so nothing animates from the rows of the last
@@ -18,19 +18,7 @@ struct PanelView: View {
         } else {
           TilesView(totals: store.snapshot?.totals)
           AppListView(store: store)
-          // Decorative, so it is the one text under 13 pt (spec 4.2). VoiceOver reports a font only
-          // when it is set on the text itself, in a combined element.
-          HStack {
-            Text("Updated just now").font(.panel(.footer))
-            Spacer()
-            Text("Pith").font(.panel(.footer))
-          }
-          .foregroundStyle(.tertiary)
-          .padding(.horizontal, 16)
-          .padding(.vertical, 10)
-          .overlay(alignment: .top) { Rectangle().fill(.separator).frame(height: 0.5) }
-          .accessibilityElement(children: .combine)
-          .accessibilityIdentifier("pith.footer")
+          AwakeBar(store: store)
         }
       }
       .frame(width: 360)
