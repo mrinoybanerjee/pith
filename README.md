@@ -23,6 +23,8 @@ running all day, and its numbers are checked against `top`.
 - **macOS system**, always last: what macOS itself uses. Open it to see its largest parts.
 - **Plain words** from a built-in guide of 187 checked entries. No AI.
 - **Pin** keeps the panel floating while you work.
+- **Keep awake** at the bottom of the panel stops the Mac from sleeping while idle, for 1 hour,
+  4 hours or until you end it. A thin ring around the dot shows that it is on.
 
 <p align="center">
   <img src="docs/images/panel-tight-dark.png" width="440" alt="Pith's panel in dark mode. The title says Memory is tight, with an amber dot. The memory tile shows 15.1 of 16 GB, Tight and 2.1 GB swap. Google Chrome, Safari, Claude, Mail and Music are listed by memory, then macOS system.">
@@ -75,6 +77,8 @@ Pith never:
   open "macOS system", and at most once every 10 s;
 - **quits an app without asking.** Quit always asks first, and Pith never offers to quit part of
   macOS.
+
+Pith keeps the Mac awake only when you ask. It holds no root setting, and quitting Pith ends it.
 
 Pith saves only the settings you change, the Memory · CPU · Disk choice, the pinned panel's
 position, and a note that it added its login item.

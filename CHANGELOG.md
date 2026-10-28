@@ -4,6 +4,14 @@ Notable changes to Pith, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Keep awake: a bar at the bottom of the panel, in place of the footer, keeps the Mac from
+  sleeping while idle for 1 hour, 4 hours or until you end it. A thin ring around the dot shows
+  that a session runs. The display can still sleep, and quitting Pith ends the session.
+
 ## [0.1.0] - 2026-10-26
 
 The first release. Pith is built from source; there is no download.
@@ -70,4 +78,5 @@ when Pith was paused by the lock. Its gate's first open ran behind a locked
 screen under heavy disk load; a later probe measured 43–85 ms for 15 first opens after launch.
 No 24-hour soak was run for 0.1.0.
 
+[Unreleased]: https://github.com/mrinoybanerjee/pith/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/mrinoybanerjee/pith/releases/tag/v0.1.0
