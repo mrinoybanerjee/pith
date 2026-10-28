@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The bar at the bottom of the panel (Awake spec 3.2): "Keep awake" with 1 h, 4 h and ∞, or the
-/// session's end with End. One click starts or ends, with no confirm. Its text changes only on
-/// start and end, so the bar costs nothing while the panel is open.
+/// session's end with End. One click starts or ends, with no confirm; End waits 0.4 s (R93). Its
+/// text changes only on start and end, so the bar costs nothing while the panel is open.
 struct AwakeBar: View {
   let store: Store
 
@@ -11,7 +11,7 @@ struct AwakeBar: View {
       if let awake = store.awake {
         Text(awake.title)
         Spacer()
-        button("End", label: "End keeping awake") { store.endAwake() }
+        button("End", label: "End keeping awake") { store.endAwakeFromBar() }
       } else {
         Text("Keep awake").foregroundStyle(.secondary)
         Spacer()

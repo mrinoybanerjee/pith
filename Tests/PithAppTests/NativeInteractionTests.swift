@@ -982,7 +982,8 @@ extension NativeInteractionTests {
   /// Awake spec 3.2: each button starts its session, with a hold that keeps nothing awake, and End
   /// brings "Keep awake" back.
   @Test func theAwakeBarStartsAndEndsEachSession() async throws {
-    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm)
+    let apps = FakeRunningApps([])
+    let (w, store) = try hostPanelWithStore(DemoSnapshots.calm, store: apps.store(guide: .empty))
     #expect(axLabels(in: w).contains("Keep awake"))
     let sessions: [(button: String, seconds: TimeInterval?)] = [
       ("Keep awake for 1 hour", 3600), ("Keep awake for 4 hours", 4 * 3600),
@@ -995,6 +996,10 @@ extension NativeInteractionTests {
       #expect(
         awake.until.map { ($0.timeIntervalSinceNow / 60).rounded() } == seconds.map { $0 / 60 })
       #expect(try await eventually(w) { axLabels(in: w).contains(awake.title) })
+      // The second click of a double-click lands on End, and does nothing (R93).
+      try press("End keeping awake", in: w)
+      #expect(store.awake == awake)
+      apps.passTheConfirmGuard()
       try press("End keeping awake", in: w)
       #expect(store.awake == nil)
       #expect(try await eventually(w) { axLabels(in: w).contains("Keep awake") })
