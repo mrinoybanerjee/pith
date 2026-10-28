@@ -4,8 +4,10 @@ import IOKit.ps
 import notify
 
 /// What keeps the Mac awake with the lid closed (Awake spec 4.2): a copy of Pith started with
-/// `--hold-lid`, which sets `LidFlag` and clears it if Pith ends. `stop` clears the flag in Pith,
-/// then tells the copy to exit. If the copy ends first, Pith clears the flag and calls `ended`.
+/// `--hold-lid`, which sets `LidFlag` and clears it at the end of its input, which `stop` or Pith's
+/// end brings. One copy runs at a time, and Pith clears the flag each time one exits, so a copy
+/// that died cannot leave it set, nor an old copy clear a new hold. If the copy ends by itself,
+/// Pith calls `ended`.
 struct LidHold {
   @MainActor static let main = process(
     Bundle.main.executableURL!, arguments: ["--hold-lid"], hasLid: LidFlag.exists,
@@ -31,12 +33,15 @@ struct LidHold {
   }
 }
 
-/// The copy that holds the lid, if one runs.
+/// The lid hold's copy, from its launch to its exit.
 @MainActor private final class Holder {
   let executable: URL
   let arguments: [String]
   let clear: @MainActor @Sendable () -> Void
-  private var running: (process: Process, input: Pipe, ended: @MainActor @Sendable () -> Void)?
+  /// The copy that has not exited yet, with its input until `stop` closes it.
+  private var copy: (id: ObjectIdentifier, process: Process, input: FileHandle?)?
+  /// Set while the hold is wanted: from `start` to `stop`, or to the copy's own end.
+  private var ended: (@MainActor @Sendable () -> Void)?
 
   init(executable: URL, arguments: [String], clear: @escaping @MainActor @Sendable () -> Void) {
     self.executable = executable
@@ -44,8 +49,23 @@ struct LidHold {
     self.clear = clear
   }
 
+  /// A copy that `stop` ended may still be exiting; the new one starts when it has.
   func start(ended: @escaping @MainActor @Sendable () -> Void) {
-    precondition(running == nil, "a lid hold already runs")
+    precondition(self.ended == nil, "a lid hold already runs")
+    self.ended = ended
+    if copy == nil { launch() }
+  }
+
+  func stop() {
+    precondition(ended != nil, "no lid hold runs")
+    ended = nil
+    if let input = copy?.input {
+      try! input.close()
+      copy!.input = nil
+    }
+  }
+
+  private func launch() {
     let process = Process()
     let input = Pipe()
     process.executableURL = executable
@@ -53,44 +73,45 @@ struct LidHold {
     process.standardInput = input
     let id = ObjectIdentifier(process)
     process.terminationHandler = { _ in Task { @MainActor in self.exited(id) } }
-    // A copy that ended before `stop` makes the write fail with EPIPE, not kill Pith.
-    precondition(fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) == 0)
     try! process.run()
-    running = (process, input, ended)
+    copy = (id, process, input.fileHandleForWriting)
   }
 
-  /// Pith clears the flag, then sends the copy one byte and closes its input: the copy exits
-  /// without touching the flag, so it cannot clear a hold that starts after this.
-  func stop() {
-    let input = running!.input.fileHandleForWriting
-    running = nil
-    clear()
-    // EPIPE: the copy already ended, and the flag is clear now either way.
-    try? input.write(contentsOf: [0])
-    try! input.close()
-  }
-
-  /// A copy that `stop` ended is no longer `running`. One that ended by itself may have died
-  /// before it cleared the flag.
+  /// No copy runs now, so the clear cannot end a newer hold. A copy whose input was still open
+  /// ended by itself; otherwise a `start` may wait for this exit.
   private func exited(_ id: ObjectIdentifier) {
-    guard let hold = running, ObjectIdentifier(hold.process) == id else { return }
-    running = nil
-    try! hold.input.fileHandleForWriting.close()
+    precondition(copy?.id == id, "an unknown copy exited")
+    let input = copy!.input
+    copy = nil
     clear()
-    hold.ended()
+    if let input {
+      try! input.close()
+      let ended = self.ended!
+      self.ended = nil
+      ended()
+    } else if ended != nil {
+      launch()
+    }
   }
 }
 
-/// `--hold-lid`: sets `LidFlag`, then exits on the first of: Pith's byte (Pith cleared the flag),
-/// the end of its input with no byte (Pith ended), SIGTERM, SIGINT or SIGHUP, macOS's low-battery
-/// warning, or a serious thermal state (Awake spec 4.2). All but the first clear the flag. It
-/// waits on events only.
+/// `--hold-lid`: sets `LidFlag`, then clears it and exits on the first of: the end of its input
+/// (Pith stopped the hold, or Pith ended), SIGTERM, SIGINT or SIGHUP, macOS's low-battery warning,
+/// or a serious thermal state (Awake spec 4.2). It waits on events only.
 func holdLid() -> Never {
-  LidFlag.set(true)
   let release: @Sendable () -> Void = {
     LidFlag.set(false)
     exit(0)
   }
+  // Before the flag is set, so that no signal can end this process with the flag left set.
+  let signals = [SIGTERM, SIGINT, SIGHUP].map { number in
+    signal(number, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
+    source.setEventHandler(handler: release)
+    source.resume()
+    return source
+  }
+  LidFlag.set(true)
   let check: @Sendable () -> Void = {
     if IOPSGetBatteryWarningLevel() != kIOPSLowBatteryWarningNone
       || ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
@@ -99,15 +120,8 @@ func holdLid() -> Never {
     }
   }
   Thread.detachNewThread {
-    let byte = FileHandle.standardInput.readDataToEndOfFile()
-    DispatchQueue.main.async { if byte.isEmpty { release() } else { exit(0) } }
-  }
-  let signals = [SIGTERM, SIGINT, SIGHUP].map { number in
-    signal(number, SIG_IGN)
-    let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
-    source.setEventHandler(handler: release)
-    source.resume()
-    return source
+    _ = FileHandle.standardInput.readDataToEndOfFile()
+    DispatchQueue.main.async(execute: release)
   }
   var token: Int32 = 0
   notify_register_dispatch(kIOPSNotifyLowBattery, &token, .main) { _ in check() }

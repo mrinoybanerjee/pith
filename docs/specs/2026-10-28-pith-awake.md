@@ -104,15 +104,17 @@ same place and with the same top separator. It is not shown on the Settings page
   pipe as its input. The copy sets the flag, then clears it and exits on the first of:
   - end of input: Pith closed the pipe (untick, End, the end time) or Pith's process ended,
     even by a crash or SIGKILL, because the kernel closes a dead process's pipe;
-  - SIGTERM, SIGINT or SIGHUP (`pkill -x Pith`, logout);
+  - SIGTERM, SIGINT or SIGHUP (`pkill -x Pith`, logout), handled from before the flag is set;
   - macOS's low-battery warning (`IOPSGetBatteryWarningLevel`, told by
     `kIOPSNotifyLowBattery`);
   - a thermal state of serious or critical.
 
   It waits on events only; nothing polls.
-- **A holder that ends first:** when the copy ends and Pith did not stop it, Pith clears the
-  flag itself (the copy may have died before it could) and unticks the box. A copy that Pith
-  stopped is ignored, so a quick untick and tick never clears the new hold.
+- **One copy at a time:** Pith clears the flag each time a copy exits, and starts a new copy
+  only once the last one has exited. So a copy that died before it could clear leaves nothing
+  set, an untick before the copy set the flag still ends clear, and a quick untick and tick
+  never lets the old copy clear the new hold. When the copy ends and Pith did not stop it,
+  Pith also unticks the box.
 - **At launch:** on a Mac with a lid, Pith clears the flag once, for the case of both processes
   killed at once. The flag is shared with any other app that uses it, as Pith's own clear is.
 - **A lid or not:** the power root domain reports `AppleClamshellState` only on a Mac with a
@@ -132,8 +134,9 @@ one more process, which sleeps until an event and draws nothing.
   start while awake and End while not awake trap; a late End or duration click does nothing;
   the lid hold starts on tick and stops on untick and on the session's end; a hold that ends
   on its own unticks the box and keeps the session.
-- Lid hold: with a stand-in executable, closing its input ends it without a clear; one that
-  dies makes Pith clear the flag once; a child that Pith starts later does not keep the input
+- Lid hold: with a stand-in executable, a stop ends it and Pith clears on its exit; a stop and
+  a start before it ran start the new copy only after the old one exited; one that dies makes
+  Pith clear the flag and untick, once; a child that Pith starts later does not keep the input
   open.
 - Status item: 6 images; the image changes only when the dot state or the awake state changes;
   the accessibility label carries the awake sentence and the lid sentence.
