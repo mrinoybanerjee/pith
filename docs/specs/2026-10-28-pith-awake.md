@@ -54,9 +54,10 @@ same place and with the same top separator. It is not shown on the Settings page
 - The time uses the user's short time format. If the end is not today, the weekday comes
   first: "Awake until Thu 9:40 AM".
 - No countdown. The text changes only on start and end, so the bar costs nothing while open.
-- One click starts or ends. No confirm: both are harmless and undone with one more click. End
-  acts once it has shown for 0.4 s, as the quit confirm does (R93), so the second click of a
-  double-click on a duration does not end the session it started.
+- One click starts or ends. No confirm: both are harmless and undone with one more click. Each
+  button acts once it has shown for 0.4 s, as the quit confirm does (R93), so the second click of
+  a double-click never lands on the button that replaced the first: a double-click on End does
+  not start a session, and one on a duration does not end it.
 - VoiceOver: the buttons read "Keep awake for 1 hour", "Keep awake for 4 hours", "Keep awake
   until you end it", and "End keeping awake".
 - Colors: native greys only, as everywhere in the panel.

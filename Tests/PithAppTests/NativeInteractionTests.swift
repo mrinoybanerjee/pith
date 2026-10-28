@@ -990,6 +990,7 @@ extension NativeInteractionTests {
       ("Keep awake until you end it", nil),
     ]
     for (button, seconds) in sessions {
+      apps.passTheConfirmGuard()
       try press(button, in: w)
       let awake = try #require(store.awake)
       // The end is `seconds` after the press, to the minute.
@@ -1003,6 +1004,9 @@ extension NativeInteractionTests {
       try press("End keeping awake", in: w)
       #expect(store.awake == nil)
       #expect(try await eventually(w) { axLabels(in: w).contains("Keep awake") })
+      // The second click of a double-click on End lands on ∞, and does nothing (R93).
+      try press("Keep awake until you end it", in: w)
+      #expect(store.awake == nil)
     }
   }
 

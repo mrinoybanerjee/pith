@@ -113,8 +113,9 @@ struct Awake: Equatable {
   @ObservationIgnored private var awakeEnd: Task<Void, any Error>? {
     didSet { oldValue?.cancel() }
   }
-  /// When the session started, so End in the bar waits 0.4 s as the quit confirm does (R93).
-  @ObservationIgnored private var awakeStartedNs: UInt64 = 0
+  /// When a session last started or ended, so a button that just appeared in the bar waits 0.4 s,
+  /// as the quit confirm does (R93).
+  @ObservationIgnored private var awakeChangedNs: UInt64 = 0
   @ObservationIgnored private let measureSystem: @Sendable () async throws -> SystemBreakdown
   /// The time that the quit flow's 5 s are counted in.
   @ObservationIgnored private let nowNs: @MainActor @Sendable () -> UInt64
@@ -373,7 +374,7 @@ struct Awake: Equatable {
     precondition(awake == nil, "a session already runs")
     holdID = sleepHold.acquire()
     awake = Awake(until: seconds.map { now + $0 })
-    awakeStartedNs = nowNs()
+    awakeChangedNs = nowNs()
     guard let seconds else { return }
     awakeEnd = Task { [weak self] in
       try await Task.sleep(for: .seconds(seconds), clock: .continuous)
@@ -383,11 +384,18 @@ struct Awake: Equatable {
     }
   }
 
-  /// End in the bar. It acts once End has shown for 0.4 s, where a duration button was, so the
-  /// second click of a double-click cannot end the session the first click started (R93). A click
-  /// queued before the end time ended the session does nothing.
+  /// A duration button in the bar. Each button in the bar acts once it has shown for 0.4 s, so the
+  /// second click of a double-click never lands on the button that replaced the first: a
+  /// double-click on End cannot start a session, nor one on a duration end it (R93). A click queued
+  /// before the bar changed does nothing.
+  func startAwakeFromBar(for seconds: TimeInterval?) {
+    guard awake == nil, nowNs() - awakeChangedNs >= 400_000_000 else { return }
+    startAwake(for: seconds)
+  }
+
+  /// End in the bar, with the same wait as the duration buttons.
   func endAwakeFromBar() {
-    guard awake != nil, nowNs() - awakeStartedNs >= 400_000_000 else { return }
+    guard awake != nil, nowNs() - awakeChangedNs >= 400_000_000 else { return }
     endAwake()
   }
 
@@ -398,6 +406,7 @@ struct Awake: Equatable {
     sleepHold.release(holdID!)
     holdID = nil
     awake = nil
+    awakeChangedNs = nowNs()
   }
 }
 
