@@ -47,7 +47,9 @@ import os
       guard let self else { return }
       if let anchor = statusItem.anchor { panel.toggle(under: anchor) }
     }
-    follow({ [store] in store.status }, then: { [weak self] in self?.statusItem.show(status: $0) })
+    follow(
+      { [store] in (store.status, store.awake) },
+      then: { [weak self] in self?.statusItem.show(status: $0.0, awake: $0.1) })
     // R128: only on request, as any process can post a distributed notification. Pith is never
     // the active app, so the notification must not wait for that.
     if debugHooks {

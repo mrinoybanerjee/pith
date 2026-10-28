@@ -4,37 +4,50 @@ import Testing
 
 @testable import Pith
 
+/// The image changes only when the dot state or the awake ring changes (Awake spec 3.1).
 @MainActor @Test func dotImageChangesOnlyOnStateChange() {
   startAppKit()
   let c = StatusItemController(onClick: {})
-  c.show(.calm)
-  c.show(.calm)
-  c.show(.tight)
-  c.show(.tight)
-  c.show(.calm)
-  #expect(c.imageChanges == 3)
+  for (dot, ring) in [
+    (DotState.calm, false), (.calm, false), (.tight, false), (.tight, false), (.tight, true),
+    (.tight, true), (.calm, true), (.calm, false),
+  ] {
+    c.show(dot, ring: ring)
+  }
+  #expect(c.imageChanges == 5)
   #expect(c.statusItemLength == 22)  // fixed width, never variable
 }
 
-@MainActor @Test func onlyTheCalmDotIsATemplateAndCriticalIsShown() {
+/// Awake spec 3.1: 6 images, the dot of each state alone and in the ring. Only the calm ones are
+/// templates.
+@MainActor @Test func sixImagesAndOnlyTheCalmOnesAreTemplates() {
   startAppKit()
   let c = StatusItemController(onClick: {})
-  c.show(.calm)
-  #expect(c.item.button!.image!.isTemplate)
-  c.show(.tight)
-  let tight = c.item.button!.image!
-  #expect(!tight.isTemplate)
-  c.show(.critical)
-  #expect(!c.item.button!.image!.isTemplate && c.item.button!.image !== tight)
-  #expect(c.imageChanges == 3)
+  var images: [NSImage] = []
+  for ring in [false, true] {
+    for dot in [DotState.calm, .tight, .critical] {
+      c.show(dot, ring: ring)
+      images.append(c.item.button!.image!)
+    }
+  }
+  #expect(Set(images.map(ObjectIdentifier.init)).count == 6 && c.imageChanges == 6)
+  #expect(images.map(\.isTemplate) == [true, false, false, true, false, false])
 }
 
-@MainActor @Test func theLabelNamesTheStatus() {
+/// Awake spec 3.1: the label names the status, then the session's end while one runs.
+@MainActor @Test func theLabelNamesTheStatusAndTheSession() {
   startAppKit()
   let c = StatusItemController(onClick: {})
-  c.show(
-    status: Status(dot: .critical, title: "Memory is very tight", sentence: "Synthetic sentence."))
-  #expect(c.item.button!.accessibilityLabel() == "Pith: Memory is very tight")
+  let status = Status(
+    dot: .critical, title: "Memory is very tight", sentence: "Synthetic sentence.")
+  c.show(status: status, awake: nil)
+  #expect(c.item.button!.accessibilityLabel() == "Pith: Memory is very tight.")
+  let timed = Awake(until: Date.now + 3600)
+  c.show(status: status, awake: timed)
+  #expect(c.item.button!.accessibilityLabel() == "Pith: Memory is very tight. \(timed.title).")
+  c.show(status: status, awake: Awake(until: nil))
+  #expect(
+    c.item.button!.accessibilityLabel() == "Pith: Memory is very tight. Awake until you end it.")
 }
 
 /// A status item button with no window, or a window with no screen, has no anchor, so a click on it
