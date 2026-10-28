@@ -71,6 +71,18 @@ import os
   #expect(store.awake == nil && hold.releases == 3)
 }
 
+/// An End click queued before the end time ended the session does nothing; it must not end a
+/// session that no longer runs.
+@MainActor @Test func aLateEndClickDoesNothing() {
+  let apps = FakeRunningApps([])
+  let store = apps.store(guide: .empty)
+  store.startAwake(for: 3600)
+  apps.passTheConfirmGuard()
+  store.endAwake()
+  store.endAwakeFromBar()
+  #expect(store.awake == nil)
+}
+
 /// Awake spec 4: the end time ends the session and lets the hold go.
 @MainActor @Test func theEndTimeEndsTheSession() async throws {
   let hold = FakeSleepHold()

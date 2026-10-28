@@ -384,9 +384,10 @@ struct Awake: Equatable {
   }
 
   /// End in the bar. It acts once End has shown for 0.4 s, where a duration button was, so the
-  /// second click of a double-click cannot end the session the first click started (R93).
+  /// second click of a double-click cannot end the session the first click started (R93). A click
+  /// queued before the end time ended the session does nothing.
   func endAwakeFromBar() {
-    guard nowNs() - awakeStartedNs >= 400_000_000 else { return }
+    guard awake != nil, nowNs() - awakeStartedNs >= 400_000_000 else { return }
     endAwake()
   }
 
