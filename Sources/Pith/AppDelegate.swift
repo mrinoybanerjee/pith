@@ -23,8 +23,6 @@ import os
     let guide = try! Guide.bundled(in: .main)
     let nowNs = { @Sendable in clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
     let details = SystemDetails(guide: guide, nowNs: nowNs)
-    // A lid hold left set when Pith and its holder were killed at once ends here (Awake spec 4.2).
-    if LidHold.main.hasLid { LidFlag.set(false) }
     let store = Store(
       settings: .load(defaults), guide: guide, loginItem: .main, sleepHold: .main,
       lidHold: .main, runningApps: .live, measureSystem: { try await details.measure() },

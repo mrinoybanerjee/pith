@@ -72,8 +72,8 @@ import os
 }
 
 /// A click queued before the bar changed does nothing, even once the bar's 0.4 s have passed: a
-/// duration click must not start a session while one runs, nor an End click queued before the end
-/// time ended the session end one that no longer runs.
+/// duration click does not start a session while one runs, and an End click does nothing once the
+/// session has ended.
 @MainActor @Test func aLateBarClickDoesNothing() {
   let apps = FakeRunningApps([])
   let store = apps.store(guide: .empty)
@@ -138,7 +138,8 @@ import os
   let hold = FakeSleepHold()
   let store = testStore(sleepHold: hold.sleepHold)
   store.startAwake(for: 0.05)
-  for _ in 0..<200 where store.awake != nil { try await Task.sleep(for: .milliseconds(10)) }
+  // The end time may fire up to 1 s late (its tolerance), so the test waits up to 5 s.
+  for _ in 0..<500 where store.awake != nil { try await Task.sleep(for: .milliseconds(10)) }
   #expect(store.awake == nil && hold.acquires == 1 && hold.releases == 1)
 }
 

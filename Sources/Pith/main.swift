@@ -15,7 +15,7 @@ import PithCore
 //   README captures, until it closes;
 // - `--hold-lid`: not for people. The app starts it to keep the Mac awake with the lid closed,
 //   and it ends when the app tells it to or ends (Awake spec 4.2).
-// The panels of the last two keep their settings and pinned frame in a suite of their own,
+// The panels of `--render-panel` and `--demo` keep their settings and pinned frame in a suite of their own,
 // removed at exit, and never touch the real login item (R144). Otherwise Pith starts as usual,
 // and `--debug-hooks` adds the panel notification (R128). A bad flag is a usage error (exit 2).
 guard let mode = LaunchMode.parse(CommandLine.arguments) else {
