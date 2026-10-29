@@ -51,8 +51,9 @@ From top to bottom:
 4. **App rows:** the top 8 by the chosen measure. Each has a 24 pt icon, the name over a 3 pt bar,
    and the value on the right.
 5. **"macOS system"**, always last. See below.
-6. **Awake bar:** "Keep awake" with 1 h, 4 h and ∞, or "Awake until 3:40 PM" with End. While a
-   session runs, a thin ring circles the dot. See the
+6. **Awake bar:** "Keep awake" with 1 h, 4 h and ∞, or "Awake until 3:40 PM" with End. On a Mac
+   with a lid, a "Lid closed" checkbox sits before End. While a session runs, a thin ring circles
+   the dot. See the
    [Awake spec](specs/2026-10-28-pith-awake.md).
 
 ### Status sentences

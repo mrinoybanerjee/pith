@@ -13,6 +13,7 @@ import Testing
     (["--benchmark-sweep", "200"], .benchmarkSweep(count: 200)),
     (["--render-panel"], .renderPanel),
     (["--demo", "tight"], .demo(.tight)),
+    (["--hold-lid"], .holdLid),
     (["--snapshot-json"], nil),
     (["--snapshot-json", "soon"], nil),
     (["--snapshot-json", "-1"], nil),
@@ -22,6 +23,7 @@ import Testing
     (["--render-panel", "render-real"], nil),
     (["--demo"], nil),
     (["--demo", "busy"], nil),
+    (["--hold-lid", "now"], nil),
   ]
   for (arguments, mode) in cases {
     #expect(

@@ -6,11 +6,20 @@ Notable changes to Pith, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-28
+
 ### Added
 
 - Keep awake: a bar at the bottom of the panel, in place of the footer, keeps the Mac from
   sleeping while idle for 1 hour, 4 hours or until you end it. A thin ring around the dot shows
   that a session runs. The display can still sleep, and quitting Pith ends the session.
+- Lid closed: on a MacBook, a checkbox in the same bar keeps the Mac awake with the lid closed
+  too, without root. It ends with the session, on macOS's low-battery warning, on serious heat,
+  or when Pith quits or crashes; a closed lid then sleeps the Mac within seconds.
+
+### Fixed
+
+- The test run no longer leaves empty `pith.tests.*` preference files behind.
 
 ## [0.1.0] - 2026-10-26
 
@@ -78,5 +87,6 @@ when Pith was paused by the lock. Its gate's first open ran behind a locked
 screen under heavy disk load; a later probe measured 43–85 ms for 15 first opens after launch.
 No 24-hour soak was run for 0.1.0.
 
-[Unreleased]: https://github.com/mrinoybanerjee/pith/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mrinoybanerjee/pith/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mrinoybanerjee/pith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mrinoybanerjee/pith/releases/tag/v0.1.0

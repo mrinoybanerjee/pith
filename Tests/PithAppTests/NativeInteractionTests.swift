@@ -1010,6 +1010,34 @@ extension NativeInteractionTests {
     }
   }
 
+  /// Awake spec 3.2: on a Mac with a lid, "Lid closed" shows with the session, waits 0.4 s, then
+  /// ticks and unticks. On a Mac without one, it never shows.
+  @Test func lidClosedShowsOnAMacWithALidOnly() async throws {
+    let apps = FakeRunningApps([])
+    let lid = FakeLidHold()
+    let (w, store) = try hostPanelWithStore(
+      DemoSnapshots.calm, store: apps.store(guide: .empty, lidHold: lid.lidHold))
+    apps.passTheConfirmGuard()
+    try press("Keep awake for 4 hours", in: w)
+    let box = "Stay awake with the lid closed"
+    #expect(try await eventually(w) { axInteractiveElements(in: w).contains { $0.label == box } })
+    // The second click of a double-click on 4 h lands on the box, and does nothing (R93).
+    try press(box, in: w)
+    #expect(store.awake?.lidClosed == false && lid.starts == 0)
+    apps.passTheConfirmGuard()
+    try press(box, in: w)
+    #expect(store.awake?.lidClosed == true && lid.starts == 1)
+    try press(box, in: w)
+    #expect(store.awake?.lidClosed == false && lid.stops == 1)
+    let (noLid, _) = try hostPanelWithStore(DemoSnapshots.calm, store: apps.store(guide: .empty))
+    try press("Keep awake for 4 hours", in: noLid)
+    #expect(
+      try await eventually(noLid) {
+        axInteractiveElements(in: noLid).contains { $0.label == "End keeping awake" }
+      })
+    #expect(!axInteractiveElements(in: noLid).contains { $0.label == box })
+  }
+
   /// R76 and R87: the font check reads headings by their height and a font that a container
   /// passes down, under 13 pt too. A button's label has no font for VoiceOver, so buttons use the
   /// `PanelType` sizes, which a unit test checks.

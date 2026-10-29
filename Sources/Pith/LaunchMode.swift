@@ -1,6 +1,8 @@
-/// How Pith was launched: the app, or one debug mode that runs and exits (spec 10, R128, R144).
+/// How Pith was launched: the app, the lid holder that the app starts (Awake spec 4.2), or one
+/// debug mode that runs and exits (spec 10, R128, R144).
 enum LaunchMode: Equatable {
   case app(debugHooks: Bool)
+  case holdLid
   case snapshotJSON(seconds: Double)
   case benchmarkSweep(count: Int)
   case renderPanel
@@ -10,7 +12,7 @@ enum LaunchMode: Equatable {
 
   static let usage =
     "usage: Pith [--debug-hooks] | --snapshot-json <seconds> | --benchmark-sweep <n> | "
-    + "--render-panel | --demo <calm | tight>"
+    + "--render-panel | --demo <calm | tight> | --hold-lid"
 
   /// The mode that `arguments` asks for. Nil, a usage error, when a debug flag lacks its value or
   /// has a wrong one, or when `--render-panel` has one: it takes no directory (R144).
@@ -34,6 +36,9 @@ enum LaunchMode: Equatable {
     }
     if arguments.contains("--demo") {
       return value("--demo").flatMap(Demo.init(rawValue:)).map { .demo($0) }
+    }
+    if arguments.contains("--hold-lid") {
+      return arguments.count == 2 ? .holdLid : nil
     }
     return .app(debugHooks: arguments.contains("--debug-hooks"))
   }

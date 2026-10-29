@@ -71,16 +71,66 @@ import os
   #expect(store.awake == nil && hold.releases == 3)
 }
 
-/// An End click queued before the end time ended the session does nothing; it must not end a
-/// session that no longer runs.
-@MainActor @Test func aLateEndClickDoesNothing() {
+/// A click queued before the bar changed does nothing, even once the bar's 0.4 s have passed: a
+/// duration click must not start a session while one runs, nor an End click queued before the end
+/// time ended the session end one that no longer runs.
+@MainActor @Test func aLateBarClickDoesNothing() {
   let apps = FakeRunningApps([])
   let store = apps.store(guide: .empty)
   store.startAwake(for: 3600)
   apps.passTheConfirmGuard()
+  store.startAwakeFromBar(for: nil)
+  #expect(store.awake?.until != nil)
   store.endAwake()
+  apps.passTheConfirmGuard()
   store.endAwakeFromBar()
   #expect(store.awake == nil)
+}
+
+/// Awake spec 2: "Lid closed" holds the lid from its tick to its untick or the session's end, and
+/// each session starts unticked.
+@MainActor @Test func theLidHoldRunsFromTickToUntickOrTheSessionsEnd() {
+  let lid = FakeLidHold()
+  let store = testStore(lidHold: lid.lidHold)
+  #expect(store.hasLid && !testStore().hasLid)
+  store.startAwake(for: nil)
+  store.setLidClosed(true)
+  #expect(store.awake?.lidClosed == true && lid.starts == 1)
+  store.setLidClosed(false)
+  #expect(store.awake?.lidClosed == false && lid.stops == 1)
+  store.setLidClosed(true)
+  store.endAwake()
+  #expect(store.awake == nil && lid.starts == 2 && lid.stops == 2)
+  store.startAwake(for: nil)
+  #expect(store.awake?.lidClosed == false)
+}
+
+/// Awake spec 2: a lid hold that ends by itself unticks the box and keeps the session.
+@MainActor @Test func aLidHoldThatEndsByItselfUnticksTheBox() {
+  let lid = FakeLidHold()
+  let store = testStore(lidHold: lid.lidHold)
+  store.startAwake(for: nil)
+  store.setLidClosed(true)
+  lid.endByItself()
+  #expect(store.awake == Awake(until: nil) && lid.stops == 0)
+  store.endAwake()
+  #expect(lid.stops == 0)
+}
+
+/// R93: the box waits 0.4 s after the bar changed, as the bar's buttons do, and does nothing
+/// without a session.
+@MainActor @Test func theBoxWaitsLikeTheBarsButtons() {
+  let apps = FakeRunningApps([])
+  let lid = FakeLidHold()
+  let store = apps.store(guide: .empty, lidHold: lid.lidHold)
+  apps.passTheConfirmGuard()
+  store.setLidClosedFromBar(true)
+  store.startAwake(for: nil)
+  store.setLidClosedFromBar(true)
+  #expect(lid.starts == 0)
+  apps.passTheConfirmGuard()
+  store.setLidClosedFromBar(true)
+  #expect(lid.starts == 1 && store.awake?.lidClosed == true)
 }
 
 /// Awake spec 4: the end time ends the session and lets the hold go.
@@ -115,9 +165,17 @@ import os
 
   @MainActor private func endWithNoSession() { testStore().endAwake() }
 
+  /// Awake spec 4.2: only a session on a Mac with a lid holds the lid.
+  @MainActor private func holdTheLidWithNoLid() {
+    let store = testStore()
+    store.startAwake(for: nil)
+    store.setLidClosed(true)
+  }
+
   @Test func startingWhileAwakeAndEndingWhileNotTrap() async {
     await #expect(processExitsWith: .failure) { await startTwice() }
     await #expect(processExitsWith: .failure) { await endWithNoSession() }
+    await #expect(processExitsWith: .failure) { await holdTheLidWithNoLid() }
   }
 #endif
 

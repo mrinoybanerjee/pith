@@ -41,7 +41,9 @@ import PithCore
   func show(status: Status, awake: Awake?) {
     show(status.dot, ring: awake != nil)
     item.button!.setAccessibilityLabel(
-      "Pith: \(status.title)." + (awake.map { " \($0.title)." } ?? ""))
+      "Pith: \(status.title)."
+        + (awake.map { " \($0.title)." + ($0.lidClosed ? " Even with the lid closed." : "") } ?? "")
+    )
   }
 
   func show(_ dot: DotState, ring: Bool) {

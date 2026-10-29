@@ -23,14 +23,15 @@ func clearDefaults(_ test: String = #function) {
 
 @MainActor func testStore(
   guide: Guide = .empty, loginItem: LoginItem = .none, sleepHold: SleepHold = .none,
-  runningApps: RunningApps = .none, nowNs: @escaping @MainActor @Sendable () -> UInt64 = { 0 },
+  lidHold: LidHold = .none, runningApps: RunningApps = .none,
+  nowNs: @escaping @MainActor @Sendable () -> UInt64 = { 0 },
   measure: @escaping @Sendable () async throws -> SystemBreakdown = {
     throw SystemDetailsError.failed("no top in tests")
   }
 ) -> Store {
   Store(
     settings: Settings(), guide: guide, loginItem: loginItem, sleepHold: sleepHold,
-    runningApps: runningApps, measureSystem: measure, nowNs: nowNs)
+    lidHold: lidHold, runningApps: runningApps, measureSystem: measure, nowNs: nowNs)
 }
 
 /// A running app that a test controls. Each instance records its own calls, so a call that goes
@@ -147,8 +148,8 @@ final class CountingCenter: NotificationCenter, @unchecked Sendable {
     await settle()
   }
 
-  func store(guide: Guide) -> Store {
-    testStore(guide: guide, runningApps: runningApps, nowNs: { self.nowNs })
+  func store(guide: Guide, lidHold: LidHold = .none) -> Store {
+    testStore(guide: guide, lidHold: lidHold, runningApps: runningApps, nowNs: { self.nowNs })
   }
 
   /// Moves the time past the 0.4 s that a confirm's default button waits once in view (R93).
@@ -213,6 +214,36 @@ extension AppUsage {
         #expect(id == UInt32(self.acquires) && self.releases == self.acquires - 1)
         self.releases += 1
       })
+  }
+}
+
+/// A lid hold on a Mac with a lid that counts its starts and stops, checks that they alternate,
+/// and ends by itself when the test says so. It never sets the real flag.
+@MainActor final class FakeLidHold {
+  private(set) var starts = 0
+  private(set) var stops = 0
+  private var ended: (@MainActor @Sendable () -> Void)?
+
+  var lidHold: LidHold {
+    LidHold(
+      hasLid: true,
+      start: { ended in
+        #expect(self.ended == nil)
+        self.starts += 1
+        self.ended = ended
+      },
+      stop: {
+        #expect(self.ended != nil)
+        self.stops += 1
+        self.ended = nil
+      })
+  }
+
+  /// The hold ends by itself, as on low battery.
+  func endByItself() {
+    let ended = self.ended!
+    self.ended = nil
+    ended()
   }
 }
 

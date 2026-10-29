@@ -12,7 +12,9 @@ import PithCore
 //   repo (R129, R144). Beside them, awake-light.png and awake-dark.png show the calm demo with
 //   a session running (Awake spec 6);
 // - `--demo <calm | tight>`: the panel with that `DemoSnapshots` state and no real reads, for
-//   README captures, until it closes.
+//   README captures, until it closes;
+// - `--hold-lid`: not for people. The app starts it to keep the Mac awake with the lid closed,
+//   and it ends when the app tells it to or ends (Awake spec 4.2).
 // The panels of the last two keep their settings and pinned frame in a suite of their own,
 // removed at exit, and never touch the real login item (R144). Otherwise Pith starts as usual,
 // and `--debug-hooks` adds the panel notification (R128). A bad flag is a usage error (exit 2).
@@ -72,8 +74,8 @@ func benchmark(_ count: Int) async -> String {
 
 /// The panel opened as a click opens it, under the top middle of the main screen, on a store of
 /// its own with no lifecycle, that shows `snapshot` at each open. No row offers Quit, and no
-/// session holds the Mac awake. With `awake`, the bar reads "Awake until 3:40 PM". `closed` runs
-/// when the panel closes after it opened.
+/// session holds the Mac awake. The bar is drawn as on a Mac with a lid. With `awake`, it reads
+/// "Awake until 3:40 PM". `closed` runs when the panel closes after it opened.
 @MainActor func openPanel(
   _ snapshot: Snapshot, appearance: NSAppearance.Name?, awake: Bool = false,
   closed: @escaping @MainActor () -> Void = {}
@@ -82,7 +84,8 @@ func benchmark(_ count: Int) async -> String {
   let defaults = UserDefaults(suiteName: debugSuite)!
   let store = Store(
     settings: .load(defaults), guide: try! Guide.bundled(in: .main), loginItem: .none,
-    sleepHold: .none, runningApps: .none,
+    sleepHold: .none, lidHold: LidHold(hasLid: true, start: { _ in }, stop: {}),
+    runningApps: .none,
     measureSystem: { throw SystemDetailsError.failed("not measured here") },
     nowNs: { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) })
   if awake {
@@ -129,6 +132,8 @@ case .demo(let state):
   let snapshot = [.calm: DemoSnapshots.calm, .tight: DemoSnapshots.tight][state]!
   Task { demo = openPanel(snapshot, appearance: nil) { exitDebugMode() } }
   NSApplication.shared.run()
+case .holdLid:
+  holdLid()
 case .app(let debugHooks):
   delegate = AppDelegate(debugHooks: debugHooks)
   NSApplication.shared.delegate = delegate

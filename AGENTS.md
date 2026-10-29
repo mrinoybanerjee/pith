@@ -27,8 +27,8 @@ On macOS 26, a process started the wrong way can get no visible status item.
 - **Where work runs:** all work runs on the Mac mini in `~/Codex/Projects/Pith`. Builds, tests and commits run on the mini.
 - **Toolchain:** Command Line Tools only, no Xcode. `swift-tools-version: 6.0`, platforms `.macOS(.v15)`, Swift language mode 6, Apple Silicon (`arm64`) only.
 - **Identity:** bundle ID `com.mrinoy.pith`, app name `Pith`, `LSUIElement = YES`, `LSMinimumSystemVersion = 15.0`.
-- **Dependencies:** zero third-party packages. No widget extension, no XPC service, no helper tool.
-- **Resource use:** Pith makes **no network calls**. It launches no child process except the on-demand `/usr/bin/top` (spec 6.7). It writes to disk only settings and the pinned panel frame.
+- **Dependencies:** zero third-party packages. No widget extension, no XPC service, no helper tool. The lid holder is Pith's own binary (Awake spec 4.2).
+- **Resource use:** Pith makes **no network calls**. It launches no child process except the on-demand `/usr/bin/top` (spec 6.7) and, while "Lid closed" is ticked, its own `--hold-lid` copy (Awake spec 4.2). It writes to disk only settings and the pinned panel frame.
 - **Unknown values:** a missing reading is `Reading.unavailable(reason)`, shown as "Not available" or "—". It is never shown as 0.
 - **UI:**
   - text the user must read is at least 13 pt, in SF Pro, with tabular numerals for all values;
@@ -60,7 +60,7 @@ Measured on each of the three Macs with `scripts/perf.sh`, which samples `top -l
 | CPU, any 60 s sample | ≤ 1% | ≤ 5% |
 | Memory footprint | ≤ 30 MB | ≤ 45 MB |
 | Idle wakeups per second | ≤ 0.5 | ≤ 2 |
-| Child processes launched | 0 | 0 (on-demand `top` excluded) |
+| Child processes launched | 0 | 0 (on-demand `top` and the lid holder excluded) |
 | One full sweep (~500 processes, M4) | — | ≤ 3 ms |
 | Click to panel visible | ≤ 100 ms | — |
 | Launch to first reading | ≤ 300 ms | — |
