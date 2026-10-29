@@ -82,7 +82,8 @@ Pith never:
 
 Pith keeps the Mac awake only when you ask, without root. Quitting Pith, or a crash, ends it, and
 a closed lid then sleeps the Mac within seconds. With the lid closed, it also lets the Mac sleep
-when macOS warns of low battery or the Mac gets hot.
+when macOS warns of low battery or the Mac gets hot. macOS has one closed-lid switch for all apps:
+if another app also keeps a closed lid awake, Pith's end ends that app's hold too, and the reverse.
 
 Pith saves only the settings you change, the Memory · CPU · Disk choice, the pinned panel's
 position, and a note that it added its login item.

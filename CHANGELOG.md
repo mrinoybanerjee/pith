@@ -6,6 +6,15 @@ Notable changes to Pith, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-29
+
+### Fixed
+
+- On a MacBook whose macOS refuses the closed-lid switch, Pith no longer stops at launch; it
+  shows no "Lid closed" instead.
+- The lid holder stops at once, and the box unticks, if it cannot watch for the low-battery
+  warning.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added

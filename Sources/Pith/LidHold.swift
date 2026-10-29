@@ -9,14 +9,15 @@ import notify
 /// that died cannot leave it set, nor an old copy clear a new hold. If the copy ends by itself,
 /// Pith calls `ended`.
 struct LidHold {
+  /// Its first use, at launch, clears a hold left when Pith and its copy were killed at once.
   @MainActor static let main = process(
-    Bundle.main.executableURL!, arguments: ["--hold-lid"], hasLid: LidFlag.exists,
+    Bundle.main.executableURL!, arguments: ["--hold-lid"], hasLid: LidFlag.supported,
     clear: { LidFlag.set(false) })
 
   /// A Mac with no lid: no checkbox, and nothing to hold. For tests and the debug panels.
   static let none = LidHold(hasLid: false, start: { _ in }, stop: {})
 
-  /// Whether this Mac has a lid. Without one, the bar offers no "Lid closed".
+  /// Whether this Mac has a lid that Pith can hold. Without one, the bar offers no "Lid closed".
   let hasLid: Bool
   /// Starts the hold. `ended` runs if the hold ends by itself, never after `stop`.
   let start: @MainActor @Sendable (_ ended: @escaping @MainActor @Sendable () -> Void) -> Void
@@ -124,7 +125,8 @@ func holdLid() -> Never {
     DispatchQueue.main.async(execute: release)
   }
   var token: Int32 = 0
-  notify_register_dispatch(kIOPSNotifyLowBattery, &token, .main) { _ in check() }
+  let registered = notify_register_dispatch(kIOPSNotifyLowBattery, &token, .main) { _ in check() }
+  precondition(registered == NOTIFY_STATUS_OK, "cannot watch the battery: \(registered)")
   _ = NotificationCenter.default.addObserver(
     forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
   ) { _ in check() }
@@ -145,15 +147,24 @@ enum LidFlag {
     }
   }
 
+  /// Whether this Mac has a lid and macOS takes the flag. It clears the flag to find out, so a Mac
+  /// or macOS that refuses it shows no "Lid closed" instead of stopping Pith.
+  static var supported: Bool { exists && call(false) == KERN_SUCCESS }
+
+  /// Sets the flag. Once `supported` is true, a refusal is a bug, so it traps.
   static func set(_ on: Bool) {
+    let result = call(on)
+    precondition(result == KERN_SUCCESS, "cannot set the lid flag to \(on): \(result)")
+  }
+
+  private static func call(_ on: Bool) -> kern_return_t {
     withRootDomain { domain in
       var connect: io_connect_t = 0
       let opened = IOServiceOpen(domain, mach_task_self_, 0, &connect)
-      precondition(opened == KERN_SUCCESS, "cannot open the power root domain: \(opened)")
+      guard opened == KERN_SUCCESS else { return opened }
       defer { IOServiceClose(connect) }
       var input: UInt64 = on ? 1 : 0
-      let result = IOConnectCallScalarMethod(connect, 12, &input, 1, nil, nil)
-      precondition(result == KERN_SUCCESS, "cannot set the lid flag to \(on): \(result)")
+      return IOConnectCallScalarMethod(connect, 12, &input, 1, nil, nil)
     }
   }
 

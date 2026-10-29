@@ -2,7 +2,8 @@
 
 - **Date:** 2026-10-28
 - **Status:** approved direction (Mrinoy, 2026-10-28: "Pith = Monitor + Awake", keep it minimal;
-  later the same day, after the lid test passed: ship the lid-closed choice in the bar)
+  later the same day, after the lid test passed: ship the lid-closed choice in the bar;
+  2026-10-29: no lid actions, section 2)
 - **Extends:** [2026-10-25-pith-design.md](2026-10-25-pith-design.md). Where they differ, this file wins.
 - **Background:** the Insomnia review and plan in Mrinoy's working files (2026-10-28).
 
@@ -23,7 +24,7 @@ No part needs root or an installer. A Mac without a lid never shows the checkbox
   "Lid closed" is ticked.
 - **Lid closed:** while a session runs, ticking "Lid closed" keeps the Mac awake with the lid
   closed. It ends with the session, when the box is unticked, when macOS warns of low battery
-  (its early warning, below 22%), when the Mac is seriously hot, or when Pith quits or crashes.
+  (its early warning, at about 20 minutes left), when the Mac is seriously hot, or when Pith quits or crashes.
   Then a closed lid sleeps the Mac within seconds. If it ends on its own (battery, heat), the
   box unticks and the session goes on with the lid open.
 - **End:** "End" in the bar, the chosen time passing, or Pith quitting. Quitting or a crash
@@ -32,6 +33,9 @@ No part needs root or an installer. A Mac without a lid never shows the checkbox
   end time, the session ends on wake.
 - **No settings, no notifications, nothing saved.** A relaunch starts with no session, and each
   session starts with "Lid closed" unticked.
+- **No lid actions:** closing the lid does not pause apps or mute the sound, as Insomnia can.
+  Pausing apps works against the reason to keep the Mac awake, and each action would need a
+  setting (Mrinoy left the choice to Pith, 2026-10-29).
 
 ## 3. What you see
 
@@ -116,9 +120,13 @@ same place and with the same top separator. It is not shown on the Settings page
   never lets the old copy clear the new hold. When the copy ends and Pith did not stop it,
   Pith also unticks the box.
 - **At launch:** on a Mac with a lid, Pith clears the flag once, for the case of both processes
-  killed at once. The flag is shared with any other app that uses it, as Pith's own clear is.
+  killed at once. That clear is also the check that macOS takes the flag: if macOS refuses it,
+  the bar shows no checkbox. A refusal after that is a bug, and the process that meets it traps.
+- **Shared:** the flag is one switch for the whole Mac, with no count of who set it. Pith's clear
+  ends another app's closed-lid hold that uses the same flag, and that app's clear ends Pith's
+  hold while the box stays ticked.
 - **A lid or not:** the power root domain reports `AppleClamshellState` only on a Mac with a
-  lid. Without it, the bar shows no checkbox.
+  lid. Without it, or where macOS refuses the flag, the bar shows no checkbox.
 - **Seam:** a `LidHold` closure struct, `.main` (the copy) and `.none` (no lid, holds nothing).
   Tests use a stand-in executable, so they never set the real flag.
 
@@ -144,6 +152,7 @@ one more process, which sleeps until an event and draws nothing.
   the bar to "Keep awake"; on a Mac with a lid the checkbox waits 0.4 s, then ticks and
   unticks; without a lid it is absent.
 - On a laptop, by hand, with the installed app: a closed lid stays awake on battery and on
-  power; killing Pith, or the holder, lets a closed lid sleep within seconds.
+  power; killing Pith, or the holder, lets a closed lid sleep within seconds. The thermal end,
+  and the battery end on hardware, are not tested.
 - `--render-panel` also renders the calm demo with a session running, for screenshots.
 - `perf.sh` and `accuracy.sh` run at release, as for every release.
