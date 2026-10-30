@@ -208,10 +208,10 @@ extension AppUsage {
     SleepHold(
       acquire: {
         self.acquires += 1
-        return UInt32(self.acquires)
+        return [UInt32(self.acquires)]
       },
-      release: { id in
-        #expect(id == UInt32(self.acquires) && self.releases == self.acquires - 1)
+      release: { ids in
+        #expect(ids == [UInt32(self.acquires)] && self.releases == self.acquires - 1)
         self.releases += 1
       })
   }

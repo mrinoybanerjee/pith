@@ -23,7 +23,7 @@ running all day, and its numbers are checked against `top`.
 - **macOS system**, always last: what macOS itself uses. Open it to see its largest parts.
 - **Plain words** from a built-in guide of 187 checked entries. No AI.
 - **Pin** keeps the panel floating while you work.
-- **Keep awake** at the bottom of the panel stops the Mac from sleeping while idle, for 1 hour,
+- **Keep awake** at the bottom of the panel keeps the Mac awake and its display on, for 1 hour,
   4 hours or until you end it. On a MacBook, tick **Lid closed** to keep it awake with the lid
   closed too. A thin ring around the dot shows that it is on.
 
