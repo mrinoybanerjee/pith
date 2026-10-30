@@ -6,6 +6,14 @@ Notable changes to Pith, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-30
+
+### Changed
+
+- Keep awake now keeps the display on too. With the lid open, the screen no longer turns off
+  during a session, which made it look as if Keep awake had stopped. The Apple menu, the power
+  button and a closed lid (without "Lid closed") still sleep the Mac.
+
 ## [0.2.1] - 2026-10-29
 
 ### Fixed
@@ -96,6 +104,8 @@ when Pith was paused by the lock. Its gate's first open ran behind a locked
 screen under heavy disk load; a later probe measured 43–85 ms for 15 first opens after launch.
 No 24-hour soak was run for 0.1.0.
 
-[Unreleased]: https://github.com/mrinoybanerjee/pith/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mrinoybanerjee/pith/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/mrinoybanerjee/pith/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/mrinoybanerjee/pith/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mrinoybanerjee/pith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mrinoybanerjee/pith/releases/tag/v0.1.0

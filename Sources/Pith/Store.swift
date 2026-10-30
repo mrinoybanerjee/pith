@@ -111,7 +111,7 @@ struct Awake: Equatable {
   @ObservationIgnored private let sleepHold: SleepHold
   @ObservationIgnored private let lidHold: LidHold
   /// The hold of the session that runs.
-  @ObservationIgnored private var holdID: IOPMAssertionID?
+  @ObservationIgnored private var holdIDs: [IOPMAssertionID]?
   /// Ends a timed session at its end time. End cancels it.
   @ObservationIgnored private var awakeEnd: Task<Void, any Error>? {
     didSet { oldValue?.cancel() }
@@ -377,7 +377,7 @@ struct Awake: Equatable {
   /// session whose end passed during sleep ends on wake. Nothing polls.
   func startAwake(for seconds: TimeInterval?, now: Date = .now) {
     precondition(awake == nil, "a session already runs")
-    holdID = sleepHold.acquire()
+    holdIDs = sleepHold.acquire()
     awake = Awake(until: seconds.map { now + $0 })
     awakeChangedNs = nowNs()
     guard let seconds else { return }
@@ -409,8 +409,8 @@ struct Awake: Equatable {
     precondition(awake != nil, "no session runs")
     awakeEnd = nil
     if awake!.lidClosed { lidHold.stop() }
-    sleepHold.release(holdID!)
-    holdID = nil
+    sleepHold.release(holdIDs!)
+    holdIDs = nil
     awake = nil
     awakeChangedNs = nowNs()
   }

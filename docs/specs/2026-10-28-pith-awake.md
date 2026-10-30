@@ -3,7 +3,8 @@
 - **Date:** 2026-10-28
 - **Status:** approved direction (Mrinoy, 2026-10-28: "Pith = Monitor + Awake", keep it minimal;
   later the same day, after the lid test passed: ship the lid-closed choice in the bar;
-  2026-10-29: no lid actions, section 2)
+  2026-10-29: no lid actions, section 2; 2026-10-30: the display stays on during a session,
+  after feedback that Keep awake looked broken with the lid open)
 - **Extends:** [2026-10-25-pith-design.md](2026-10-25-pith-design.md). Where they differ, this file wins.
 - **Background:** the Insomnia review and plan in Mrinoy's working files (2026-10-28).
 
@@ -19,9 +20,9 @@ No part needs root or an installer. A Mac without a lid never shows the checkbox
 ## 2. Behavior
 
 - **Start:** the bar offers three durations: 1 hour, 4 hours, and until you end it.
-- **While awake:** the Mac does not sleep from idle. The display can still sleep, and the
-  Apple menu and the power button still sleep the Mac. Closing the lid sleeps it too, unless
-  "Lid closed" is ticked.
+- **While awake:** the Mac does not sleep from idle, and the display does not turn off from
+  idle. The Apple menu and the power button still sleep the Mac. Closing the lid sleeps it too,
+  unless "Lid closed" is ticked.
 - **Lid closed:** while a session runs, ticking "Lid closed" keeps the Mac awake with the lid
   closed. It ends with the session, when the box is unticked, when macOS warns of low battery
   (its early warning, at about 20 minutes left), when the Mac is seriously hot, or when Pith quits or crashes.
@@ -80,9 +81,15 @@ same place and with the same top separator. It is not shown on the Settings page
 
 ### 4.1 Idle sleep
 
-- **The hold:** one `IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleSystemSleep,
-  "Pith: keep awake")` per session, released by `IOPMAssertionRelease`, which must succeed.
-  macOS releases it if Pith's process dies, so a crash leaves nothing behind. No powerd
+- **The hold:** two `IOPMAssertionCreateWithName(…, "Pith: keep awake")` per session, released
+  together by `IOPMAssertionRelease`, which must succeed:
+  - `kIOPMAssertionTypePreventUserIdleSystemSleep` keeps the Mac awake, also with the lid
+    closed (the lid test held a closed lid with this one);
+  - `kIOPMAssertionTypePreventUserIdleDisplaySleep` keeps the display on while the lid is open.
+    Apple's header: a closed lid still turns the display off, so this one alone would not hold
+    a closed lid.
+
+  macOS releases them if Pith's process dies, so a crash leaves nothing behind. No powerd
   timeout: after powerd ends a timed assertion, a release call fails (spike, 2026-10-28), and
   one owner is simpler.
 - **The end time:** one task that sleeps on the continuous clock until the end time, with 1 s
@@ -138,6 +145,8 @@ one more process, which sleeps until an event and draws nothing.
 
 ## 6. Testing
 
+- Sleep hold: the real hold makes both assertions, and its release ends both (live, on the test
+  Mac).
 - Store: start acquires once; End releases once; the end time ends the session and releases;
   start while awake and End while not awake trap; a late End or duration click does nothing;
   the lid hold starts on tick and stops on untick and on the session's end; a hold that ends
